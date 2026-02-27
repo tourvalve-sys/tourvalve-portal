@@ -1,0 +1,15 @@
+C:\Users\User\source\repos\TourValve.Application\bin\Debug\net8.0\TourValve.Application.deps.json
+C:\Users\User\source\repos\TourValve.Application\bin\Debug\net8.0\TourValve.Application.dll
+C:\Users\User\source\repos\TourValve.Application\bin\Debug\net8.0\TourValve.Application.pdb
+C:\Users\User\source\repos\TourValve.Application\bin\Debug\net8.0\TourValve.Domain.dll
+C:\Users\User\source\repos\TourValve.Application\bin\Debug\net8.0\TourValve.Domain.pdb
+C:\Users\User\source\repos\TourValve.Application\obj\Debug\net8.0\TourValve.Application.csproj.AssemblyReference.cache
+C:\Users\User\source\repos\TourValve.Application\obj\Debug\net8.0\TourValve.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\User\source\repos\TourValve.Application\obj\Debug\net8.0\TourValve.Application.AssemblyInfoInputs.cache
+C:\Users\User\source\repos\TourValve.Application\obj\Debug\net8.0\TourValve.Application.AssemblyInfo.cs
+C:\Users\User\source\repos\TourValve.Application\obj\Debug\net8.0\TourValve.Application.csproj.CoreCompileInputs.cache
+C:\Users\User\source\repos\TourValve.Application\obj\Debug\net8.0\TourValv.9EF781C1.Up2Date
+C:\Users\User\source\repos\TourValve.Application\obj\Debug\net8.0\TourValve.Application.dll
+C:\Users\User\source\repos\TourValve.Application\obj\Debug\net8.0\refint\TourValve.Application.dll
+C:\Users\User\source\repos\TourValve.Application\obj\Debug\net8.0\TourValve.Application.pdb
+C:\Users\User\source\repos\TourValve.Application\obj\Debug\net8.0\ref\TourValve.Application.dll
