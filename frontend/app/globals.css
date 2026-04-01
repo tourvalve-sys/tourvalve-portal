@@ -28,6 +28,7 @@
 
 html {
   min-height: 100%;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(154, 106, 58, 0.18), transparent 28%),
     radial-gradient(circle at 85% 15%, rgba(20, 33, 61, 0.12), transparent 24%),
@@ -36,6 +37,7 @@ html {
 
 body {
   min-height: 100vh;
+  overflow-x: hidden;
   color: var(--foreground);
   font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
   background: transparent;
@@ -224,6 +226,16 @@ h4,
   animation: fadeInUp 680ms ease both;
 }
 
+.mobile-table-shell {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-table-shell .data-table {
+  min-width: 42rem;
+}
+
 .float-slow {
   animation: floatSlow 8s ease-in-out infinite;
 }
@@ -284,5 +296,26 @@ h4,
 
   100% {
     box-shadow: 0 0 0 0 rgba(45, 106, 79, 0);
+  }
+}
+
+@media (max-width: 1279px) {
+  .page-shell::before,
+  .page-shell::after {
+    width: 18rem;
+    height: 18rem;
+    opacity: 0.28;
+  }
+}
+
+@media (max-width: 767px) {
+  .premium-panel,
+  .soft-panel {
+    border-radius: 1.6rem;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 0.9rem 0.95rem;
   }
 }

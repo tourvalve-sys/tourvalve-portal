@@ -71,10 +71,10 @@ function BookingConfirmationPageContent() {
         confirmation.locatorCode;
 
     return (
-        <div className="min-h-screen p-6 fade-in">
+        <div className="min-h-screen px-3 py-4 sm:px-4 md:p-6 fade-in">
             <div className="mb-8">
                 <div className="subtle-kicker mb-3">Reservation Confirmation</div>
-                <h1 className="hero-title mb-3 text-5xl">Your booking is confirmed.</h1>
+                <h1 className="hero-title mb-3">Your booking is confirmed.</h1>
                 <p className="max-w-3xl text-slate-600">
                     The reservation has been stored inside TourValve, the booking reference is ready for servicing, and the
                     confirmation email has been addressed to the contact email you entered.
@@ -224,7 +224,7 @@ export default function BookingConfirmationPage() {
     return (
         <Suspense
             fallback={
-                <div className="min-h-screen p-6 fade-in">
+                <div className="min-h-screen px-3 py-4 sm:px-4 md:p-6 fade-in">
                     <div className="premium-panel rounded-[2rem] p-8 shadow">
                         <div className="subtle-kicker mb-3">Reservation Confirmation</div>
                         <h1 className="hero-title mb-4 text-4xl">Loading booking confirmation...</h1>

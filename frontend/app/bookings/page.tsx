@@ -284,7 +284,7 @@ function BookingsPageContent() {
 
     return (
         <div className="space-y-6 fade-in">
-            <section className="premium-panel rounded-[2.5rem] p-8 md:p-10 classic-grid">
+            <section className="premium-panel rounded-[2rem] p-5 md:rounded-[2.5rem] md:p-10 classic-grid">
                 <div className="subtle-kicker mb-3">Reservation Ledger</div>
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                     <div className="max-w-3xl">
@@ -356,12 +356,12 @@ function BookingsPageContent() {
 
             <section className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
                 <section className="premium-panel overflow-hidden rounded-[2rem]">
-                    <div className="flex items-center justify-between border-b border-[rgba(89,64,46,0.08)] px-6 py-5">
+                    <div className="flex flex-col gap-3 border-b border-[rgba(89,64,46,0.08)] px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <div className="subtle-kicker mb-2">Operational Detail</div>
                             <h2 className="font-display text-3xl text-[var(--ink)]">Booking register</h2>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                             <button
                                 onClick={() => void handleExport("csv")}
                                 disabled={documentBookingId === "export-csv"}
@@ -405,6 +405,7 @@ function BookingsPageContent() {
                             </p>
                         </div>
                     ) : (
+                        <div className="mobile-table-shell">
                         <table className="data-table">
                             <thead>
                                 <tr>
@@ -463,6 +464,7 @@ function BookingsPageContent() {
                                 ))}
                             </tbody>
                         </table>
+                        </div>
                     )}
                 </section>
 

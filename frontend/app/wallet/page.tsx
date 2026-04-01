@@ -181,7 +181,7 @@ export default function WalletPage() {
 
     return (
         <div className="space-y-6 fade-in">
-            <section className="premium-panel rounded-[2.5rem] p-8 md:p-10 classic-grid">
+            <section className="premium-panel rounded-[2rem] p-5 md:rounded-[2.5rem] md:p-10 classic-grid">
                 <div className="subtle-kicker mb-3">Treasury Desk</div>
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                     <div className="max-w-3xl">
@@ -346,7 +346,7 @@ export default function WalletPage() {
                         </div>
 
                         <div className="premium-panel min-h-[28rem] overflow-hidden rounded-[2rem]">
-                            <div className="flex items-center justify-between border-b border-[rgba(89,64,46,0.08)] px-6 py-5">
+                            <div className="flex flex-col gap-3 border-b border-[rgba(89,64,46,0.08)] px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
                                 <div>
                                     <div className="subtle-kicker mb-2">Admin Revenue Wallet</div>
                                     <h2 className="font-display text-3xl text-[var(--ink)]">Live markup credits</h2>
@@ -356,6 +356,7 @@ export default function WalletPage() {
                                 </div>
                             </div>
 
+                            <div className="mobile-table-shell">
                             <table className="data-table">
                                 <thead>
                                     <tr>
@@ -386,6 +387,7 @@ export default function WalletPage() {
                                     )}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                         </div>
 
@@ -430,7 +432,7 @@ export default function WalletPage() {
                             </div>
 
                             <div className="premium-panel overflow-hidden rounded-[2rem]">
-                                <div className="flex items-center justify-between border-b border-[rgba(89,64,46,0.08)] px-6 py-5">
+                                <div className="flex flex-col gap-3 border-b border-[rgba(89,64,46,0.08)] px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
                                     <div>
                                         <div className="subtle-kicker mb-2">Withdrawal Ledger</div>
                                         <h2 className="font-display text-3xl text-[var(--ink)]">Manual payout queue</h2>
@@ -494,7 +496,7 @@ export default function WalletPage() {
                         </div>
 
                         <div className="premium-panel overflow-hidden rounded-[2rem]">
-                            <div className="flex items-center justify-between border-b border-[rgba(89,64,46,0.08)] px-6 py-5">
+                            <div className="flex flex-col gap-3 border-b border-[rgba(89,64,46,0.08)] px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
                                 <div>
                                     <div className="subtle-kicker mb-2">Wallet Directory</div>
                                     <h2 className="font-display text-3xl text-[var(--ink)]">Agent funding map</h2>
@@ -504,6 +506,7 @@ export default function WalletPage() {
                                 </div>
                             </div>
 
+                            <div className="mobile-table-shell">
                             <table className="data-table">
                                 <thead>
                                     <tr>
@@ -535,6 +538,7 @@ export default function WalletPage() {
                                     ))}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     </section>
                 </>
@@ -598,7 +602,7 @@ export default function WalletPage() {
                         </div>
 
                         <div className="premium-panel overflow-hidden rounded-[2rem]">
-                            <div className="flex items-center justify-between border-b border-[rgba(89,64,46,0.08)] px-6 py-5">
+                            <div className="flex flex-col gap-3 border-b border-[rgba(89,64,46,0.08)] px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
                                 <div>
                                     <div className="subtle-kicker mb-2">Transaction History</div>
                                     <h2 className="font-display text-3xl text-[var(--ink)]">Wallet movement</h2>
@@ -608,6 +612,7 @@ export default function WalletPage() {
                                 </div>
                             </div>
 
+                            <div className="mobile-table-shell">
                             <table className="data-table">
                                 <thead>
                                     <tr>
@@ -634,6 +639,7 @@ export default function WalletPage() {
                                     )}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     </section>
                 </>

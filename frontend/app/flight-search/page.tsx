@@ -392,7 +392,7 @@ export default function FlightSearch() {
 
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,248,239,0.86),rgba(247,239,227,0.92))] backdrop-blur-sm"></div>
 
-            <div className="relative z-10 p-6">
+            <div className="relative z-10 px-3 py-4 sm:px-4 md:p-6">
                 <div className="mx-auto mb-8 max-w-7xl fade-in-delay">
                     <div className="subtle-kicker mb-3">Journey Atelier</div>
                     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -411,8 +411,8 @@ export default function FlightSearch() {
                     </div>
                 </div>
 
-                <div className="mx-auto max-w-6xl rounded-[2rem] premium-panel classic-grid p-6 md:p-8">
-                    <div className="mb-6 flex gap-4">
+                <div className="mx-auto max-w-6xl rounded-[2rem] premium-panel classic-grid p-4 md:p-8">
+                    <div className="mb-6 flex flex-wrap gap-3">
                         <button
                             onClick={() => setTripType("oneway")}
                             className={`rounded-full px-4 py-2 text-sm transition ${tripType === "oneway" ? "gold-button" : "ghost-button"}`}
@@ -441,7 +441,7 @@ export default function FlightSearch() {
                                 <div className="text-sm leading-7 text-slate-600">
                                     Build up to four flight legs in sequence. Each departure date should move forward so the routing can be priced cleanly against live inventory.
                                 </div>
-                                <div className="mt-3 rounded-2xl bg-[rgba(176,122,67,0.08)] px-4 py-3 text-sm font-medium text-[var(--ink)]">
+                            <div className="mt-3 overflow-x-auto rounded-2xl bg-[rgba(176,122,67,0.08)] px-4 py-3 text-sm font-medium text-[var(--ink)]">
                                     {multiCitySummary || "Your routing summary will appear here as you add each segment."}
                                 </div>
                             </div>
@@ -595,7 +595,7 @@ export default function FlightSearch() {
                         </>
                     )}
 
-                    <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+                    <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                         <div className="soft-panel rounded-[1.6rem] p-4">
                             <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
                                 <UsersRound size={16} />
@@ -644,7 +644,7 @@ export default function FlightSearch() {
                             />
                         </div>
 
-                        <div className="flex items-end gap-2">
+                        <div className="flex flex-wrap items-end gap-2 sm:col-span-2 xl:col-span-1">
                             {["Economy", "Business", "First"].map((cabin) => (
                                 <button
                                     key={cabin}
@@ -679,7 +679,7 @@ export default function FlightSearch() {
                     </button>
                 </div>
 
-                <div className="mx-auto mt-6 grid max-w-7xl grid-cols-1 gap-6 md:grid-cols-[0.36fr_0.64fr]">
+                <div className="mx-auto mt-6 grid max-w-7xl grid-cols-1 gap-6 xl:grid-cols-[0.36fr_0.64fr]">
                     <div className="h-fit space-y-5 rounded-[1.9rem] soft-panel p-6 fade-in">
                         <div className="flex items-center gap-2">
                             <SlidersHorizontal size={16} className="text-[var(--accent-strong)]" />
@@ -805,10 +805,10 @@ export default function FlightSearch() {
                                 return (
                                     <div
                                         key={flight.id}
-                                        className={`premium-panel rounded-[1.9rem] p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
+                                        className={`premium-panel rounded-[1.9rem] p-5 sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
                                     >
                                         <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-                                            <div className="grid flex-1 gap-5 md:grid-cols-[1.05fr_1.2fr_0.9fr] md:items-center">
+                                            <div className="grid flex-1 gap-5 xl:grid-cols-[1.05fr_1.2fr_0.9fr] xl:items-center">
                                                 <div>
                                                     <AirlineBrand
                                                         carrier={flight.carrier || "FL"}
@@ -839,7 +839,7 @@ export default function FlightSearch() {
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center justify-between gap-6 xl:min-w-[18rem] xl:justify-end">
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:min-w-[18rem] xl:justify-end">
                                                 <div className="text-right">
                                                     {isBookable ? (
                                                         <>

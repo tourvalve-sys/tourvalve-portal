@@ -30,8 +30,8 @@ export default function BookingChart({
     data?: BookingChartPoint[];
 }) {
     return (
-        <div className="w-full h-[250px]">
-            <ResponsiveContainer>
+        <div className="min-h-[220px] min-w-0 h-[220px] w-full sm:h-[250px] sm:min-h-[250px]">
+            <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data}>
                     <XAxis dataKey="day" />
                     <YAxis />

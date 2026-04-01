@@ -57,19 +57,19 @@ export default function Topbar() {
     };
 
     return (
-        <div className="soft-panel sticky top-0 z-10 mx-4 mt-4 flex flex-col gap-4 rounded-[1.75rem] px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="soft-panel sticky top-3 z-20 mx-3 mt-3 flex flex-col gap-3 rounded-[1.5rem] px-4 py-3 sm:mx-4 sm:mt-4 sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
                 <div className="subtle-kicker mb-2">Operations Lounge</div>
-                <div className="font-display text-2xl text-[var(--ink)] md:text-3xl">{title}</div>
+                <div className="font-display text-[1.85rem] leading-none text-[var(--ink)] md:text-3xl">{title}</div>
             </div>
 
-            <div className="flex w-full flex-wrap items-center justify-between gap-3 lg:w-auto lg:flex-nowrap lg:justify-end">
+            <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:gap-3 lg:w-auto lg:flex-nowrap lg:justify-end">
                 <div className="hidden min-w-[18rem] items-center gap-3 rounded-full border border-[rgba(89,64,46,0.12)] bg-white/70 px-4 py-2 text-sm text-slate-500 xl:flex">
                     <Search size={15} />
                     Search bookings, wallets, agents
                 </div>
 
-                <div className="hidden md:flex items-center gap-2 rounded-full bg-[rgba(20,33,61,0.06)] px-3 py-2 text-xs font-semibold text-[var(--ink)]">
+                <div className="hidden lg:flex items-center gap-2 rounded-full bg-[rgba(20,33,61,0.06)] px-3 py-2 text-xs font-semibold text-[var(--ink)]">
                     <ShieldCheck size={15} />
                     Secure Session
                 </div>
@@ -88,7 +88,7 @@ export default function Topbar() {
                     </button>
 
                     {open && (
-                        <div className="absolute right-0 mt-3 w-[min(26rem,calc(100vw-3rem))] rounded-[1.75rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,252,247,0.98)] p-4 shadow-[0_30px_60px_rgba(25,33,45,0.12)]">
+                        <div className="absolute right-0 mt-3 w-[min(26rem,calc(100vw-1.5rem))] rounded-[1.75rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,252,247,0.98)] p-4 shadow-[0_30px_60px_rgba(25,33,45,0.12)]">
                             <div className="mb-3 flex items-center justify-between">
                                 <div>
                                     <div className="subtle-kicker">Notification Center</div>
@@ -143,13 +143,13 @@ export default function Topbar() {
                     )}
                 </div>
 
-                <div className="flex min-w-0 items-center gap-3 rounded-[1.4rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,242,232,0.82))] px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2 rounded-[1.2rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,242,232,0.82))] px-3 py-2">
                     <div className="text-right">
-                        <div className="max-w-[11rem] truncate text-sm font-semibold text-[var(--ink)] sm:max-w-none">{user?.email ?? "TourValve User"}</div>
+                        <div className="max-w-[8rem] truncate text-sm font-semibold text-[var(--ink)] sm:max-w-[11rem] md:max-w-none">{user?.email ?? "TourValve User"}</div>
                         <div className="text-xs text-slate-400">{user?.role ?? "User"}</div>
                     </div>
 
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#b07a43,#6d4320)] text-sm font-bold text-white shadow-[0_16px_26px_rgba(109,67,32,0.26)]">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#b07a43,#6d4320)] text-sm font-bold text-white shadow-[0_16px_26px_rgba(109,67,32,0.26)]">
                         {initial}
                     </div>
                 </div>

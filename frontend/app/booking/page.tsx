@@ -449,10 +449,10 @@ export default function BookingPage() {
     }
 
     return (
-        <div className="min-h-screen p-6 fade-in">
+        <div className="min-h-screen px-3 py-4 sm:px-4 md:p-6 fade-in">
             <div className="mb-8">
                 <div className="subtle-kicker mb-3">Reservation Atelier</div>
-                <h1 className="hero-title mb-3 text-5xl">Complete your booking.</h1>
+                <h1 className="hero-title mb-3">Complete your booking.</h1>
                 <p className="max-w-2xl text-slate-600">
                     Passenger details, itinerary review, and traveler preferences now sit in one polished reservation flow.
                 </p>
@@ -614,7 +614,7 @@ export default function BookingPage() {
                         </div>
 
                         <div className="mt-6 rounded-[1.75rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(135deg,rgba(255,250,244,0.96),rgba(247,238,224,0.9))] p-5 shadow-[0_18px_42px_rgba(62,43,25,0.08)]">
-                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+                            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start">
                                 <div className="min-w-0">
                                     <div className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
                                         <MapPin size={15} />
@@ -717,7 +717,7 @@ export default function BookingPage() {
                                         {seatMap.rows.map((row) => (
                                             <div
                                                 key={row.number}
-                                                className="grid grid-cols-[4rem_1fr] items-center gap-3 rounded-[1.3rem] bg-white/55 px-3 py-3 backdrop-blur-sm"
+                                                className="grid grid-cols-1 gap-3 rounded-[1.3rem] bg-white/55 px-3 py-3 backdrop-blur-sm sm:grid-cols-[4rem_1fr] sm:items-center"
                                             >
                                                 <div className="text-sm font-semibold text-[var(--accent-strong)]">
                                                     Row {row.number}
@@ -781,7 +781,7 @@ export default function BookingPage() {
                 </div>
 
                 <div className="space-y-6">
-                    <div className="sticky top-6 space-y-6">
+                    <div className="space-y-6 lg:sticky lg:top-6">
                         <div className="premium-panel rounded-[2rem] p-6 float-slow">
                             <h2 className="mb-4 font-semibold">Flight Summary</h2>
 

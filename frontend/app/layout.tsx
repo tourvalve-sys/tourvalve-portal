@@ -35,7 +35,7 @@ export default function RootLayout({
 
                                 <div className="flex-1 pb-10">
                                     <Topbar />
-                                    <main className="px-4 pb-12 pt-5 md:px-6 md:pt-6">
+                                    <main className="px-3 pb-28 pt-4 sm:px-4 md:px-6 md:pt-6 xl:pb-12">
                                         {children}
                                     </main>
                                 </div>

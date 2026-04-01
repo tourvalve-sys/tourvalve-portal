@@ -78,8 +78,8 @@ export default function Dashboard() {
     })) ?? [];
 
     return (
-        <div className="space-y-8 fade-in">
-            <section className="premium-panel rounded-[2.5rem] p-8 md:p-10 classic-grid">
+        <div className="space-y-6 md:space-y-8 fade-in">
+            <section className="premium-panel rounded-[2rem] p-5 md:rounded-[2.5rem] md:p-10 classic-grid">
                 <div className="subtle-kicker mb-3">Executive Overview</div>
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                     <div className="max-w-3xl">
@@ -89,7 +89,7 @@ export default function Dashboard() {
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                         <div className="status-pill status-success">Live Booking Mode</div>
                         <div className="hidden items-center gap-2 rounded-full bg-[rgba(255,255,255,0.72)] px-4 py-2 text-sm text-slate-600 shadow-sm md:inline-flex">
                             <Sparkles size={14} />
@@ -105,7 +105,7 @@ export default function Dashboard() {
                 </div>
             )}
 
-            <section className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <section className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
                 <div className="premium-panel metric-card rounded-[2rem] p-6 fade-in">
                     <div className="flex items-center justify-between">
                         <div>
@@ -193,9 +193,9 @@ export default function Dashboard() {
                 </div>
             </section>
 
-            <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                <div className="premium-panel rounded-[2rem] p-6">
-                    <div className="mb-4 flex items-center justify-between">
+            <section className="grid grid-cols-1 gap-5 xl:gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                <div className="premium-panel rounded-[2rem] p-5 sm:p-6">
+                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <div className="subtle-kicker mb-2">Booking Momentum</div>
                             <h2 className="font-display text-3xl text-[var(--ink)]">Weekly performance</h2>
@@ -210,7 +210,7 @@ export default function Dashboard() {
                     <BookingChart data={weeklyData} />
                 </div>
 
-                <div className="soft-panel rounded-[2rem] p-6">
+                <div className="soft-panel rounded-[2rem] p-5 sm:p-6">
                     <div className="subtle-kicker mb-2">Quick Actions</div>
                     <h2 className="font-display text-3xl text-[var(--ink)]">Move fast</h2>
                     <div className="mt-6 space-y-3">
@@ -266,8 +266,8 @@ export default function Dashboard() {
                 </div>
             </section>
 
-            <section className="grid gap-6 lg:grid-cols-2">
-                <div className="soft-panel rounded-[2rem] p-6">
+            <section className="grid gap-5 lg:gap-6 lg:grid-cols-2">
+                <div className="soft-panel rounded-[2rem] p-5 sm:p-6">
                     <div className="subtle-kicker mb-2">Portal Standard</div>
                     <h2 className="font-display text-3xl text-[var(--ink)]">Built for a higher-end workflow</h2>
                     <p className="mt-4 text-sm leading-7 text-slate-500">
@@ -275,7 +275,7 @@ export default function Dashboard() {
                     </p>
                 </div>
 
-                <div className="premium-panel rounded-[2rem] p-6">
+                <div className="premium-panel rounded-[2rem] p-5 sm:p-6">
                     <div className="subtle-kicker mb-2">Operational Readiness</div>
                     <h2 className="font-display text-3xl text-[var(--ink)]">Ready for reservations, treasury, and reporting</h2>
                     <div className="mt-5 flex flex-wrap gap-3">
@@ -287,8 +287,8 @@ export default function Dashboard() {
                 </div>
             </section>
 
-            <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-                <div className="premium-panel rounded-[2rem] p-6">
+            <section className="grid gap-5 xl:gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+                <div className="premium-panel rounded-[2rem] p-5 sm:p-6">
                     <div className="subtle-kicker mb-2">Top Agents</div>
                     <h2 className="font-display text-3xl text-[var(--ink)]">Who is driving the desk</h2>
                     <div className="mt-5 space-y-3">
@@ -313,7 +313,7 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                <div className="soft-panel rounded-[2rem] p-6">
+                <div className="soft-panel rounded-[2rem] p-5 sm:p-6">
                     <div className="subtle-kicker mb-2">Launch Readiness</div>
                     <h2 className="font-display text-3xl text-[var(--ink)]">Operational signals at a glance</h2>
                     <div className="mt-5 space-y-4 text-sm leading-7 text-slate-500">
