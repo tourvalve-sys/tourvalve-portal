@@ -1,21 +1,21 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using TourValve.Application.Security;
-using TourValve.Infrastructure.Security;
-using Microsoft.EntityFrameworkCore;
-using TourValve.Infrastructure.Data;
-using TourValve.Application.Wallet;
-using TourValve.Infrastructure.Wallet;
 using TourValve.Application.Agents;
+using TourValve.Application.Common.Interfaces;
+using TourValve.Application.Security;
+using TourValve.Application.Wallet;
 using TourValve.Infrastructure.Agents;
+using TourValve.Infrastructure.Data;
+using TourValve.Infrastructure.Security;
+using TourValve.Infrastructure.Services;
 using TourValve.Infrastructure.Travelport.Air;
 using TourValve.Infrastructure.Travelport.Common;
 using TourValve.Infrastructure.Travelport.XML;
-using MediatR;
-using TourValve.Application.Common.Interfaces;
-using TourValve.Infrastructure.Services;
+using TourValve.Infrastructure.Wallet;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,8 +32,11 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend",
         policy =>
         {
-            policy.WithOrigins("http://localhost:3000",
-                "https://localhost:3000")
+            policy.WithOrigins(
+                    "http://localhost:3000",
+                    "https://localhost:3000",
+                    "http://101.99.84.242",
+                    "https://101.99.84.242")
                   .AllowAnyHeader()
                   .AllowAnyMethod();
         });
@@ -75,23 +78,23 @@ builder.Services.AddSwaggerGen(c =>
 // JWT Authentication
 // ==============================
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-.AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters
+    .AddJwtBearer(options =>
     {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
 
-        ValidIssuer = builder.Configuration["Jwt:Issuer"],
-        ValidAudience = builder.Configuration["Jwt:Audience"],
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
 
-        IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)
-        )
-    };
-});
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)
+            )
+        };
+    });
 
 builder.Services.AddAuthorization();
 
@@ -134,10 +137,8 @@ builder.Services.AddScoped<IAgentService, AgentService>();
 builder.Services.AddScoped<IWalletAuditService, WalletAuditService>();
 
 // ==============================
-// ✈️ Travelport Services
+// Travelport Services
 // ==============================
-
-// Load Travelport config
 builder.Services.AddSingleton(sp =>
 {
     var cfg = builder.Configuration
@@ -145,62 +146,58 @@ builder.Services.AddSingleton(sp =>
         .Get<TravelportConfig>();
 
     if (cfg == null)
+    {
         throw new Exception("Travelport configuration missing.");
+    }
 
     return cfg;
 });
 
-// Handlers
 builder.Services.AddTransient<TravelportHttpLoggingHandler>();
 builder.Services.AddTransient<TravelportBasicAuthHandler>();
 
-// SOAP client
 builder.Services.AddHttpClient<TravelportSoapClient>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(60);
 })
-.AddHttpMessageHandler<TravelportBasicAuthHandler>()
-.AddHttpMessageHandler<TravelportHttpLoggingHandler>();
+    .AddHttpMessageHandler<TravelportBasicAuthHandler>()
+    .AddHttpMessageHandler<TravelportHttpLoggingHandler>();
 
-// Travelport clients
 builder.Services.AddScoped<TravelportAirClient>();
-
-// Air services
 builder.Services.AddScoped<AirSearchService>();
 builder.Services.AddScoped<AirPriceService>();
 builder.Services.AddScoped<AirBookService>();
 builder.Services.AddScoped<UniversalRecordService>();
 
 // ==============================
-// 🔥 CRITICAL FIX — PORT BINDING
+// CRITICAL FIX — PORT BINDING
 // ==============================
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.ListenLocalhost(5274); // HTTP (frontend will use this)
+    options.ListenLocalhost(5274);
     options.ListenLocalhost(7274, listenOptions =>
     {
-        listenOptions.UseHttps(); // HTTPS
+        listenOptions.UseHttps();
     });
 });
 
-// ==============================
-// BUILD APP
-// ==============================
 var app = builder.Build();
 
 // ==============================
 // PIPELINE
 // ==============================
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    app.UseHttpsRedirection();
 }
 
-// HTTPS redirect (safe to keep)
-app.UseHttpsRedirection();
-
-// CORS MUST be before auth
 app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
