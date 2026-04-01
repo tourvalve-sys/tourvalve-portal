@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="TourValve.Api/TourValve.Api.csproj" />
+  <Project Path="TourValve.Application/TourValve.Application.csproj" />
+  <Project Path="TourValve.Domain/TourValve.Domain.csproj" />
+  <Project Path="TourValve.Infrastructure/TourValve.Infrastructure.csproj" />
+</Solution>

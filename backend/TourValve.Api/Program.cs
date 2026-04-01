@@ -1,0 +1,211 @@
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using System.Text;
+using TourValve.Application.Security;
+using TourValve.Infrastructure.Security;
+using Microsoft.EntityFrameworkCore;
+using TourValve.Infrastructure.Data;
+using TourValve.Application.Wallet;
+using TourValve.Infrastructure.Wallet;
+using TourValve.Application.Agents;
+using TourValve.Infrastructure.Agents;
+using TourValve.Infrastructure.Travelport.Air;
+using TourValve.Infrastructure.Travelport.Common;
+using TourValve.Infrastructure.Travelport.XML;
+using MediatR;
+using TourValve.Application.Common.Interfaces;
+using TourValve.Infrastructure.Services;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// ==============================
+// Controllers
+// ==============================
+builder.Services.AddControllers();
+
+// ==============================
+// CORS (Frontend Connection)
+// ==============================
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend",
+        policy =>
+        {
+            policy.WithOrigins("http://localhost:3000",
+                "https://localhost:3000")
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        });
+});
+
+// ==============================
+// Swagger
+// ==============================
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter: Bearer {your JWT token}"
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+// ==============================
+// JWT Authentication
+// ==============================
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+
+        IssuerSigningKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)
+        )
+    };
+});
+
+builder.Services.AddAuthorization();
+
+// ==============================
+// Security Services
+// ==============================
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+builder.Services.Configure<WalletAlertOptions>(builder.Configuration.GetSection("WalletAlerts"));
+builder.Services.Configure<TicketMarkupOptions>(builder.Configuration.GetSection("TicketMarkup"));
+builder.Services.Configure<AncillaryMarkupOptions>(builder.Configuration.GetSection("AncillaryMarkup"));
+builder.Services.AddScoped<IAuditTrailService, AuditTrailService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<TicketMarkupService>();
+builder.Services.AddScoped<AncillaryMarkupService>();
+
+// ==============================
+// Database
+// ==============================
+builder.Services.AddDbContext<TourValveDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+// Bridge for Clean Architecture
+builder.Services.AddScoped<IApplicationDbContext>(provider =>
+    provider.GetRequiredService<TourValveDbContext>());
+
+// ==============================
+// MediatR
+// ==============================
+builder.Services.AddMediatR(cfg =>
+    cfg.RegisterServicesFromAssembly(typeof(TourValve.Application.Bookings.Commands.CreateBookingCommand).Assembly));
+
+// ==============================
+// Wallet & Agent Services
+// ==============================
+builder.Services.AddScoped<IWalletService, WalletService>();
+builder.Services.AddScoped<IAgentService, AgentService>();
+builder.Services.AddScoped<IWalletAuditService, WalletAuditService>();
+
+// ==============================
+// ✈️ Travelport Services
+// ==============================
+
+// Load Travelport config
+builder.Services.AddSingleton(sp =>
+{
+    var cfg = builder.Configuration
+        .GetSection("Travelport")
+        .Get<TravelportConfig>();
+
+    if (cfg == null)
+        throw new Exception("Travelport configuration missing.");
+
+    return cfg;
+});
+
+// Handlers
+builder.Services.AddTransient<TravelportHttpLoggingHandler>();
+builder.Services.AddTransient<TravelportBasicAuthHandler>();
+
+// SOAP client
+builder.Services.AddHttpClient<TravelportSoapClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+})
+.AddHttpMessageHandler<TravelportBasicAuthHandler>()
+.AddHttpMessageHandler<TravelportHttpLoggingHandler>();
+
+// Travelport clients
+builder.Services.AddScoped<TravelportAirClient>();
+
+// Air services
+builder.Services.AddScoped<AirSearchService>();
+builder.Services.AddScoped<AirPriceService>();
+builder.Services.AddScoped<AirBookService>();
+builder.Services.AddScoped<UniversalRecordService>();
+
+// ==============================
+// 🔥 CRITICAL FIX — PORT BINDING
+// ==============================
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenLocalhost(5274); // HTTP (frontend will use this)
+    options.ListenLocalhost(7274, listenOptions =>
+    {
+        listenOptions.UseHttps(); // HTTPS
+    });
+});
+
+// ==============================
+// BUILD APP
+// ==============================
+var app = builder.Build();
+
+// ==============================
+// PIPELINE
+// ==============================
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+// HTTPS redirect (safe to keep)
+app.UseHttpsRedirection();
+
+// CORS MUST be before auth
+app.UseCors("AllowFrontend");
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();

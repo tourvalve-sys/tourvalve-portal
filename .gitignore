@@ -1,0 +1,30 @@
+# .NET
+**/bin/
+**/obj/
+.vs/
+**/.vs/
+*.user
+*.suo
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Environment
+.env
+.env.*
+**/.env
+**/.env.*
+appsettings.Development.json
+**/appsettings.Development.json
+.dotnet/
+
+# OS
+.DS_Store
+Thumbs.db
+*.db
+
+# Local outputs / temp
+**/build-output.txt
+frontend/lib/airports.dat
