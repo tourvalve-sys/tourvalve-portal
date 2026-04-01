@@ -183,6 +183,12 @@ builder.WebHost.ConfigureKestrel(options =>
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<TourValveDbContext>();
+    db.Database.Migrate();
+}
+
 // ==============================
 // PIPELINE
 // ==============================
