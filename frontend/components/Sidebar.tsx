@@ -23,7 +23,7 @@ export default function Sidebar() {
     };
 
     return (
-        <aside className="premium-panel mx-4 mt-4 flex w-auto shrink-0 flex-col rounded-[2rem] p-4 xl:mx-0 xl:ml-4 xl:mr-0 xl:mt-4 xl:w-[280px]">
+        <aside className="premium-panel mx-4 mt-4 flex w-auto shrink-0 flex-col rounded-[2rem] p-4 xl:sticky xl:top-4 xl:mx-0 xl:ml-4 xl:mr-0 xl:mt-4 xl:h-[calc(100vh-2rem)] xl:w-[280px]">
             <div className="rounded-[1.75rem] bg-[linear-gradient(160deg,#17304d,#102136)] px-5 py-6 text-white shadow-[0_22px_40px_rgba(16,33,54,0.3)]">
                 <div className="subtle-kicker text-white/60">Luxury Operations Suite</div>
                 <div className="mt-3 font-display text-3xl">TourValve</div>
@@ -32,7 +32,7 @@ export default function Sidebar() {
                 </p>
             </div>
 
-            <nav className="mt-6 grid flex-1 grid-cols-1 gap-2">
+            <nav className="mt-6 flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
                 {menu.map((item) => {
                     const Icon = item.icon;
                     const active = pathname === item.path;
