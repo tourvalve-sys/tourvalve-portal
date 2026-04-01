@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useSyncExternalStore } from "react";
 import { CheckCircle2, Mail, Receipt, ShieldCheck, Ticket } from "lucide-react";
@@ -9,7 +10,7 @@ import {
     type BookingConfirmationState,
 } from "@/lib/bookingConfirmation";
 
-export default function BookingConfirmationPage() {
+function BookingConfirmationPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const isHydrated = useSyncExternalStore(
@@ -216,5 +217,25 @@ export default function BookingConfirmationPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function BookingConfirmationPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="min-h-screen p-6 fade-in">
+                    <div className="premium-panel rounded-[2rem] p-8 shadow">
+                        <div className="subtle-kicker mb-3">Reservation Confirmation</div>
+                        <h1 className="hero-title mb-4 text-4xl">Loading booking confirmation...</h1>
+                        <p className="max-w-2xl text-slate-600">
+                            Preparing the stored reservation record, locator details, and confirmation summary.
+                        </p>
+                    </div>
+                </div>
+            }
+        >
+            <BookingConfirmationPageContent />
+        </Suspense>
     );
 }
