@@ -6,6 +6,27 @@ import { AlertTriangle, ArrowRight, BellRing, CalendarDays, Sparkles, Ticket, Wa
 import BookingChart from "@/components/BookingChart";
 import { getAdminAgents, getCurrentUser, getMyWallet, getReportsOverview, type ReportsOverview } from "@/lib/api";
 
+const EMPTY_REPORTS: ReportsOverview = {
+    totalBookings: 0,
+    totalRevenue: 0,
+    confirmedBookings: 0,
+    pendingBookings: 0,
+    bookingsToday: 0,
+    bookingsThisMonth: 0,
+    failedBookings: 0,
+    pendingApprovals: 0,
+    walletAlerts: 0,
+    ancillaryOrders: 0,
+    pendingAncillaryOrders: 0,
+    fulfilledAncillaryOrders: 0,
+    ancillaryRevenue: 0,
+    ancillaryMarkupRevenue: 0,
+    weeklySeries: [],
+    agentPerformance: [],
+    topAgents: [],
+    ancillaryMix: [],
+};
+
 export default function Dashboard() {
     const router = useRouter();
     const [loading, setLoading] = useState(true);
@@ -28,7 +49,7 @@ export default function Dashboard() {
 
                 const user = await getCurrentUser();
                 const [reportsData, walletData] = await Promise.all([
-                    getReportsOverview(),
+                    getReportsOverview().catch(() => EMPTY_REPORTS),
                     getMyWallet().catch(() => ({ wallet: null, summary: null, transactions: [] })),
                 ]);
 
@@ -36,7 +57,7 @@ export default function Dashboard() {
                 setWalletBalance(walletData.summary?.availableBalance ?? 0);
 
                 if (user.role === "ADMIN") {
-                    const agents = await getAdminAgents();
+                    const agents = await getAdminAgents().catch(() => []);
                     setActiveAgents(agents.filter((agent) => agent.role === "AGENT" && agent.isActive).length);
                 } else {
                     setActiveAgents(1);

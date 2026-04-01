@@ -32,7 +32,7 @@ export default function Sidebar() {
                 </p>
             </div>
 
-            <nav className="mt-6 grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-1">
+            <nav className="mt-6 grid flex-1 grid-cols-1 gap-2">
                 {menu.map((item) => {
                     const Icon = item.icon;
                     const active = pathname === item.path;
