@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CalendarDays, Download, FileText, MapPinned, ReceiptText, ShieldCheck } from "lucide-react";
 import {
@@ -23,7 +23,7 @@ import {
     type BookingRetrieveResponse,
 } from "@/lib/api";
 
-export default function BookingsPage() {
+function BookingsPageContent() {
     const params = useSearchParams();
     const created = params.get("created");
     const [bookings, setBookings] = useState<BookingRecord[]>([]);
@@ -770,5 +770,29 @@ export default function BookingsPage() {
                 </aside>
             </section>
         </div>
+    );
+}
+
+export default function BookingsPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="space-y-6">
+                    <section className="soft-panel grid gap-6 rounded-[2rem] px-8 py-10 lg:grid-cols-[1.6fr_0.9fr]">
+                        <div>
+                            <div className="subtle-kicker">Reservations lounge</div>
+                            <h1 className="mt-3 font-[family-name:var(--font-playfair)] text-4xl text-[var(--ink)] sm:text-5xl">
+                                Loading booking workspace...
+                            </h1>
+                            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500 sm:text-base">
+                                Preparing the booking register, servicing tools, and ancillary queue for review.
+                            </p>
+                        </div>
+                    </section>
+                </div>
+            }
+        >
+            <BookingsPageContent />
+        </Suspense>
     );
 }
