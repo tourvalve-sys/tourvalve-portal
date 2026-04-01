@@ -36,7 +36,11 @@ builder.Services.AddCors(options =>
                     "http://localhost:3000",
                     "https://localhost:3000",
                     "http://101.99.84.242",
-                    "https://101.99.84.242")
+                    "https://101.99.84.242",
+                    "http://tourvalve.com",
+                    "https://tourvalve.com",
+                    "http://www.tourvalve.com",
+                    "https://www.tourvalve.com")
                   .AllowAnyHeader()
                   .AllowAnyMethod();
         });
