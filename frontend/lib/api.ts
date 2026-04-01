@@ -1,8 +1,12 @@
 import { authFetch } from "./authFetch";
 
-const API_BASE =
-    process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ??
-    "https://localhost:7274";
+const configuredApiBase =
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    process.env.NEXT_PUBLIC_API_BASE ??
+    "";
+
+const API_BASE = configuredApiBase.replace(/\/$/, "") ||
+    (typeof window === "undefined" ? "http://127.0.0.1:5274" : "");
 
 export type LoginPayload = {
     email: string;
