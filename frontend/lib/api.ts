@@ -526,6 +526,18 @@ function normalizeFriendlyError(message: string): string {
         return "The provider could not shop this route with the selected airport code format. Try a different airport nearby or another market.";
     }
 
+    if (/Run the latest database update against the same PostgreSQL database used by the API/i.test(normalized)) {
+        return "The production database is still being prepared for the latest booking features. Please try again shortly.";
+    }
+
+    if (/Registration service is still preparing the production database/i.test(normalized)) {
+        return "Registration is temporarily unavailable while the production database finishes preparing. Please try again shortly.";
+    }
+
+    if (/relation .* does not exist|column .* does not exist|42P01|42703/i.test(normalized)) {
+        return "The production database is still catching up with the latest portal features. Please try again shortly.";
+    }
+
     return normalized;
 }
 

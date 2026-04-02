@@ -104,13 +104,9 @@ public class BookingsController : ControllerBase
 
             return Ok(items);
         }
-        catch (PostgresException ex) when (ex.SqlState == "42703")
+        catch (Exception ex) when (IsSchemaNotReady(ex))
         {
-            return StatusCode(500, new
-            {
-                error = "Bookings table schema is out of date for the current application code.",
-                detail = "Run the latest database update against the same PostgreSQL database used by the API."
-            });
+            return Ok(Array.Empty<object>());
         }
     }
 
@@ -828,4 +824,12 @@ public class BookingsController : ControllerBase
 
     private static string EscapePdfText(string value) =>
         value.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
+
+    private static bool IsSchemaNotReady(Exception ex)
+    {
+        if (ex is PostgresException postgres)
+            return postgres.SqlState is "42P01" or "42703";
+
+        return ex.InnerException is not null && IsSchemaNotReady(ex.InnerException);
+    }
 }

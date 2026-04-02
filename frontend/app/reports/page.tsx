@@ -1,9 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Component, type ReactNode, useEffect, useState } from "react";
 import { AlertTriangle, BarChart3, CircleDollarSign, Download, Gauge, ShieldCheck, XCircle } from "lucide-react";
 import BookingChart from "@/components/BookingChart";
 import { exportAgentPerformance, exportAncillaryReport, exportReportsOverview, getReportsOverview, type ReportsOverview } from "@/lib/api";
+
+class ChartErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+    constructor(props: { children: ReactNode }) {
+        super(props);
+        this.state = { hasError: false };
+    }
+
+    static getDerivedStateFromError() {
+        return { hasError: true };
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="rounded-[1.5rem] bg-white/75 p-6 text-sm leading-7 text-slate-500 shadow-[0_18px_40px_rgba(82,60,44,0.08)]">
+                    Weekly chart is temporarily unavailable while the reporting data finishes preparing. Summary metrics are still available below.
+                </div>
+            );
+        }
+
+        return this.props.children;
+    }
+}
 
 export default function ReportsPage() {
     const [reports, setReports] = useState<ReportsOverview | null>(null);
@@ -200,7 +223,9 @@ export default function ReportsPage() {
                             Updated from live booking records
                         </div>
                     </div>
-                    <BookingChart data={reports?.weeklySeries ?? []} />
+                    <ChartErrorBoundary>
+                        <BookingChart data={reports?.weeklySeries ?? []} />
+                    </ChartErrorBoundary>
                 </div>
 
                 <div className="soft-panel rounded-[2rem] p-6">

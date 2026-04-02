@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using System.Security.Claims;
 using System.Text;
 using TourValve.Infrastructure.Data;
@@ -67,138 +68,56 @@ public class ReportsController : ControllerBase
     [HttpGet("overview")]
     public async Task<IActionResult> Overview()
     {
-        var agentIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrWhiteSpace(agentIdClaim))
-            return Unauthorized();
-
-        var requesterAgentId = Guid.Parse(agentIdClaim);
-        var isAdmin = User.IsInRole("ADMIN");
-        var utcNow = DateTime.UtcNow;
-        var today = utcNow.Date;
-        var monthStart = new DateTime(utcNow.Year, utcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-
-        var bookings = _db.Bookings.AsNoTracking();
-        if (!isAdmin)
-            bookings = bookings.Where(x => x.AgentId == requesterAgentId);
-
-        var totalBookings = await bookings.CountAsync();
-        var totalRevenue = await bookings.SumAsync(x => (decimal?)x.Amount) ?? 0m;
-        var confirmedBookings = await bookings.CountAsync(x => x.Status == "CONFIRMED");
-        var pendingBookings = await bookings.CountAsync(x => x.Status != "CONFIRMED");
-        var bookingsToday = await bookings.CountAsync(x => x.CreatedAt >= today);
-        var bookingsThisMonth = await bookings.CountAsync(x => x.CreatedAt >= monthStart);
-        var failedBookings = await bookings.CountAsync(x =>
-            x.Status == "FAILED" ||
-            x.Status == "FAILED_BOOKING" ||
-            x.Status == "FAILED_PRICING" ||
-            x.Status == "ERROR");
-
-        var fromDate = DateTime.UtcNow.Date.AddDays(-6);
-        var weekly = await bookings
-            .Where(x => x.CreatedAt >= fromDate)
-            .GroupBy(x => x.CreatedAt.Date)
-            .Select(g => new
-            {
-                date = g.Key,
-                bookings = g.Count(),
-                revenue = g.Sum(x => x.Amount)
-            })
-            .ToListAsync();
-
-        var weeklyLookup = weekly.ToDictionary(x => x.date, x => x);
-        var weeklySeries = Enumerable.Range(0, 7)
-            .Select(offset =>
-            {
-                var date = fromDate.AddDays(offset);
-                return new
-                {
-                    day = date.ToString("ddd"),
-                    bookings = weeklyLookup.TryGetValue(date, out var value) ? value.bookings : 0,
-                    revenue = weeklyLookup.TryGetValue(date, out value) ? value.revenue : 0m
-                };
-            })
-            .ToList();
-
-        var agentPerformance = await (
-            from booking in bookings
-            join agent in _db.Agents.AsNoTracking() on booking.AgentId equals agent.Id
-            group new { booking, agent } by new { booking.AgentId, agent.Email } into g
-            orderby g.Count() descending
-            select new
-            {
-                agentId = g.Key.AgentId,
-                email = g.Key.Email,
-                bookings = g.Count(),
-                revenue = g.Sum(x => x.booking.Amount)
-            })
-            .Take(10)
-            .ToListAsync();
-
-        var pendingApprovals = isAdmin
-            ? await _db.RegistrationApprovalRequests.CountAsync(x => x.Status == "PENDING")
-              + await _db.PasswordResetApprovalRequests.CountAsync(x => x.Status == "PENDING")
-            : 0;
-
-        var walletAlerts = isAdmin
-            ? await _db.NotificationItems.AsNoTracking()
-                .CountAsync(x =>
-                    !x.IsArchived &&
-                    !x.IsRead &&
-                    x.Category == "WALLET_ALERT" &&
-                    (x.RoleTarget == "ADMIN" || x.RoleTarget == "ALL"))
-            : await _db.NotificationItems.AsNoTracking()
-                .CountAsync(x =>
-                    !x.IsArchived &&
-                    !x.IsRead &&
-                    x.AgentId == requesterAgentId &&
-                    x.Category == "WALLET");
-
-        var ancillaryQuery = _db.BookingAncillaryOrders.AsNoTracking();
-        if (!isAdmin)
-            ancillaryQuery = ancillaryQuery.Where(x => x.AgentId == requesterAgentId);
-
-        var ancillaryOrders = await ancillaryQuery.CountAsync();
-        var pendingAncillaryOrders = await ancillaryQuery.CountAsync(x =>
-            x.Status == "PENDING_PAYMENT" ||
-            x.Status == "PROCESSING" ||
-            x.Status == "MANUAL_SERVICE_REQUIRED");
-        var fulfilledAncillaryOrders = await ancillaryQuery.CountAsync(x => x.Status == "FULFILLED" || x.Status == "MANUAL_SERVICE_REQUIRED");
-        var ancillaryRevenue = await ancillaryQuery.SumAsync(x => (decimal?)x.TotalAmount) ?? 0m;
-        var ancillaryMarkupRevenue = await ancillaryQuery.SumAsync(x => (decimal?)x.MarkupAmount) ?? 0m;
-        var ancillaryMix = await ancillaryQuery
-            .GroupBy(x => x.Type)
-            .Select(g => new
-            {
-                type = g.Key,
-                orders = g.Count(),
-                revenue = g.Sum(x => x.TotalAmount),
-                markup = g.Sum(x => x.MarkupAmount)
-            })
-            .OrderByDescending(x => x.revenue)
-            .ThenBy(x => x.type)
-            .ToListAsync();
-
-        return Ok(new
+        try
         {
-            totalBookings,
-            totalRevenue,
-            confirmedBookings,
-            pendingBookings,
-            bookingsToday,
-            bookingsThisMonth,
-            failedBookings,
-            pendingApprovals,
-            walletAlerts,
-            ancillaryOrders,
-            pendingAncillaryOrders,
-            fulfilledAncillaryOrders,
-            ancillaryRevenue,
-            ancillaryMarkupRevenue,
-            weeklySeries = weeklySeries.Select(x => new WeeklySeriesRow(x.day, x.bookings, x.revenue)).ToList(),
-            agentPerformance = agentPerformance.Select(x => new AgentPerformanceRow(x.agentId, x.email, x.bookings, x.revenue)).ToList(),
-            topAgents = agentPerformance.Take(5).Select(x => new AgentPerformanceRow(x.agentId, x.email, x.bookings, x.revenue)).ToList(),
-            ancillaryMix = ancillaryMix.Select(x => new AncillaryTypeRow(x.type, x.orders, x.revenue, x.markup)).ToList()
-        });
+            var payload = await BuildOverviewPayloadAsync();
+            return Ok(new
+            {
+                payload.TotalBookings,
+                payload.TotalRevenue,
+                payload.ConfirmedBookings,
+                payload.PendingBookings,
+                payload.BookingsToday,
+                payload.BookingsThisMonth,
+                payload.FailedBookings,
+                payload.PendingApprovals,
+                payload.WalletAlerts,
+                payload.AncillaryOrders,
+                payload.PendingAncillaryOrders,
+                payload.FulfilledAncillaryOrders,
+                payload.AncillaryRevenue,
+                payload.AncillaryMarkupRevenue,
+                weeklySeries = payload.WeeklySeries,
+                agentPerformance = payload.AgentPerformance,
+                topAgents = payload.TopAgents,
+                ancillaryMix = payload.AncillaryMix
+            });
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            var payload = EmptyOverview();
+            return Ok(new
+            {
+                payload.TotalBookings,
+                payload.TotalRevenue,
+                payload.ConfirmedBookings,
+                payload.PendingBookings,
+                payload.BookingsToday,
+                payload.BookingsThisMonth,
+                payload.FailedBookings,
+                payload.PendingApprovals,
+                payload.WalletAlerts,
+                payload.AncillaryOrders,
+                payload.PendingAncillaryOrders,
+                payload.FulfilledAncillaryOrders,
+                payload.AncillaryRevenue,
+                payload.AncillaryMarkupRevenue,
+                weeklySeries = payload.WeeklySeries,
+                agentPerformance = payload.AgentPerformance,
+                topAgents = payload.TopAgents,
+                ancillaryMix = payload.AncillaryMix
+            });
+        }
     }
 
     [HttpGet("export/bookings")]
@@ -301,134 +220,162 @@ public class ReportsController : ControllerBase
 
     private async Task<OverviewPayload> BuildOverviewPayloadAsync()
     {
-        var agentIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var requesterAgentId = Guid.Parse(agentIdClaim!);
-        var isAdmin = User.IsInRole("ADMIN");
-        var utcNow = DateTime.UtcNow;
-        var today = utcNow.Date;
-        var monthStart = new DateTime(utcNow.Year, utcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        try
+        {
+            var agentIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var requesterAgentId = Guid.Parse(agentIdClaim!);
+            var isAdmin = User.IsInRole("ADMIN");
+            var utcNow = DateTime.UtcNow;
+            var today = utcNow.Date;
+            var monthStart = new DateTime(utcNow.Year, utcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var bookings = _db.Bookings.AsNoTracking();
-        if (!isAdmin)
-            bookings = bookings.Where(x => x.AgentId == requesterAgentId);
+            var bookings = _db.Bookings.AsNoTracking();
+            if (!isAdmin)
+                bookings = bookings.Where(x => x.AgentId == requesterAgentId);
 
-        var totalBookings = await bookings.CountAsync();
-        var totalRevenue = await bookings.SumAsync(x => (decimal?)x.Amount) ?? 0m;
-        var confirmedBookings = await bookings.CountAsync(x => x.Status == "CONFIRMED");
-        var pendingBookings = await bookings.CountAsync(x => x.Status != "CONFIRMED");
-        var bookingsToday = await bookings.CountAsync(x => x.CreatedAt >= today);
-        var bookingsThisMonth = await bookings.CountAsync(x => x.CreatedAt >= monthStart);
-        var failedBookings = await bookings.CountAsync(x =>
-            x.Status == "FAILED" ||
-            x.Status == "FAILED_BOOKING" ||
-            x.Status == "FAILED_PRICING" ||
-            x.Status == "ERROR");
+            var totalBookings = await bookings.CountAsync();
+            var totalRevenue = await bookings.SumAsync(x => (decimal?)x.Amount) ?? 0m;
+            var confirmedBookings = await bookings.CountAsync(x => x.Status == "CONFIRMED");
+            var pendingBookings = await bookings.CountAsync(x => x.Status != "CONFIRMED");
+            var bookingsToday = await bookings.CountAsync(x => x.CreatedAt >= today);
+            var bookingsThisMonth = await bookings.CountAsync(x => x.CreatedAt >= monthStart);
+            var failedBookings = await bookings.CountAsync(x =>
+                x.Status == "FAILED" ||
+                x.Status == "FAILED_BOOKING" ||
+                x.Status == "FAILED_PRICING" ||
+                x.Status == "ERROR");
 
-        var fromDate = DateTime.UtcNow.Date.AddDays(-6);
-        var weekly = await bookings
-            .Where(x => x.CreatedAt >= fromDate)
-            .GroupBy(x => x.CreatedAt.Date)
-            .Select(g => new
-            {
-                date = g.Key,
-                bookings = g.Count(),
-                revenue = g.Sum(x => x.Amount)
-            })
-            .ToListAsync();
-
-        var weeklyLookup = weekly.ToDictionary(x => x.date, x => x);
-        var weeklySeries = Enumerable.Range(0, 7)
-            .Select(offset =>
-            {
-                var date = fromDate.AddDays(offset);
-                return new
+            var fromDate = DateTime.UtcNow.Date.AddDays(-6);
+            var weekly = await bookings
+                .Where(x => x.CreatedAt >= fromDate)
+                .GroupBy(x => x.CreatedAt.Date)
+                .Select(g => new
                 {
-                    day = date.ToString("ddd"),
-                    bookings = weeklyLookup.TryGetValue(date, out var value) ? value.bookings : 0,
-                    revenue = weeklyLookup.TryGetValue(date, out value) ? value.revenue : 0m
-                };
-            })
-            .ToList();
+                    date = g.Key,
+                    bookings = g.Count(),
+                    revenue = g.Sum(x => x.Amount)
+                })
+                .ToListAsync();
 
-        var agentPerformance = await (
-            from booking in bookings
-            join agent in _db.Agents.AsNoTracking() on booking.AgentId equals agent.Id
-            group new { booking, agent } by new { booking.AgentId, agent.Email } into g
-            orderby g.Count() descending
-            select new
-            {
-                agentId = g.Key.AgentId,
-                email = g.Key.Email,
-                bookings = g.Count(),
-                revenue = g.Sum(x => x.booking.Amount)
-            })
-            .Take(10)
-            .ToListAsync();
+            var weeklyLookup = weekly.ToDictionary(x => x.date, x => x);
+            var weeklySeries = Enumerable.Range(0, 7)
+                .Select(offset =>
+                {
+                    var date = fromDate.AddDays(offset);
+                    return new
+                    {
+                        day = date.ToString("ddd"),
+                        bookings = weeklyLookup.TryGetValue(date, out var value) ? value.bookings : 0,
+                        revenue = weeklyLookup.TryGetValue(date, out value) ? value.revenue : 0m
+                    };
+                })
+                .ToList();
 
-        var pendingApprovals = isAdmin
-            ? await _db.RegistrationApprovalRequests.CountAsync(x => x.Status == "PENDING")
-              + await _db.PasswordResetApprovalRequests.CountAsync(x => x.Status == "PENDING")
-            : 0;
+            var agentPerformance = await (
+                from booking in bookings
+                join agent in _db.Agents.AsNoTracking() on booking.AgentId equals agent.Id
+                group new { booking, agent } by new { booking.AgentId, agent.Email } into g
+                orderby g.Count() descending
+                select new
+                {
+                    agentId = g.Key.AgentId,
+                    email = g.Key.Email,
+                    bookings = g.Count(),
+                    revenue = g.Sum(x => x.booking.Amount)
+                })
+                .Take(10)
+                .ToListAsync();
 
-        var walletAlerts = isAdmin
-            ? await _db.NotificationItems.AsNoTracking()
-                .CountAsync(x =>
-                    !x.IsArchived &&
-                    !x.IsRead &&
-                    x.Category == "WALLET_ALERT" &&
-                    (x.RoleTarget == "ADMIN" || x.RoleTarget == "ALL"))
-            : await _db.NotificationItems.AsNoTracking()
-                .CountAsync(x =>
-                    !x.IsArchived &&
-                    !x.IsRead &&
-                    x.AgentId == requesterAgentId &&
-                    x.Category == "WALLET");
+            var pendingApprovals = isAdmin
+                ? await _db.RegistrationApprovalRequests.CountAsync(x => x.Status == "PENDING")
+                  + await _db.PasswordResetApprovalRequests.CountAsync(x => x.Status == "PENDING")
+                : 0;
 
-        var ancillaryQuery = _db.BookingAncillaryOrders.AsNoTracking();
-        if (!isAdmin)
-            ancillaryQuery = ancillaryQuery.Where(x => x.AgentId == requesterAgentId);
+            var walletAlerts = isAdmin
+                ? await _db.NotificationItems.AsNoTracking()
+                    .CountAsync(x =>
+                        !x.IsArchived &&
+                        !x.IsRead &&
+                        x.Category == "WALLET_ALERT" &&
+                        (x.RoleTarget == "ADMIN" || x.RoleTarget == "ALL"))
+                : await _db.NotificationItems.AsNoTracking()
+                    .CountAsync(x =>
+                        !x.IsArchived &&
+                        !x.IsRead &&
+                        x.AgentId == requesterAgentId &&
+                        x.Category == "WALLET");
 
-        var ancillaryOrders = await ancillaryQuery.CountAsync();
-        var pendingAncillaryOrders = await ancillaryQuery.CountAsync(x =>
-            x.Status == "PENDING_PAYMENT" ||
-            x.Status == "PROCESSING" ||
-            x.Status == "MANUAL_SERVICE_REQUIRED");
-        var fulfilledAncillaryOrders = await ancillaryQuery.CountAsync(x => x.Status == "FULFILLED" || x.Status == "MANUAL_SERVICE_REQUIRED");
-        var ancillaryRevenue = await ancillaryQuery.SumAsync(x => (decimal?)x.TotalAmount) ?? 0m;
-        var ancillaryMarkupRevenue = await ancillaryQuery.SumAsync(x => (decimal?)x.MarkupAmount) ?? 0m;
-        var ancillaryMix = await ancillaryQuery
-            .GroupBy(x => x.Type)
-            .Select(g => new
-            {
-                type = g.Key,
-                orders = g.Count(),
-                revenue = g.Sum(x => x.TotalAmount),
-                markup = g.Sum(x => x.MarkupAmount)
-            })
-            .OrderByDescending(x => x.revenue)
-            .ThenBy(x => x.type)
-            .ToListAsync();
+            var ancillaryQuery = _db.BookingAncillaryOrders.AsNoTracking();
+            if (!isAdmin)
+                ancillaryQuery = ancillaryQuery.Where(x => x.AgentId == requesterAgentId);
 
-        return new OverviewPayload(
-            totalBookings,
-            totalRevenue,
-            confirmedBookings,
-            pendingBookings,
-            bookingsToday,
-            bookingsThisMonth,
-            failedBookings,
-            pendingApprovals,
-            walletAlerts,
-            ancillaryOrders,
-            pendingAncillaryOrders,
-            fulfilledAncillaryOrders,
-            ancillaryRevenue,
-            ancillaryMarkupRevenue,
-            weeklySeries.Select(x => new WeeklySeriesRow(x.day, x.bookings, x.revenue)).ToList(),
-            agentPerformance.Select(x => new AgentPerformanceRow(x.agentId, x.email, x.bookings, x.revenue)).ToList(),
-            agentPerformance.Take(5).Select(x => new AgentPerformanceRow(x.agentId, x.email, x.bookings, x.revenue)).ToList(),
-            ancillaryMix.Select(x => new AncillaryTypeRow(x.type, x.orders, x.revenue, x.markup)).ToList());
+            var ancillaryOrders = await ancillaryQuery.CountAsync();
+            var pendingAncillaryOrders = await ancillaryQuery.CountAsync(x =>
+                x.Status == "PENDING_PAYMENT" ||
+                x.Status == "PROCESSING" ||
+                x.Status == "MANUAL_SERVICE_REQUIRED");
+            var fulfilledAncillaryOrders = await ancillaryQuery.CountAsync(x => x.Status == "FULFILLED" || x.Status == "MANUAL_SERVICE_REQUIRED");
+            var ancillaryRevenue = await ancillaryQuery.SumAsync(x => (decimal?)x.TotalAmount) ?? 0m;
+            var ancillaryMarkupRevenue = await ancillaryQuery.SumAsync(x => (decimal?)x.MarkupAmount) ?? 0m;
+            var ancillaryMix = await ancillaryQuery
+                .GroupBy(x => x.Type)
+                .Select(g => new
+                {
+                    type = g.Key,
+                    orders = g.Count(),
+                    revenue = g.Sum(x => x.TotalAmount),
+                    markup = g.Sum(x => x.MarkupAmount)
+                })
+                .OrderByDescending(x => x.revenue)
+                .ThenBy(x => x.type)
+                .ToListAsync();
+
+            return new OverviewPayload(
+                totalBookings,
+                totalRevenue,
+                confirmedBookings,
+                pendingBookings,
+                bookingsToday,
+                bookingsThisMonth,
+                failedBookings,
+                pendingApprovals,
+                walletAlerts,
+                ancillaryOrders,
+                pendingAncillaryOrders,
+                fulfilledAncillaryOrders,
+                ancillaryRevenue,
+                ancillaryMarkupRevenue,
+                weeklySeries.Select(x => new WeeklySeriesRow(x.day, x.bookings, x.revenue)).ToList(),
+                agentPerformance.Select(x => new AgentPerformanceRow(x.agentId, x.email, x.bookings, x.revenue)).ToList(),
+                agentPerformance.Take(5).Select(x => new AgentPerformanceRow(x.agentId, x.email, x.bookings, x.revenue)).ToList(),
+                ancillaryMix.Select(x => new AncillaryTypeRow(x.type, x.orders, x.revenue, x.markup)).ToList());
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            return EmptyOverview();
+        }
     }
+
+    private static OverviewPayload EmptyOverview() =>
+        new(
+            0,
+            0m,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0m,
+            0m,
+            [],
+            [],
+            [],
+            []);
 
     private async Task<List<BookingExportRow>> GetAuthorizedBookingRowsAsync()
     {
@@ -579,4 +526,12 @@ public class ReportsController : ControllerBase
 
     private static string EscapePdfText(string value) =>
         value.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
+
+    private static bool IsSchemaNotReady(Exception ex)
+    {
+        if (ex is PostgresException postgres)
+            return postgres.SqlState is "42P01" or "42703";
+
+        return ex.InnerException is not null && IsSchemaNotReady(ex.InnerException);
+    }
 }

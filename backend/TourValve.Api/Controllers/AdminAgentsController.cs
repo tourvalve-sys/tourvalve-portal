@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using TourValve.Application.Agents;
 using TourValve.Domain;
 using TourValve.Infrastructure.Data;
@@ -79,31 +80,38 @@ public class AdminAgentsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List()
     {
-        var items = await _db.Agents
-            .AsNoTracking()
-            .OrderByDescending(a => a.CreatedAt)
-            .Select(a => new
-            {
-                a.Id,
-                a.Email,
-                a.CountryOfOrigin,
-                a.PhoneNumber,
-                a.Role,
-                a.IsActive,
-                a.CreatedAt,
-                Wallet = _db.WalletAccounts
-                    .Where(w => w.AgentId == a.Id)
-                    .Select(w => new
-                    {
-                        w.Id,
-                        w.Currency,
-                        w.IsActive
-                    })
-                    .FirstOrDefault()
-            })
-            .ToListAsync();
+        try
+        {
+            var items = await _db.Agents
+                .AsNoTracking()
+                .OrderByDescending(a => a.CreatedAt)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.Email,
+                    a.CountryOfOrigin,
+                    a.PhoneNumber,
+                    a.Role,
+                    a.IsActive,
+                    a.CreatedAt,
+                    Wallet = _db.WalletAccounts
+                        .Where(w => w.AgentId == a.Id)
+                        .Select(w => new
+                        {
+                            w.Id,
+                            w.Currency,
+                            w.IsActive
+                        })
+                        .FirstOrDefault()
+                })
+                .ToListAsync();
 
-        return Ok(items);
+            return Ok(items);
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            return Ok(Array.Empty<object>());
+        }
     }
 
     [HttpGet("smtp-status")]
@@ -142,39 +150,50 @@ public class AdminAgentsController : ControllerBase
     [HttpGet("access-requests")]
     public async Task<IActionResult> GetAccessRequests()
     {
-        var registrations = await _db.RegistrationApprovalRequests
-            .AsNoTracking()
-            .OrderByDescending(x => x.CreatedAt)
-            .Select(x => new
-            {
-                x.Id,
-                x.Email,
-                x.CountryOfOrigin,
-                x.PhoneNumber,
-                x.AdminContactEmail,
-                x.Status,
-                x.CreatedAt
-            })
-            .ToListAsync();
-
-        var passwordResets = await _db.PasswordResetApprovalRequests
-            .AsNoTracking()
-            .OrderByDescending(x => x.CreatedAt)
-            .Select(x => new
-            {
-                x.Id,
-                x.Email,
-                x.AdminContactEmail,
-                x.Status,
-                x.CreatedAt
-            })
-            .ToListAsync();
-
-        return Ok(new
+        try
         {
-            registrations,
-            passwordResets
-        });
+            var registrations = await _db.RegistrationApprovalRequests
+                .AsNoTracking()
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.Email,
+                    x.CountryOfOrigin,
+                    x.PhoneNumber,
+                    x.AdminContactEmail,
+                    x.Status,
+                    x.CreatedAt
+                })
+                .ToListAsync();
+
+            var passwordResets = await _db.PasswordResetApprovalRequests
+                .AsNoTracking()
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.Email,
+                    x.AdminContactEmail,
+                    x.Status,
+                    x.CreatedAt
+                })
+                .ToListAsync();
+
+            return Ok(new
+            {
+                registrations,
+                passwordResets
+            });
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            return Ok(new
+            {
+                registrations = Array.Empty<object>(),
+                passwordResets = Array.Empty<object>()
+            });
+        }
     }
 
     [HttpPost("access-requests/registrations/{requestId:guid}/approve")]
@@ -374,5 +393,13 @@ public class AdminAgentsController : ControllerBase
         {
             Console.WriteLine($"Email send failed to {toEmail}: {ex.Message}");
         }
+    }
+
+    private static bool IsSchemaNotReady(Exception ex)
+    {
+        if (ex is PostgresException postgres)
+            return postgres.SqlState is "42P01" or "42703";
+
+        return ex.InnerException is not null && IsSchemaNotReady(ex.InnerException);
     }
 }

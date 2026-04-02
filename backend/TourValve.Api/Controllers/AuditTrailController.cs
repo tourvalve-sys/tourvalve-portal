@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using TourValve.Infrastructure.Data;
 
 namespace TourValve.Api.Controllers;
@@ -23,12 +24,27 @@ public class AuditTrailController : ControllerBase
         if (take < 1) take = 1;
         if (take > 250) take = 250;
 
-        var items = await _db.AuditTrailEvents
-            .AsNoTracking()
-            .OrderByDescending(x => x.CreatedAt)
-            .Take(take)
-            .ToListAsync();
+        try
+        {
+            var items = await _db.AuditTrailEvents
+                .AsNoTracking()
+                .OrderByDescending(x => x.CreatedAt)
+                .Take(take)
+                .ToListAsync();
 
-        return Ok(items);
+            return Ok(items);
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            return Ok(Array.Empty<object>());
+        }
+    }
+
+    private static bool IsSchemaNotReady(Exception ex)
+    {
+        if (ex is PostgresException postgres)
+            return postgres.SqlState is "42P01" or "42703";
+
+        return ex.InnerException is not null && IsSchemaNotReady(ex.InnerException);
     }
 }

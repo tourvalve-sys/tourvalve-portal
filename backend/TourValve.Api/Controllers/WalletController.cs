@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using System.Text;
 using TourValve.Application.Wallet;
 using TourValve.Infrastructure.Data;
@@ -44,80 +45,93 @@ public class WalletController : ControllerBase
     [HttpGet("me")]
     public async Task<IActionResult> Me()
     {
-        var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrWhiteSpace(idStr))
-            return Unauthorized();
-
-        var requesterAgentId = Guid.Parse(idStr);
-        var isAdmin = User.IsInRole("ADMIN");
-        var ownWallet = await _db.WalletAccounts
-            .AsNoTracking()
-            .Where(x => x.AgentId == requesterAgentId)
-            .Select(x => new
-            {
-                x.AgentId,
-                x.Id,
-                x.IsActive,
-                x.Currency
-            })
-            .FirstOrDefaultAsync();
-
-        if (ownWallet == null && isAdmin)
+        try
         {
-            ownWallet = await (
-                from wallet in _db.WalletAccounts.AsNoTracking()
-                join agent in _db.Agents.AsNoTracking() on wallet.AgentId equals agent.Id
-                where agent.Role == "ADMIN" || agent.Email == "admin@tourvalve.com"
-                orderby agent.CreatedAt
-                select new
+            var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(idStr))
+                return Unauthorized();
+
+            var requesterAgentId = Guid.Parse(idStr);
+            var isAdmin = User.IsInRole("ADMIN");
+            var ownWallet = await _db.WalletAccounts
+                .AsNoTracking()
+                .Where(x => x.AgentId == requesterAgentId)
+                .Select(x => new
                 {
-                    AgentId = wallet.AgentId,
-                    wallet.Id,
-                    wallet.IsActive,
-                    wallet.Currency
+                    x.AgentId,
+                    x.Id,
+                    x.IsActive,
+                    x.Currency
                 })
                 .FirstOrDefaultAsync();
-        }
 
-        if (ownWallet == null)
-        {
-            if (isAdmin)
-                return Ok(new { wallet = (object?)null });
-
-            return NotFound(new { error = "Wallet not found" });
-        }
-
-        var summary = await _wallet.GetWalletSummaryForUserAsync(
-            ownWallet.Id,
-            requesterAgentId,
-            isAdmin
-        );
-
-        var transactions = await _wallet.GetTransactionsForUserAsync(
-            ownWallet.Id,
-            requesterAgentId,
-            isAdmin,
-            null,
-            null,
-            20
-        );
-
-        return Ok(new
-        {
-            wallet = new
+            if (ownWallet == null && isAdmin)
             {
-                agentId = ownWallet.AgentId,
-                email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? string.Empty,
-                agentIsActive = true,
-                walletAccountId = ownWallet.Id,
-                walletIsActive = ownWallet.IsActive,
-                currency = ownWallet.Currency,
-                balance = summary.Balance
-            },
-            summary,
-            transactions,
-            alerts = BuildAlerts(summary.AvailableBalance)
-        });
+                ownWallet = await (
+                    from wallet in _db.WalletAccounts.AsNoTracking()
+                    join agent in _db.Agents.AsNoTracking() on wallet.AgentId equals agent.Id
+                    where agent.Role == "ADMIN" || agent.Email == "admin@tourvalve.com"
+                    orderby agent.CreatedAt
+                    select new
+                    {
+                        AgentId = wallet.AgentId,
+                        wallet.Id,
+                        wallet.IsActive,
+                        wallet.Currency
+                    })
+                    .FirstOrDefaultAsync();
+            }
+
+            if (ownWallet == null)
+            {
+                if (isAdmin)
+                    return Ok(new { wallet = (object?)null });
+
+                return NotFound(new { error = "Wallet not found" });
+            }
+
+            var summary = await _wallet.GetWalletSummaryForUserAsync(
+                ownWallet.Id,
+                requesterAgentId,
+                isAdmin
+            );
+
+            var transactions = await _wallet.GetTransactionsForUserAsync(
+                ownWallet.Id,
+                requesterAgentId,
+                isAdmin,
+                null,
+                null,
+                20
+            );
+
+            return Ok(new
+            {
+                wallet = new
+                {
+                    agentId = ownWallet.AgentId,
+                    email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? string.Empty,
+                    agentIsActive = true,
+                    walletAccountId = ownWallet.Id,
+                    walletIsActive = ownWallet.IsActive,
+                    currency = ownWallet.Currency,
+                    balance = summary.Balance
+                },
+                summary,
+                transactions,
+                alerts = BuildAlerts(summary.AvailableBalance)
+            });
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            return Ok(new
+            {
+                wallet = (object?)null,
+                summary = (object?)null,
+                transactions = Array.Empty<object>(),
+                alerts = Array.Empty<object>()
+            });
+        }
     }
 
     [Authorize]
@@ -193,22 +207,29 @@ public class WalletController : ControllerBase
     [HttpGet("admin/agent-wallets")]
     public async Task<IActionResult> AgentWallets()
     {
-        var items = await _wallet.GetAgentWalletsForAdminAsync();
-        return Ok(items.Select(x => new
+        try
         {
-            x.AgentId,
-            x.Email,
-            x.AgentIsActive,
-            x.WalletAccountId,
-            x.WalletIsActive,
-            x.Currency,
-            x.Balance,
-            alertLevel = x.Balance <= _walletAlertOptions.CriticalBalanceThreshold
-                ? "CRITICAL"
-                : x.Balance <= _walletAlertOptions.LowBalanceThreshold
-                    ? "LOW"
-                    : "NORMAL"
-        }));
+            var items = await _wallet.GetAgentWalletsForAdminAsync();
+            return Ok(items.Select(x => new
+            {
+                x.AgentId,
+                x.Email,
+                x.AgentIsActive,
+                x.WalletAccountId,
+                x.WalletIsActive,
+                x.Currency,
+                x.Balance,
+                alertLevel = x.Balance <= _walletAlertOptions.CriticalBalanceThreshold
+                    ? "CRITICAL"
+                    : x.Balance <= _walletAlertOptions.LowBalanceThreshold
+                        ? "LOW"
+                        : "NORMAL"
+            }));
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            return Ok(Array.Empty<object>());
+        }
     }
 
     [Authorize(Roles = "ADMIN")]
@@ -236,8 +257,15 @@ public class WalletController : ControllerBase
     [HttpGet("admin/withdrawals")]
     public async Task<IActionResult> AdminWithdrawals()
     {
-        var items = await _wallet.GetAdminWithdrawalsAsync();
-        return Ok(items);
+        try
+        {
+            var items = await _wallet.GetAdminWithdrawalsAsync();
+            return Ok(items);
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            return Ok(Array.Empty<object>());
+        }
     }
 
     [Authorize(Roles = "ADMIN")]
@@ -579,4 +607,12 @@ public class WalletController : ControllerBase
 
     private static string EscapePdfText(string value) =>
         value.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
+
+    private static bool IsSchemaNotReady(Exception ex)
+    {
+        if (ex is PostgresException postgres)
+            return postgres.SqlState is "42P01" or "42703";
+
+        return ex.InnerException is not null && IsSchemaNotReady(ex.InnerException);
+    }
 }

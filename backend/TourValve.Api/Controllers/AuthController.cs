@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using System.Security.Cryptography;
 using System.Text;
 using TourValve.Application.Security;
@@ -66,6 +67,10 @@ public class AuthController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            return StatusCode(503, new { error = "Registration service is still preparing the production database. Please try again shortly." });
         }
     }
 
@@ -201,5 +206,13 @@ public class AuthController : ControllerBase
         {
             Console.WriteLine($"Email send failed to {toEmail}: {ex.Message}");
         }
+    }
+
+    private static bool IsSchemaNotReady(Exception ex)
+    {
+        if (ex is PostgresException postgres)
+            return postgres.SqlState is "42P01" or "42703";
+
+        return ex.InnerException is not null && IsSchemaNotReady(ex.InnerException);
     }
 }
