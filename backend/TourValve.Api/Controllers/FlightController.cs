@@ -440,9 +440,8 @@ public class FlightsController : ControllerBase
   <air:AirItinerary>
     {segmentXml}
   </air:AirItinerary>
-  <air:AirPricingModifiers FaresIndicator=""PublicFaresOnly"">
-    {platingCarrierXml}
-  </air:AirPricingModifiers>
+  <air:AirPricingModifiers FaresIndicator=""PublicFaresOnly"" />
+  {platingCarrierXml}
   {BuildPassengersXml(req.Adults, req.Child, req.Infant)}
 </air:AirPriceReq>".Trim();
     }
