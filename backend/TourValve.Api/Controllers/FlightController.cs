@@ -27,6 +27,7 @@ public class FlightsController : ControllerBase
     public async Task<IActionResult> Search([FromBody] FlightSearchRequest req, [FromQuery] bool debugRaw = false)
     {
         var includeMarkup = !User.IsInRole("ADMIN");
+        var isMultiCity = req.Segments.Count >= 2;
         var validation = ValidateSearch(req);
         if (validation is not null)
             return validation;
@@ -47,6 +48,16 @@ public class FlightsController : ControllerBase
         catch (Exception ex)
         {
             var normalizedCabin = NormalizeCabin(req.Cabin);
+
+            if (isMultiCity)
+            {
+                return StatusCode(StatusCodes.Status504GatewayTimeout, new
+                {
+                    error = "Live Travelport multi-city search timed out.",
+                    detail = BuildMultiCityTimeoutMessage(req.Segments.Count)
+                });
+            }
+
             var availabilityDiagnostic = await GetAvailabilityDiagnosticAsync(req, departDate, returnDate);
 
             if (availabilityDiagnostic.Exists)
@@ -82,8 +93,20 @@ public class FlightsController : ControllerBase
 
         if (flights.Count == 0)
         {
-            var availabilityDiagnostic = await GetAvailabilityDiagnosticAsync(req, departDate, returnDate);
             var normalizedCabin = NormalizeCabin(req.Cabin);
+
+            if (isMultiCity)
+            {
+                return StatusCode(StatusCodes.Status504GatewayTimeout, new
+                {
+                    error = string.IsNullOrWhiteSpace(req.Cabin)
+                        ? "Live Travelport multi-city search took too long to return a usable itinerary."
+                        : $"Live Travelport multi-city {normalizedCabin?.ToLowerInvariant() ?? "requested"} cabin search took too long to return a usable itinerary.",
+                    detail = BuildMultiCityTimeoutMessage(req.Segments.Count)
+                });
+            }
+
+            var availabilityDiagnostic = await GetAvailabilityDiagnosticAsync(req, departDate, returnDate);
 
             if (availabilityDiagnostic.Exists)
             {
@@ -420,6 +443,9 @@ public class FlightsController : ControllerBase
             return (false, null, new List<FlightDto>());
         }
     }
+
+    private static string BuildMultiCityTimeoutMessage(int segmentCount)
+        => $"The live provider took too long to price this {segmentCount}-segment multi-city itinerary. Try searching two or three segments at a time, or try again in a moment.";
 
     private string BuildPriceXml(FlightPriceRequest req)
     {

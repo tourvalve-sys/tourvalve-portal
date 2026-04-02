@@ -162,7 +162,7 @@ builder.Services.AddTransient<TravelportBasicAuthHandler>();
 
 builder.Services.AddHttpClient<TravelportSoapClient>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(60);
+    client.Timeout = TimeSpan.FromSeconds(120);
 })
     .AddHttpMessageHandler<TravelportBasicAuthHandler>()
     .AddHttpMessageHandler<TravelportHttpLoggingHandler>();

@@ -504,6 +504,14 @@ function normalizeFriendlyError(message: string): string {
         return "The backend service is not reachable right now. Please check that the API is running and try again.";
     }
 
+    if (/504 Gateway Time-?out|Gateway Time-?out|upstream timed out|<title>504/i.test(normalized)) {
+        return "The live provider took too long to respond to this search. For multi-city itineraries, try fewer segments at a time or try again shortly.";
+    }
+
+    if (/408 Request Timeout|timed out|timeout/i.test(normalized)) {
+        return "The live provider timed out while processing this request. Please try again in a moment.";
+    }
+
     if (/mock mode is disabled/i.test(normalized)) {
         return "Live Travelport mode is required for this action, and mock mode is currently disabled.";
     }
