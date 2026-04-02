@@ -95,6 +95,11 @@ export default function FlightSearch() {
                 return;
             }
 
+            if (multiCitySegments.length > 2) {
+                setError("Live multi-city shopping currently supports up to two segments per search for reliability. Search longer itineraries in smaller groups.");
+                return;
+            }
+
             for (let i = 0; i < multiCitySegments.length; i += 1) {
                 const segment = multiCitySegments[i];
                 if (!segment.from.trim() || !segment.to.trim() || !segment.departDate) {
@@ -439,7 +444,7 @@ export default function FlightSearch() {
                             <div className="rounded-[1.5rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.72)] px-4 py-4">
                                 <div className="subtle-kicker mb-2">Multi-City Routing</div>
                                 <div className="text-sm leading-7 text-slate-600">
-                                    Build up to four flight legs in sequence. Each departure date should move forward so the routing can be priced cleanly against live inventory.
+                                    Live multi-city shopping currently supports up to two flight legs per search for the most reliable pricing results. Search longer itineraries in smaller groups.
                                 </div>
                             <div className="mt-3 overflow-x-auto rounded-2xl bg-[rgba(176,122,67,0.08)] px-4 py-3 text-sm font-medium text-[var(--ink)]">
                                     {multiCitySummary || "Your routing summary will appear here as you add each segment."}
@@ -512,13 +517,13 @@ export default function FlightSearch() {
                                 </div>
                             ))}
                             <div className="flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={addMultiCitySegment}
-                                    disabled={multiCitySegments.length >= 4}
-                                    className="ghost-button rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60"
-                                >
-                                    {multiCitySegments.length >= 4 ? "Maximum of 4 segments" : "Add another segment"}
+                                    <button
+                                        type="button"
+                                        onClick={addMultiCitySegment}
+                                        disabled={multiCitySegments.length >= 2}
+                                        className="ghost-button rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60"
+                                    >
+                                    {multiCitySegments.length >= 2 ? "Maximum of 2 segments" : "Add another segment"}
                                 </button>
                             </div>
                         </div>

@@ -230,8 +230,8 @@ public class FlightsController : ControllerBase
             if (req.Segments.Count < 2)
                 return BadRequest(new { error = "At least two segments are required for a multi-city search." });
 
-            if (req.Segments.Count > 4)
-                return BadRequest(new { error = "Multi-city search supports up to four segments." });
+            if (req.Segments.Count > 2)
+                return BadRequest(new { error = "Live multi-city search currently supports up to two segments for reliability. Search longer itineraries in smaller groups." });
 
             for (var i = 0; i < req.Segments.Count; i++)
             {
@@ -445,7 +445,7 @@ public class FlightsController : ControllerBase
     }
 
     private static string BuildMultiCityTimeoutMessage(int segmentCount)
-        => $"The live provider took too long to price this {segmentCount}-segment multi-city itinerary. Try searching two or three segments at a time, or try again in a moment.";
+        => $"The live provider took too long to price this {segmentCount}-segment multi-city itinerary. In the current live setup, search up to two segments at a time for the most reliable results.";
 
     private string BuildPriceXml(FlightPriceRequest req)
     {

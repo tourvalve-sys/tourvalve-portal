@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using System.Security.Claims;
 using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Services;
@@ -37,28 +38,39 @@ public class NotificationsController : ControllerBase
         if (take < 1) take = 1;
         if (take > 100) take = 100;
 
-        var query = _db.NotificationItems
-            .AsNoTracking()
-            .Where(x => !x.IsArchived && (x.AgentId == requesterAgentId || x.RoleTarget == role || x.RoleTarget == "ALL"));
-
-        if (!string.IsNullOrWhiteSpace(category))
-            query = query.Where(x => x.Category == category.Trim());
-
-        if (unreadOnly)
-            query = query.Where(x => !x.IsRead);
-
-        var items = await query
-            .OrderByDescending(x => x.CreatedAt)
-            .Take(take)
-            .ToListAsync();
-
-        await _audit.WriteAsync(requesterAgentId, email, "NOTIFICATION", "VIEW", "NotificationCenter", "SELF", "NOTIFICATIONS", $"Viewed {items.Count} notifications.");
-
-        return Ok(new
+        try
         {
-            unreadCount = items.Count(x => !x.IsRead),
-            items
-        });
+            var query = _db.NotificationItems
+                .AsNoTracking()
+                .Where(x => !x.IsArchived && (x.AgentId == requesterAgentId || x.RoleTarget == role || x.RoleTarget == "ALL"));
+
+            if (!string.IsNullOrWhiteSpace(category))
+                query = query.Where(x => x.Category == category.Trim());
+
+            if (unreadOnly)
+                query = query.Where(x => !x.IsRead);
+
+            var items = await query
+                .OrderByDescending(x => x.CreatedAt)
+                .Take(take)
+                .ToListAsync();
+
+            await _audit.WriteAsync(requesterAgentId, email, "NOTIFICATION", "VIEW", "NotificationCenter", "SELF", "NOTIFICATIONS", $"Viewed {items.Count} notifications.");
+
+            return Ok(new
+            {
+                unreadCount = items.Count(x => !x.IsRead),
+                items
+            });
+        }
+        catch (Exception ex) when (IsNotificationSchemaUnavailable(ex))
+        {
+            return Ok(new
+            {
+                unreadCount = 0,
+                items = Array.Empty<object>()
+            });
+        }
     }
 
     [HttpPost("{id:guid}/read")]
@@ -71,15 +83,22 @@ public class NotificationsController : ControllerBase
         var requesterAgentId = Guid.Parse(agentId);
         var role = User.IsInRole("ADMIN") ? "ADMIN" : "AGENT";
 
-        var item = await _db.NotificationItems
-            .FirstOrDefaultAsync(x => x.Id == id && (x.AgentId == requesterAgentId || x.RoleTarget == role || x.RoleTarget == "ALL"));
+        try
+        {
+            var item = await _db.NotificationItems
+                .FirstOrDefaultAsync(x => x.Id == id && (x.AgentId == requesterAgentId || x.RoleTarget == role || x.RoleTarget == "ALL"));
 
-        if (item == null)
-            return NotFound(new { error = "Notification not found" });
+            if (item == null)
+                return NotFound(new { error = "Notification not found" });
 
-        item.IsRead = true;
-        await _db.SaveChangesAsync();
-        return Ok(new { message = "Notification marked as read." });
+            item.IsRead = true;
+            await _db.SaveChangesAsync();
+            return Ok(new { message = "Notification marked as read." });
+        }
+        catch (Exception ex) when (IsNotificationSchemaUnavailable(ex))
+        {
+            return Ok(new { message = "Notifications are not enabled on this database yet." });
+        }
     }
 
     [HttpPost("read-all")]
@@ -92,14 +111,29 @@ public class NotificationsController : ControllerBase
         var requesterAgentId = Guid.Parse(agentId);
         var role = User.IsInRole("ADMIN") ? "ADMIN" : "AGENT";
 
-        var items = await _db.NotificationItems
-            .Where(x => !x.IsRead && !x.IsArchived && (x.AgentId == requesterAgentId || x.RoleTarget == role || x.RoleTarget == "ALL"))
-            .ToListAsync();
+        try
+        {
+            var items = await _db.NotificationItems
+                .Where(x => !x.IsRead && !x.IsArchived && (x.AgentId == requesterAgentId || x.RoleTarget == role || x.RoleTarget == "ALL"))
+                .ToListAsync();
 
-        foreach (var item in items)
-            item.IsRead = true;
+            foreach (var item in items)
+                item.IsRead = true;
 
-        await _db.SaveChangesAsync();
-        return Ok(new { message = "All notifications marked as read." });
+            await _db.SaveChangesAsync();
+            return Ok(new { message = "All notifications marked as read." });
+        }
+        catch (Exception ex) when (IsNotificationSchemaUnavailable(ex))
+        {
+            return Ok(new { message = "Notifications are not enabled on this database yet." });
+        }
+    }
+
+    private static bool IsNotificationSchemaUnavailable(Exception ex)
+    {
+        if (ex is PostgresException postgres)
+            return postgres.SqlState is "42P01" or "42703" or "42501";
+
+        return ex.InnerException is not null && IsNotificationSchemaUnavailable(ex.InnerException);
     }
 }
