@@ -1,3 +1,4 @@
+using Npgsql;
 using TourValve.Domain;
 using TourValve.Infrastructure.Data;
 
@@ -23,21 +24,36 @@ public class AuditTrailService : IAuditTrailService
         string details,
         string severity = "INFO")
     {
-        _db.AuditTrailEvents.Add(new AuditTrailEvent
+        try
         {
-            Id = Guid.NewGuid(),
-            ActorAgentId = actorAgentId,
-            ActorEmail = actorEmail,
-            Category = category,
-            Action = action,
-            EntityType = entityType,
-            EntityId = entityId,
-            Reference = reference,
-            Details = details,
-            Severity = severity,
-            CreatedAt = DateTime.UtcNow
-        });
+            _db.AuditTrailEvents.Add(new AuditTrailEvent
+            {
+                Id = Guid.NewGuid(),
+                ActorAgentId = actorAgentId,
+                ActorEmail = actorEmail,
+                Category = category,
+                Action = action,
+                EntityType = entityType,
+                EntityId = entityId,
+                Reference = reference,
+                Details = details,
+                Severity = severity,
+                CreatedAt = DateTime.UtcNow
+            });
 
-        await _db.SaveChangesAsync();
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            Console.WriteLine("Audit tables are not ready yet on production. Skipping audit write.");
+        }
+    }
+
+    private static bool IsSchemaNotReady(Exception ex)
+    {
+        if (ex is PostgresException postgres)
+            return postgres.SqlState is "42P01" or "42703";
+
+        return ex.InnerException is not null && IsSchemaNotReady(ex.InnerException);
     }
 }
