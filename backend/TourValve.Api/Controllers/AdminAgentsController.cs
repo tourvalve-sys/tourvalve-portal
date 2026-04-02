@@ -163,7 +163,9 @@ public class AdminAgentsController : ControllerBase
                     x.PhoneNumber,
                     x.AdminContactEmail,
                     x.Status,
-                    x.CreatedAt
+                    x.CreatedAt,
+                    x.ProcessedAt,
+                    x.ProcessedByEmail
                 })
                 .ToListAsync();
 
@@ -176,7 +178,9 @@ public class AdminAgentsController : ControllerBase
                     x.Email,
                     x.AdminContactEmail,
                     x.Status,
-                    x.CreatedAt
+                    x.CreatedAt,
+                    x.ProcessedAt,
+                    x.ProcessedByEmail
                 })
                 .ToListAsync();
 
@@ -240,7 +244,7 @@ public class AdminAgentsController : ControllerBase
 
         return Ok(new
         {
-            message = "Registration approved. The agent can now sign in.",
+            message = "Registration approved. The agent can now sign in and a confirmation email has been prepared.",
             agentId = agent.Id,
             adminContactEmail = _smtpOptions.AdminInboxEmail
         });
@@ -270,7 +274,7 @@ public class AdminAgentsController : ControllerBase
         await _audit.WriteAsync(null, User.Identity?.Name ?? "admin@tourvalve.com", "ACCESS", "REGISTER_REJECT", "RegistrationApprovalRequest", request.Id.ToString(), request.Email, "Registration rejected.");
         await _notifications.CreateAsync(null, "ADMIN", "ACCESS", "Registration rejected", $"Registration request for {request.Email} was rejected.", "INFO", "/agents");
 
-        return Ok(new { message = "Registration request rejected." });
+        return Ok(new { message = "Registration request rejected and the requester has been updated." });
     }
 
     [HttpPost("access-requests/password-resets/{requestId:guid}/approve")]
@@ -308,7 +312,7 @@ public class AdminAgentsController : ControllerBase
 
         return Ok(new
         {
-            message = "Password reset approved. Temporary password emailed to the agent.",
+            message = "Password reset approved. A temporary password has been issued and emailed to the agent.",
             temporaryPassword,
             adminContactEmail = _smtpOptions.AdminInboxEmail
         });
@@ -338,7 +342,7 @@ public class AdminAgentsController : ControllerBase
         await _audit.WriteAsync(null, User.Identity?.Name ?? "admin@tourvalve.com", "ACCESS", "PASSWORD_RESET_REJECT", "PasswordResetApprovalRequest", request.Id.ToString(), request.Email, "Password reset rejected.");
         await _notifications.CreateAsync(null, "ADMIN", "ACCESS", "Password reset rejected", $"Password reset request for {request.Email} was rejected.", "INFO", "/agents");
 
-        return Ok(new { message = "Password reset request rejected." });
+        return Ok(new { message = "Password reset request rejected and the requester has been updated." });
     }
 
     [HttpPatch("{agentId:guid}/status")]

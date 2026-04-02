@@ -390,6 +390,8 @@ export type AccessRequestItem = {
     adminContactEmail: string;
     status: string;
     createdAt: string;
+    processedAt?: string | null;
+    processedByEmail?: string;
 };
 
 export type RegistrationAccessRequest = AccessRequestItem & {

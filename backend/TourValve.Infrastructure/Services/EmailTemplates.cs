@@ -14,7 +14,7 @@ public static class EmailTemplates
   <li><strong>Country of origin:</strong> {Encode(countryOfOrigin)}</li>
   <li><strong>Phone number:</strong> {Encode(phoneNumber)}</li>
 </ul>
-<p>Please review it inside the TourValve admin portal.</p>");
+<p>Please review it inside the TourValve admin portal under the agents approval queue.</p>");
 
     public static string PasswordResetRequestAdmin(string email)
         => Wrap(
@@ -24,21 +24,23 @@ public static class EmailTemplates
 <ul>
   <li><strong>Email:</strong> {Encode(email)}</li>
 </ul>
-<p>Please review it inside the TourValve admin portal.</p>");
+<p>Please review it inside the TourValve admin portal under the agents approval queue.</p>");
 
     public static string RegistrationApproved(string email)
         => Wrap(
             "Your TourValve access is approved",
             $@"
 <p>Hello {Encode(email)},</p>
-<p>Your registration has been approved. You may now sign in to the TourValve portal.</p>");
+<p>Your registration has been approved. You may now sign in to the TourValve portal.</p>
+<p>Please keep your login details ready and contact TourValve admin if you need help with onboarding or wallet activation.</p>");
 
     public static string RegistrationRejected(string email)
         => Wrap(
             "Your TourValve registration update",
             $@"
 <p>Hello {Encode(email)},</p>
-<p>Your registration request was not approved. Please contact TourValve admin if you need help.</p>");
+<p>Your registration request was not approved at this time.</p>
+<p>Please contact TourValve admin if you would like the application to be reviewed again.</p>");
 
     public static string PasswordResetApproved(string email, string temporaryPassword)
         => Wrap(
@@ -47,14 +49,16 @@ public static class EmailTemplates
 <p>Hello {Encode(email)},</p>
 <p>Your password reset request has been approved.</p>
 <p><strong>Temporary password:</strong> {Encode(temporaryPassword)}</p>
-<p>Please sign in and change it as soon as possible.</p>");
+<p>Please sign in and change it as soon as possible.</p>
+<p>If you did not request this change, contact TourValve admin immediately.</p>");
 
     public static string PasswordResetRejected(string email)
         => Wrap(
             "Your TourValve password reset update",
             $@"
 <p>Hello {Encode(email)},</p>
-<p>Your password reset request was not approved. Please contact TourValve admin if you need help.</p>");
+<p>Your password reset request was not approved at this time.</p>
+<p>Please contact TourValve admin if you need help restoring access.</p>");
 
     public static string BookingConfirmed(
         string email,

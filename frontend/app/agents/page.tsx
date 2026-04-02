@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BellRing, KeyRound, Mail, Send, ShieldCheck, UserRoundCheck, Users2 } from "lucide-react";
+import { BellRing, CheckCircle2, Clock3, KeyRound, Mail, Send, ShieldCheck, UserRoundCheck, Users2, XCircle } from "lucide-react";
 import {
     approvePasswordResetRequest,
     approveRegistrationRequest,
@@ -86,6 +86,17 @@ export default function AgentsPage() {
 
     const pendingRegistrations = requests.registrations.filter((item) => item.status === "PENDING");
     const pendingPasswordResets = requests.passwordResets.filter((item) => item.status === "PENDING");
+    const processedRegistrations = requests.registrations.filter((item) => item.status !== "PENDING").slice(0, 6);
+    const processedPasswordResets = requests.passwordResets.filter((item) => item.status !== "PENDING").slice(0, 6);
+    const latestQueueActivity = [...requests.registrations, ...requests.passwordResets]
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        .slice(0, 1)[0];
+
+    const queueStatusClass = (status: string) => {
+        if (status === "APPROVED") return "status-success";
+        if (status === "REJECTED") return "status-danger";
+        return "status-warning";
+    };
 
     return (
         <div className="space-y-6 fade-in">
@@ -155,6 +166,38 @@ export default function AgentsPage() {
             </section>
 
             <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+                <div className="premium-panel rounded-[2rem] p-6 xl:col-span-2">
+                    <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <div className="subtle-kicker mb-2">Approval Desk</div>
+                            <h2 className="font-display text-3xl text-[var(--ink)]">Live approval queue</h2>
+                            <p className="mt-3 text-sm leading-7 text-slate-500">
+                                Registrations and password reset requests now move through one visible admin queue, with recent outcomes kept close at hand for follow-up.
+                            </p>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                            <div className="soft-panel rounded-[1.5rem] px-4 py-4">
+                                <div className="subtle-kicker">Awaiting Action</div>
+                                <div className="mt-2 font-display text-3xl text-[var(--accent-strong)]">
+                                    {pendingRegistrations.length + pendingPasswordResets.length}
+                                </div>
+                            </div>
+                            <div className="soft-panel rounded-[1.5rem] px-4 py-4">
+                                <div className="subtle-kicker">Approved Today</div>
+                                <div className="mt-2 font-display text-3xl text-[var(--success)]">
+                                    {[...requests.registrations, ...requests.passwordResets].filter((item) => item.status === "APPROVED").length}
+                                </div>
+                            </div>
+                            <div className="soft-panel rounded-[1.5rem] px-4 py-4">
+                                <div className="subtle-kicker">Latest Intake</div>
+                                <div className="mt-2 text-sm font-semibold text-[var(--ink)]">
+                                    {latestQueueActivity ? new Date(latestQueueActivity.createdAt).toLocaleString() : "No requests yet"}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="premium-panel rounded-[2rem] p-6">
                     <div className="subtle-kicker mb-2">Mail Delivery</div>
                     <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -241,20 +284,20 @@ export default function AgentsPage() {
                                         <div className="text-sm text-slate-500">Phone: {item.phoneNumber}</div>
                                         <div className="text-sm text-slate-500">Submitted: {new Date(item.createdAt).toLocaleString()}</div>
                                     </div>
-                                    <div className="flex gap-3">
+                                    <div className="flex flex-wrap gap-3">
                                         <button
                                             onClick={() => void runAction(`reg-approve-${item.id}`, () => approveRegistrationRequest(item.id))}
                                             disabled={actionKey === `reg-approve-${item.id}`}
                                             className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
                                         >
-                                            Approve
+                                            {actionKey === `reg-approve-${item.id}` ? "Approving..." : "Approve"}
                                         </button>
                                         <button
                                             onClick={() => void runAction(`reg-reject-${item.id}`, () => rejectRegistrationRequest(item.id))}
                                             disabled={actionKey === `reg-reject-${item.id}`}
                                             className="ghost-button rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60"
                                         >
-                                            Reject
+                                            {actionKey === `reg-reject-${item.id}` ? "Rejecting..." : "Reject"}
                                         </button>
                                     </div>
                                 </div>
@@ -287,20 +330,20 @@ export default function AgentsPage() {
                                         <div className="mt-2 text-sm text-slate-500">Contact inbox: {item.adminContactEmail}</div>
                                         <div className="text-sm text-slate-500">Submitted: {new Date(item.createdAt).toLocaleString()}</div>
                                     </div>
-                                    <div className="flex gap-3">
+                                    <div className="flex flex-wrap gap-3">
                                         <button
                                             onClick={() => void runAction(`reset-approve-${item.id}`, () => approvePasswordResetRequest(item.id))}
                                             disabled={actionKey === `reset-approve-${item.id}`}
                                             className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
                                         >
-                                            Approve Reset
+                                            {actionKey === `reset-approve-${item.id}` ? "Approving..." : "Approve Reset"}
                                         </button>
                                         <button
                                             onClick={() => void runAction(`reset-reject-${item.id}`, () => rejectPasswordResetRequest(item.id))}
                                             disabled={actionKey === `reset-reject-${item.id}`}
                                             className="ghost-button rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60"
                                         >
-                                            Reject
+                                            {actionKey === `reset-reject-${item.id}` ? "Rejecting..." : "Reject"}
                                         </button>
                                     </div>
                                 </div>
@@ -308,6 +351,83 @@ export default function AgentsPage() {
                         )) : (
                             <div className="rounded-[1.75rem] border border-dashed border-[rgba(89,64,46,0.12)] px-6 py-10 text-center text-sm text-slate-400">
                                 No pending password reset approvals.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-2">
+                <div className="premium-panel overflow-hidden rounded-[2rem]">
+                    <div className="flex items-center justify-between border-b border-[rgba(89,64,46,0.08)] px-6 py-5">
+                        <div>
+                            <div className="subtle-kicker mb-2">Recent Outcomes</div>
+                            <h2 className="font-display text-3xl text-[var(--ink)]">Processed registrations</h2>
+                        </div>
+                        <div className="rounded-2xl bg-[rgba(255,255,255,0.72)] px-4 py-2 text-sm text-slate-500 shadow-sm">
+                            Latest 6 decisions
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 p-6">
+                        {processedRegistrations.length ? processedRegistrations.map((item) => (
+                            <div key={item.id} className="soft-panel rounded-[1.75rem] p-5">
+                                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                    <div>
+                                        <div className="font-semibold text-[var(--ink)]">{item.email}</div>
+                                        <div className="mt-2 text-sm text-slate-500">Country: {item.countryOfOrigin}</div>
+                                        <div className="text-sm text-slate-500">Phone: {item.phoneNumber}</div>
+                                        <div className="text-sm text-slate-500">
+                                            {item.processedAt ? `Processed: ${new Date(item.processedAt).toLocaleString()}` : `Submitted: ${new Date(item.createdAt).toLocaleString()}`}
+                                        </div>
+                                        <div className="text-sm text-slate-500">Handled by: {item.processedByEmail || "-"}</div>
+                                    </div>
+                                    <span className={`status-pill ${queueStatusClass(item.status)}`}>
+                                        {item.status === "APPROVED" ? <CheckCircle2 size={14} /> : item.status === "REJECTED" ? <XCircle size={14} /> : <Clock3 size={14} />}
+                                        {item.status}
+                                    </span>
+                                </div>
+                            </div>
+                        )) : (
+                            <div className="rounded-[1.75rem] border border-dashed border-[rgba(89,64,46,0.12)] px-6 py-10 text-center text-sm text-slate-400">
+                                No processed registration decisions yet.
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="premium-panel overflow-hidden rounded-[2rem]">
+                    <div className="flex items-center justify-between border-b border-[rgba(89,64,46,0.08)] px-6 py-5">
+                        <div>
+                            <div className="subtle-kicker mb-2">Recent Outcomes</div>
+                            <h2 className="font-display text-3xl text-[var(--ink)]">Processed password resets</h2>
+                        </div>
+                        <div className="rounded-2xl bg-[rgba(255,255,255,0.72)] px-4 py-2 text-sm text-slate-500 shadow-sm">
+                            Latest 6 decisions
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 p-6">
+                        {processedPasswordResets.length ? processedPasswordResets.map((item) => (
+                            <div key={item.id} className="soft-panel rounded-[1.75rem] p-5">
+                                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                    <div>
+                                        <div className="font-semibold text-[var(--ink)]">{item.email}</div>
+                                        <div className="mt-2 text-sm text-slate-500">Contact inbox: {item.adminContactEmail}</div>
+                                        <div className="text-sm text-slate-500">
+                                            {item.processedAt ? `Processed: ${new Date(item.processedAt).toLocaleString()}` : `Submitted: ${new Date(item.createdAt).toLocaleString()}`}
+                                        </div>
+                                        <div className="text-sm text-slate-500">Handled by: {item.processedByEmail || "-"}</div>
+                                    </div>
+                                    <span className={`status-pill ${queueStatusClass(item.status)}`}>
+                                        {item.status === "APPROVED" ? <CheckCircle2 size={14} /> : item.status === "REJECTED" ? <XCircle size={14} /> : <Clock3 size={14} />}
+                                        {item.status}
+                                    </span>
+                                </div>
+                            </div>
+                        )) : (
+                            <div className="rounded-[1.75rem] border border-dashed border-[rgba(89,64,46,0.12)] px-6 py-10 text-center text-sm text-slate-400">
+                                No processed password reset decisions yet.
                             </div>
                         )}
                     </div>
