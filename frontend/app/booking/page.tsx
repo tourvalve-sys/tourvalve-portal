@@ -782,31 +782,95 @@ export default function BookingPage() {
 
                 <div className="space-y-6">
                     <div className="space-y-6 lg:sticky lg:top-6">
-                        <div className="premium-panel rounded-[2rem] p-6 float-slow">
-                            <h2 className="mb-4 font-semibold">Flight Summary</h2>
+                        <div className="premium-panel overflow-hidden rounded-[2rem] p-6 float-slow">
+                            <div className="rounded-[1.6rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,250,244,0.98),rgba(247,238,224,0.9))] p-5 shadow-[0_18px_42px_rgba(62,43,25,0.08)]">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <div className="subtle-kicker mb-2">Flight Summary</div>
+                                        <h2 className="text-2xl font-semibold text-[var(--ink)]">
+                                            {selectedFlight.from} {"->"} {selectedFlight.to}
+                                        </h2>
+                                        <p className="mt-2 text-sm leading-6 text-slate-500">
+                                            {itinerarySegments.length > 1
+                                                ? `${itinerarySegments.length} flight legs prepared for confirmation.`
+                                                : "Your selected live itinerary is ready for confirmation."}
+                                        </p>
+                                    </div>
 
-                            <div className="space-y-4">
+                                    <div className="rounded-full bg-[rgba(255,255,255,0.78)] px-3 py-2 text-right shadow-[0_10px_24px_rgba(62,43,25,0.08)] ring-1 ring-[rgba(89,64,46,0.08)]">
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                            Fare Total
+                                        </div>
+                                        <div className="mt-1 text-xl font-semibold text-[var(--success)]">
+                                            {selectedFlight.currency} {selectedFlight.price.toFixed(2)}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-5 flex flex-wrap gap-2">
+                                    <span className="status-pill status-success !px-3 !py-2">
+                                        Ready to issue
+                                    </span>
+                                    <span className="status-pill ghost-button !px-3 !py-2 !text-[var(--ink)]">
+                                        {selectedFlight.cabinClass || "Economy"}
+                                    </span>
+                                    <span className="status-pill ghost-button !px-3 !py-2 !text-[var(--ink)]">
+                                        {itinerarySegments.length === 1 ? "Single leg" : `${itinerarySegments.length} legs`}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="mt-5 space-y-4">
                                 {itinerarySegments.map((segment, index) => (
-                                    <div key={`${segment.carrier}-${segment.flightNumber}-${index}`} className="rounded-[1.4rem] soft-panel p-4">
+                                    <div
+                                        key={`${segment.carrier}-${segment.flightNumber}-${index}`}
+                                        className="rounded-[1.5rem] border border-[rgba(89,64,46,0.08)] bg-[rgba(255,255,255,0.86)] p-4 shadow-[0_16px_36px_rgba(66,49,30,0.08)]"
+                                    >
+                                        <div className="mb-3 flex items-center justify-between gap-3">
+                                            <span className="rounded-full bg-[rgba(36,77,67,0.08)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--success)]">
+                                                Leg {index + 1}
+                                            </span>
+                                            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
+                                                {segment.carrier} {segment.flightNumber}
+                                            </span>
+                                        </div>
+
                                         <AirlineBrand
                                             carrier={segment.carrier}
                                             flightNumber={segment.flightNumber}
                                             compact
                                         />
-                                        <div className="mt-1 text-sm text-slate-500">
-                                            {segment.from} to {segment.to}
-                                        </div>
-                                        <div className="mt-1 text-sm text-slate-700">
-                                            {new Date(segment.departure).toLocaleString()} to {new Date(segment.arrival).toLocaleString()}
+
+                                        <div className="mt-4 rounded-[1.2rem] bg-[rgba(247,241,231,0.72)] px-4 py-3">
+                                            <div className="flex items-center justify-between gap-4 text-sm font-semibold text-[var(--ink)]">
+                                                <span>{segment.from}</span>
+                                                <span className="text-slate-300">{"->"}</span>
+                                                <span>{segment.to}</span>
+                                            </div>
+                                            <div className="mt-2 text-xs leading-6 text-slate-500">
+                                                {new Date(segment.departure).toLocaleString()} to{" "}
+                                                {new Date(segment.arrival).toLocaleString()}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
 
-                            <div className="mt-5 border-t pt-4 text-sm">
-                                <div className="flex justify-between font-semibold text-lg">
-                                    <span>Total</span>
-                                    <span>{selectedFlight.currency} {selectedFlight.price.toFixed(2)}</span>
+                            <div className="mt-5 rounded-[1.5rem] border border-[rgba(89,64,46,0.08)] bg-[rgba(255,255,255,0.78)] p-4 shadow-[0_12px_28px_rgba(66,49,30,0.07)]">
+                                <div className="flex items-center justify-between gap-4 text-sm">
+                                    <div>
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                            Reservation Total
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                            Final amount to capture from wallet
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-2xl font-semibold text-[var(--ink)]">
+                                            {selectedFlight.currency} {selectedFlight.price.toFixed(2)}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
