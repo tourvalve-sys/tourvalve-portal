@@ -1,11 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, ShieldCheck, Sparkles } from "lucide-react";
 import { loginUser } from "@/lib/api";
 import Link from "next/link";
+import { hasSessionCookie, removeToken, setToken } from "@/lib/auth";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -17,6 +18,23 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [showPassword, setShowPassword] = useState(false);
 
+    useEffect(() => {
+        if (!hasSessionCookie()) {
+            removeToken();
+        }
+
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        const reason = new URLSearchParams(window.location.search).get("reason");
+        if (reason === "inactive") {
+            setError("Your session became inactive and you were logged out for security.");
+        } else if (reason === "session-ended") {
+            setError("Your session has ended. Please sign in again.");
+        }
+    }, []);
+
     const getErrorMessage = (error: unknown) =>
         error instanceof Error ? error.message : "Login failed";
 
@@ -26,7 +44,7 @@ export default function LoginPage() {
             setError("");
 
             const data = await loginUser(form);
-            localStorage.setItem("token", data.token);
+            setToken(data.token);
             router.push("/");
         } catch (error: unknown) {
             setError(getErrorMessage(error));

@@ -4,6 +4,7 @@ import { BookingProvider } from "./context/BookingContext";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
+import ProtectedSessionShell from "@/components/ProtectedSessionShell";
 import { usePathname } from "next/navigation";
 
 export default function RootLayout({
@@ -29,18 +30,20 @@ export default function RootLayout({
                             </div>
                         </div>
                     ) : (
-                        <div className="page-shell">
-                            <div className="app-surface flex min-h-screen flex-col xl:flex-row">
-                                <Sidebar />
+                        <ProtectedSessionShell>
+                            <div className="page-shell">
+                                <div className="app-surface flex min-h-screen flex-col xl:flex-row">
+                                    <Sidebar />
 
-                                <div className="flex-1 pb-10">
-                                    <Topbar />
-                                    <main className="px-3 pb-28 pt-4 sm:px-4 md:px-6 md:pt-6 xl:pb-12">
-                                        {children}
-                                    </main>
+                                    <div className="flex-1 pb-10">
+                                        <Topbar />
+                                        <main className="px-3 pb-28 pt-4 sm:px-4 md:px-6 md:pt-6 xl:pb-12">
+                                            {children}
+                                        </main>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        </ProtectedSessionShell>
                     )}
                 </BookingProvider>
             </body>

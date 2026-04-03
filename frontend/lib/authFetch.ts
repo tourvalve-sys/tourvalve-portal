@@ -23,12 +23,11 @@ export async function authFetch(
         headers,
     });
 
-    // 🔥 AUTO HANDLE UNAUTHORIZED (TOKEN EXPIRED)
     if (res.status === 401) {
         removeToken();
 
         if (typeof window !== "undefined") {
-            window.location.href = "/login";
+            window.location.href = "/login?reason=session-ended";
         }
     }
 

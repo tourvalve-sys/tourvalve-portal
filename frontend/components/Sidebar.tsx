@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, Briefcase, LayoutGrid, PlaneTakeoff, ScrollText, Users, Wallet } from "lucide-react";
+import { removeToken } from "@/lib/auth";
 
 const menu = [
     { name: "Dashboard", path: "/", icon: LayoutGrid },
@@ -18,7 +19,7 @@ export default function Sidebar() {
     const pathname = usePathname();
 
     const handleLogout = () => {
-        localStorage.removeItem("token");
+        removeToken();
         window.location.href = "/login";
     };
 
