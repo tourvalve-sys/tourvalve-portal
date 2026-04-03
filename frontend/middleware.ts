@@ -13,29 +13,19 @@ function buildPublicUrl(request: NextRequest, pathname: string) {
     const forwardedProto =
         request.headers.get("x-forwarded-proto") ??
         url.protocol.replace(":", "");
-    const forwardedPort = request.headers.get("x-forwarded-port")?.trim() ?? "";
 
     url.pathname = pathname;
     url.search = "";
     url.hash = "";
 
     if (forwardedHost) {
-        const hostParts = forwardedHost.split(":");
-        url.hostname = hostParts[0];
-        url.port = hostParts[1] ?? "";
+        url.hostname = forwardedHost.split(":")[0];
     }
 
     if (forwardedProto) {
         url.protocol = `${forwardedProto}:`;
     }
-
-    if (!forwardedHost.includes(":")) {
-        if (forwardedPort && !["80", "443"].includes(forwardedPort)) {
-            url.port = forwardedPort;
-        } else {
-            url.port = "";
-        }
-    }
+    url.port = "";
 
     return url;
 }
