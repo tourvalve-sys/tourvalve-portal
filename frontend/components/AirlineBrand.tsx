@@ -8,6 +8,100 @@ type AirlineBrandProps = {
     compact?: boolean;
 };
 
+const carrierNames: Record<string, string> = {
+    MH: "Malaysia Airlines",
+    SQ: "Singapore Airlines",
+    TR: "Scoot",
+    "3K": "Jetstar Asia",
+    JQ: "Jetstar",
+    GK: "Jetstar Japan",
+    CX: "Cathay Pacific",
+    KA: "Cathay Dragon",
+    TG: "Thai Airways",
+    QR: "Qatar Airways",
+    EK: "Emirates",
+    FZ: "flydubai",
+    G9: "Air Arabia",
+    KU: "Kuwait Airways",
+    WY: "Oman Air",
+    SV: "Saudia",
+    GF: "Gulf Air",
+    LH: "Lufthansa",
+    LX: "SWISS",
+    OS: "Austrian Airlines",
+    SN: "Brussels Airlines",
+    KL: "KLM",
+    AF: "Air France",
+    BA: "British Airways",
+    TK: "Turkish Airlines",
+    VN: "Vietnam Airlines",
+    VJ: "VietJet Air",
+    PR: "Philippine Airlines",
+    "5J": "Cebu Pacific",
+    OD: "Batik Air",
+    AK: "AirAsia",
+    D7: "AirAsia X",
+    FD: "Thai AirAsia",
+    XJ: "Thai AirAsia X",
+    SL: "Thai Lion Air",
+    JT: "Lion Air",
+    QZ: "Indonesia AirAsia",
+    GA: "Garuda Indonesia",
+    ID: "Batik Air Indonesia",
+    JL: "Japan Airlines",
+    NH: "All Nippon Airways",
+    MM: "Peach",
+    BR: "EVA Air",
+    CI: "China Airlines",
+    B7: "UNI Air",
+    BI: "Royal Brunei",
+    EY: "Etihad Airways",
+    AI: "Air India",
+    IX: "Air India Express",
+    "6E": "IndiGo",
+    UL: "SriLankan Airlines",
+    CA: "Air China",
+    MU: "China Eastern",
+    CZ: "China Southern",
+    HO: "Juneyao Air",
+    HX: "Hong Kong Airlines",
+    UO: "HK Express",
+    NX: "Air Macau",
+    QF: "Qantas",
+    NZ: "Air New Zealand",
+    KE: "Korean Air",
+    OZ: "Asiana Airlines",
+    AC: "Air Canada",
+    UA: "United Airlines",
+    DL: "Delta Air Lines",
+    AA: "American Airlines",
+    LO: "LOT Polish Airlines",
+    SK: "Scandinavian Airlines",
+    AZ: "ITA Airways",
+    A3: "Aegean Airlines",
+    MS: "EgyptAir",
+    ET: "Ethiopian Airlines",
+    TP: "TAP Air Portugal",
+    IB: "Iberia",
+    AY: "Finnair",
+    FI: "Icelandair",
+    OU: "Croatia Airlines",
+    RO: "TAROM",
+    LY: "EL AL",
+    B6: "JetBlue",
+    WN: "Southwest Airlines",
+    AS: "Alaska Airlines",
+    HA: "Hawaiian Airlines",
+};
+
+const carrierAliases: Record<string, string> = {
+    "0S": "OS",
+    "0Z": "OZ",
+    "0B": "OB",
+    "0K": "OK",
+    "1X": "JQ",
+};
+
 const brandMap: Record<
     string,
     {
@@ -85,15 +179,23 @@ const brandMap: Record<
     AA: { name: "American Airlines", gradient: "from-[#1a4f9b] via-[#507ac8] to-[#d5464f]", glow: "shadow-[0_18px_36px_rgba(26,79,155,0.22)]" },
 };
 
+function normalizeCarrierCode(carrier: string | undefined, flightNumber: string | undefined) {
+    const rawCarrier = carrier?.trim().toUpperCase() || "";
+    const compactCarrier = rawCarrier.replace(/[^A-Z0-9]/g, "");
+    const flightPrefix = (flightNumber?.match(/[A-Za-z0-9]{2,3}/)?.[0] ?? "").toUpperCase();
+    const candidate = compactCarrier || flightPrefix || "FL";
+    return carrierAliases[candidate] ?? candidate;
+}
+
 export default function AirlineBrand({
     carrier,
     flightNumber,
     compact = false,
 }: AirlineBrandProps) {
-    const normalized = carrier?.trim().toUpperCase() || "FL";
+    const normalized = normalizeCarrierCode(carrier, flightNumber);
     const [failedLogos, setFailedLogos] = useState<Record<string, boolean>>({});
     const brand = brandMap[normalized] ?? {
-        name: `Airline ${normalized}`,
+        name: carrierNames[normalized] ?? `Airline ${normalized}`,
         gradient: "from-[#1d2a44] via-[#35527c] to-[#7ea3d8]",
         glow: "shadow-[0_18px_36px_rgba(29,42,68,0.22)]",
     };
