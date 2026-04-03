@@ -326,19 +326,41 @@ export default function FlightSearch() {
         .map((segment) => [segment.from || "Origin", segment.to || "Destination"].join(" -> "))
         .join("   |   ");
 
+    const getJourneySummary = (flight: FlightResult) => {
+        const itinerarySegments = flight.itinerarySegments?.length
+            ? flight.itinerarySegments
+            : [{
+                carrier: flight.carrier,
+                flightNumber: flight.flightNumber,
+                from: flight.from,
+                to: flight.to,
+                departure: flight.departure,
+                arrival: flight.arrival,
+            }];
+
+        const totalStopCount = Math.max(itinerarySegments.length - 1, 0);
+        const isDirectReturn =
+            itinerarySegments.length === 2 &&
+            itinerarySegments[0]?.from === itinerarySegments[1]?.to &&
+            itinerarySegments[0]?.to === itinerarySegments[1]?.from;
+        const isRoundTripItinerary =
+            itinerarySegments.length > 1 &&
+            itinerarySegments[0]?.from === itinerarySegments[itinerarySegments.length - 1]?.to;
+        const matchesReturnSearch = tripType === "return" && isRoundTripItinerary;
+        const nonstopEligible = matchesReturnSearch ? isDirectReturn : totalStopCount === 0;
+
+        return {
+            itinerarySegments,
+            totalStopCount,
+            isRoundTripItinerary,
+            matchesReturnSearch,
+            nonstopEligible,
+        };
+    };
+
     const filteredResults = [...results]
         .filter((flight) => {
-            const itinerarySegments = flight.itinerarySegments?.length
-                ? flight.itinerarySegments
-                : [{
-                    carrier: flight.carrier,
-                    flightNumber: flight.flightNumber,
-                    from: flight.from,
-                    to: flight.to,
-                    departure: flight.departure,
-                    arrival: flight.arrival,
-                }];
-            const stopCount = Math.max(itinerarySegments.length - 1, 0);
+            const { nonstopEligible } = getJourneySummary(flight);
 
             if (filters.pricedOnly && !(flight.airPricingSolutionXml && flight.price > 0)) {
                 return false;
@@ -369,7 +391,7 @@ export default function FlightSearch() {
             }
 
             if (filters.nonstopOnly) {
-                return stopCount === 0;
+                return nonstopEligible;
             }
 
             return true;
@@ -778,30 +800,25 @@ export default function FlightSearch() {
                             filteredResults.map((flight, index) => {
                                 const isBookable = Boolean(flight.airPricingSolutionXml && flight.price > 0);
                                 const isPricing = pricingFlightId === flight.id;
-                                const itinerarySegments = flight.itinerarySegments?.length
-                                    ? flight.itinerarySegments
-                                    : [{
-                                        carrier: flight.carrier,
-                                        flightNumber: flight.flightNumber,
-                                        from: flight.from,
-                                        to: flight.to,
-                                        departure: flight.departure,
-                                        arrival: flight.arrival,
-                                    }];
+                                const {
+                                    itinerarySegments,
+                                    totalStopCount,
+                                    isRoundTripItinerary,
+                                    matchesReturnSearch,
+                                    nonstopEligible,
+                                } = getJourneySummary(flight);
                                 const itineraryPath = itinerarySegments
                                     .flatMap((segment, segmentIndex) =>
                                         segmentIndex === 0 ? [segment.from, segment.to] : [segment.to]
                                     )
                                     .join(" -> ");
-                                const stopCount = Math.max(itinerarySegments.length - 1, 0);
-                                const isRoundTripItinerary =
-                                    itinerarySegments.length > 1 &&
-                                    itinerarySegments[0]?.from === itinerarySegments[itinerarySegments.length - 1]?.to;
-                                const stopSummary = isRoundTripItinerary
-                                    ? "Return itinerary"
-                                    : stopCount === 0
+                                const stopSummary = matchesReturnSearch && nonstopEligible
+                                    ? "Nonstop return itinerary"
+                                    : isRoundTripItinerary
+                                        ? "Return itinerary"
+                                    : totalStopCount === 0
                                         ? "Nonstop itinerary"
-                                        : `${stopCount} stop${stopCount > 1 ? "s" : ""} via ${itinerarySegments
+                                        : `${totalStopCount} stop${totalStopCount > 1 ? "s" : ""} via ${itinerarySegments
                                             .slice(0, -1)
                                             .map((segment) => segment.to)
                                             .filter((stop) => stop !== flight.to)
