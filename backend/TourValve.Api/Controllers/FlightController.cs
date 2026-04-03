@@ -58,7 +58,10 @@ public class FlightsController : ControllerBase
                 });
             }
 
-            var availabilityDiagnostic = await GetAvailabilityDiagnosticAsync(req, departDate, returnDate);
+            var canUseAvailabilityDiagnostic = ShouldUseAvailabilityDiagnostic(normalizedCabin);
+            var availabilityDiagnostic = canUseAvailabilityDiagnostic
+                ? await GetAvailabilityDiagnosticAsync(req, departDate, returnDate)
+                : (false, null, new List<FlightDto>());
 
             if (availabilityDiagnostic.Exists)
             {
@@ -75,7 +78,20 @@ public class FlightsController : ControllerBase
             if (!string.IsNullOrWhiteSpace(normalizedCabin) &&
                 ex.Message.Contains("No flight records found for this date or market", StringComparison.OrdinalIgnoreCase))
             {
-                detail = $"No {normalizedCabin.ToLowerInvariant()}-class fares were returned for this route and date. Try economy, another date, or a different carrier.";
+                return Ok(new
+                {
+                    flights = new List<FlightDto>(),
+                    diagnosticMessage = BuildCabinNoFareMessage(normalizedCabin)
+                });
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedCabin) && !canUseAvailabilityDiagnostic)
+            {
+                return Ok(new
+                {
+                    flights = new List<FlightDto>(),
+                    diagnosticMessage = BuildCabinNoFareMessage(normalizedCabin)
+                });
             }
 
             return StatusCode(StatusCodes.Status502BadGateway, new
@@ -106,7 +122,10 @@ public class FlightsController : ControllerBase
                 });
             }
 
-            var availabilityDiagnostic = await GetAvailabilityDiagnosticAsync(req, departDate, returnDate);
+            var canUseAvailabilityDiagnostic = ShouldUseAvailabilityDiagnostic(normalizedCabin);
+            var availabilityDiagnostic = canUseAvailabilityDiagnostic
+                ? await GetAvailabilityDiagnosticAsync(req, departDate, returnDate)
+                : (false, null, new List<FlightDto>());
 
             if (availabilityDiagnostic.Exists)
             {
@@ -116,6 +135,15 @@ public class FlightsController : ControllerBase
                     diagnosticMessage = string.IsNullOrWhiteSpace(normalizedCabin)
                         ? "Low fare unavailable, but schedule availability exists."
                         : $"Low fare unavailable for {normalizedCabin.ToLowerInvariant()} class, but schedule availability exists."
+                });
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedCabin))
+            {
+                return Ok(new
+                {
+                    flights = new List<FlightDto>(),
+                    diagnosticMessage = BuildCabinNoFareMessage(normalizedCabin)
                 });
             }
 
@@ -404,6 +432,13 @@ public class FlightsController : ControllerBase
             _ => null
         };
     }
+
+    private static bool ShouldUseAvailabilityDiagnostic(string? normalizedCabin)
+        => string.IsNullOrWhiteSpace(normalizedCabin) ||
+           string.Equals(normalizedCabin, "Economy", StringComparison.OrdinalIgnoreCase);
+
+    private static string BuildCabinNoFareMessage(string normalizedCabin)
+        => $"No {normalizedCabin.ToLowerInvariant()}-class fares were returned for this route and date. Try economy, another date, or a different carrier.";
 
     private static List<FlightDto> FilterByRequestedCabin(List<FlightDto> flights, string? requestedCabin)
     {
