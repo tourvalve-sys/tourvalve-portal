@@ -201,6 +201,12 @@ function BookingConfirmationPageContent() {
                         </div>
                         <div className="space-y-3">
                             <button
+                                onClick={() => router.push(`/ancillaries?bookingId=${encodeURIComponent(confirmation.bookingId)}`)}
+                                className="ghost-button w-full rounded-2xl px-5 py-3 font-semibold"
+                            >
+                                Add Baggage, Meals & Seats
+                            </button>
+                            <button
                                 onClick={() => router.push(`/bookings?created=${encodeURIComponent(confirmation.bookingReference)}`)}
                                 className="gold-button w-full rounded-2xl px-5 py-3 font-semibold"
                             >

@@ -550,6 +550,17 @@ function BookingsPageContent() {
                                 <div className="mt-2 text-sm leading-7 text-slate-500">
                                     Quote and charge post-book baggage, meal, and seat requests in a structured order flow. When live airline fulfillment is limited, the request is still logged into Travelport and queued for manual servicing.
                                 </div>
+                                <div className="mt-4 flex flex-wrap gap-3">
+                                    <button
+                                        onClick={() => window.open(`/ancillaries?bookingId=${selectedBooking.id}`, "_blank", "noopener,noreferrer")}
+                                        className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold"
+                                    >
+                                        Open Ancillary Studio
+                                    </button>
+                                    <div className="rounded-2xl bg-[rgba(255,247,236,0.84)] px-4 py-3 text-sm text-slate-600">
+                                        Use the new premium add-ons workspace for a cleaner baggage, meal, and seat selection flow.
+                                    </div>
+                                </div>
                                 <div className="mt-3 rounded-2xl bg-white/80 px-4 py-4 text-sm text-slate-600">
                                     <div className="font-semibold text-[var(--ink)]">Wallet flow</div>
                                     <div className="mt-1">Ancillary charges are held first, captured once the request is logged, and refunded automatically if the order is failed or cancelled later.</div>
