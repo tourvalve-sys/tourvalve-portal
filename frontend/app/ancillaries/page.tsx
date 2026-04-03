@@ -36,6 +36,12 @@ type AncillaryPreset = {
     baseAmount: number;
     highlight?: string;
     bullets: string[];
+    comparison: Array<{
+        label: string;
+        value: string;
+        included: boolean;
+    }>;
+    rules: string[];
 };
 
 const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
@@ -47,6 +53,12 @@ const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
             description: "Adds a lighter checked baggage request for this selected sector.",
             baseAmount: 45,
             bullets: ["Cabin baggage remains unchanged", "Best for short leisure trips", "Queued for servicing after charge"],
+            comparison: [
+                { label: "Personal item", value: "Unchanged", included: true },
+                { label: "Carry-on baggage", value: "Unchanged", included: true },
+                { label: "Checked baggage", value: "15kg", included: true },
+            ],
+            rules: ["Most suitable for lighter city breaks", "No change to cabin baggage footprint", "Refund path available if request fails"],
         },
         {
             code: "BG20",
@@ -56,6 +68,12 @@ const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
             baseAmount: 60,
             highlight: "Recommended",
             bullets: ["Operationally common add-on", "Good fit for return sectors", "Logged against live booking record"],
+            comparison: [
+                { label: "Personal item", value: "Unchanged", included: true },
+                { label: "Carry-on baggage", value: "Unchanged", included: true },
+                { label: "Checked baggage", value: "20kg", included: true },
+            ],
+            rules: ["Best all-round baggage top-up", "Often the easiest ops fit", "Useful for return shopping and leisure routes"],
         },
         {
             code: "BG30",
@@ -64,6 +82,12 @@ const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
             description: "Heavier checked baggage request for longer stays or multi-stop journeys.",
             baseAmount: 95,
             bullets: ["Useful for longer itineraries", "Premium baggage servicing", "Manual fulfillment queue if carrier limits apply"],
+            comparison: [
+                { label: "Personal item", value: "Unchanged", included: true },
+                { label: "Carry-on baggage", value: "Unchanged", included: true },
+                { label: "Checked baggage", value: "30kg", included: true },
+            ],
+            rules: ["Best for longer itineraries", "May require manual servicing on some carriers", "Higher ancillary revenue contribution"],
         },
     ],
     MEAL: [
@@ -74,6 +98,12 @@ const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
             description: "Structured meal request recorded against the selected sector.",
             baseAmount: 18,
             bullets: ["Useful on full-service routes", "Servicing note included", "Good baseline request"],
+            comparison: [
+                { label: "Meal type", value: "Standard", included: true },
+                { label: "Dietary flag", value: "No", included: false },
+                { label: "Ops note", value: "Included", included: true },
+            ],
+            rules: ["Best baseline catering request", "Ideal when carrier supports meal servicing", "Stored clearly in ancillary ledger"],
         },
         {
             code: "MLHAL",
@@ -83,6 +113,12 @@ const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
             baseAmount: 22,
             highlight: "Popular",
             bullets: ["Clear dietary flag", "Segment-specific request", "Captured in ancillary ledger"],
+            comparison: [
+                { label: "Meal type", value: "Halal", included: true },
+                { label: "Dietary flag", value: "Yes", included: true },
+                { label: "Ops note", value: "Included", included: true },
+            ],
+            rules: ["Best for dietary-sensitive travelers", "Segment-specific meal preference", "Clearer to operations than free-text remarks"],
         },
         {
             code: "MLVEG",
@@ -91,6 +127,12 @@ const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
             description: "Vegetarian catering request prepared for the chosen sector and traveler servicing flow.",
             baseAmount: 22,
             bullets: ["Special meal handling", "Useful for advance servicing", "Refundable on failed request"],
+            comparison: [
+                { label: "Meal type", value: "Vegetarian", included: true },
+                { label: "Dietary flag", value: "Yes", included: true },
+                { label: "Ops note", value: "Included", included: true },
+            ],
+            rules: ["Good fit for advance servicing", "Structured dietary logging", "Operationally easier to trace later"],
         },
     ],
     SEAT: [
@@ -101,6 +143,12 @@ const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
             description: "Structured preferred seating request with standard zone placement.",
             baseAmount: 28,
             bullets: ["Best for standard seating", "Preference logged clearly", "Ideal if exact map purchase is limited"],
+            comparison: [
+                { label: "Zone", value: "Standard", included: true },
+                { label: "Legroom", value: "Standard", included: false },
+                { label: "Preference note", value: "Included", included: true },
+            ],
+            rules: ["Best for standard zone requests", "Good if exact seat map support is limited", "Operationally simple to queue"],
         },
         {
             code: "STFRONT",
@@ -110,6 +158,12 @@ const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
             baseAmount: 36,
             highlight: "Recommended",
             bullets: ["Quicker exit after arrival", "Priority-style cabin positioning", "Operations can fulfill or requeue"],
+            comparison: [
+                { label: "Zone", value: "Front cabin", included: true },
+                { label: "Legroom", value: "Standard+", included: true },
+                { label: "Preference note", value: "Included", included: true },
+            ],
+            rules: ["Good premium-feel upsell", "Usually easier to explain to traveler", "May be requeued if carrier restricts availability"],
         },
         {
             code: "STXL",
@@ -118,6 +172,12 @@ const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
             description: "Higher-value seating request targeted at premium legroom rows when supported.",
             baseAmount: 55,
             bullets: ["Best comfort option", "Premium seat request", "Carrier restrictions handled in queue"],
+            comparison: [
+                { label: "Zone", value: "Premium row", included: true },
+                { label: "Legroom", value: "Extra", included: true },
+                { label: "Preference note", value: "Included", included: true },
+            ],
+            rules: ["Highest comfort-focused option", "Best for long sectors", "Carrier restrictions still handled inside the queue"],
         },
     ],
 };
@@ -258,6 +318,15 @@ function AncillariesPageContent() {
     const unsuccessfulCount = orders.filter((order) =>
         ["FAILED", "CANCELLED"].includes(order.status)
     ).length;
+    const travelers = retrievedRecord?.travelers.length
+        ? retrievedRecord.travelers
+        : [
+              {
+                  key: "TRV-1",
+                  firstName: "Passenger",
+                  lastName: "1",
+              },
+          ];
 
     const quoteOption = async (preset: AncillaryPreset) => {
         if (!bookingId) return;
@@ -466,7 +535,20 @@ function AncillariesPageContent() {
                         </div>
                     </div>
 
-                    <div className="grid gap-4 xl:grid-cols-3">
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <div className="subtle-kicker">Compare add-on options</div>
+                                <h3 className="mt-2 text-2xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
+                                    Choose the add-on level that fits this sector best.
+                                </h3>
+                            </div>
+                            <div className="hidden rounded-full bg-[rgba(255,247,236,0.84)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)] xl:inline-flex">
+                                {activeOptions.length} curated options
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 xl:grid-cols-3">
                         {activeOptions.map((preset) => {
                             const active = selectedPreset?.code === preset.code;
                             return (
@@ -507,6 +589,20 @@ function AncillariesPageContent() {
                                         <div className="mt-1 text-xs text-slate-500">Portal quote will add configured ancillary markup before charge.</div>
                                     </div>
 
+                                    <div className="mt-5 rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/88 p-4">
+                                        <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Inclusion snapshot</div>
+                                        <div className="mt-3 space-y-2">
+                                            {preset.comparison.map((item) => (
+                                                <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
+                                                    <span className="text-slate-500">{item.label}</span>
+                                                    <span className={`font-semibold ${item.included ? "text-[var(--ink)]" : "text-slate-400"}`}>
+                                                        {item.value}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
                                     <button
                                         onClick={() => void quoteOption(preset)}
                                         disabled={action === `quote-${preset.code}`}
@@ -517,6 +613,7 @@ function AncillariesPageContent() {
                                 </article>
                             );
                         })}
+                        </div>
                     </div>
 
                     <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
@@ -611,6 +708,72 @@ function AncillariesPageContent() {
                                         Every add-on request is stored with its sector, option code, amount split, notes, and
                                         final servicing status for audit and reporting.
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                        <div className="soft-panel rounded-[2rem] p-6">
+                            <div className="subtle-kicker">Traveler-level coverage</div>
+                            <h3 className="mt-2 text-2xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
+                                Show the traveler exactly what changes.
+                            </h3>
+                            <div className="mt-5 rounded-[1.7rem] bg-white/88 p-5">
+                                <div className="grid gap-4">
+                                    {travelers.map((traveler, index) => (
+                                        <div
+                                            key={traveler.key}
+                                            className="rounded-[1.4rem] border border-[rgba(89,64,46,0.08)] bg-[rgba(247,244,239,0.8)] p-4"
+                                        >
+                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                                                        Passenger {index + 1}
+                                                    </div>
+                                                    <div className="mt-2 text-lg font-semibold text-[var(--ink)]">
+                                                        {traveler.firstName} {traveler.lastName}
+                                                    </div>
+                                                </div>
+                                                <div className="rounded-full bg-white/85 px-3 py-1 text-xs font-semibold text-[var(--accent-strong)]">
+                                                    {activeMeta.label}
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                                                {(selectedPreset?.comparison ?? activeOptions[0].comparison).map((item) => (
+                                                    <div key={item.label} className="rounded-[1.1rem] bg-white/85 px-3 py-3">
+                                                        <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                                                            {item.label}
+                                                        </div>
+                                                        <div className="mt-2 text-sm font-semibold text-[var(--ink)]">
+                                                            {item.value}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="soft-panel rounded-[2rem] p-6">
+                            <div className="subtle-kicker">Changes & flexibility</div>
+                            <h3 className="mt-2 text-2xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
+                                Clarify what happens after purchase.
+                            </h3>
+                            <div className="mt-5 space-y-3">
+                                {(selectedPreset?.rules ?? activeOptions[0].rules).map((rule) => (
+                                    <div key={rule} className="rounded-[1.35rem] bg-white/88 p-4">
+                                        <div className="flex items-start gap-3">
+                                            <CheckCircle2 size={18} className="mt-0.5 text-[var(--success)]" />
+                                            <div className="text-sm leading-7 text-slate-600">{rule}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                                <div className="rounded-[1.35rem] bg-[rgba(255,247,236,0.84)] p-4 text-sm leading-7 text-slate-600">
+                                    We can later extend this panel with airline-specific cancellation coverage, change
+                                    handling, and exact allowance copy once your production ancillary credentials are live.
                                 </div>
                             </div>
                         </div>
