@@ -6,23 +6,35 @@ const publicPrefixes = ["/_next", "/images", "/favicon.ico", "/icon.png", "/appl
 
 function buildPublicUrl(request: NextRequest, pathname: string) {
     const url = request.nextUrl.clone();
-    const forwardedHost =
+    const forwardedHostHeader =
         request.headers.get("x-forwarded-host") ??
         request.headers.get("host");
+    const forwardedHost = forwardedHostHeader?.split(",")[0].trim() ?? "";
     const forwardedProto =
         request.headers.get("x-forwarded-proto") ??
         url.protocol.replace(":", "");
+    const forwardedPort = request.headers.get("x-forwarded-port")?.trim() ?? "";
 
     url.pathname = pathname;
     url.search = "";
     url.hash = "";
 
     if (forwardedHost) {
-        url.host = forwardedHost;
+        const hostParts = forwardedHost.split(":");
+        url.hostname = hostParts[0];
+        url.port = hostParts[1] ?? "";
     }
 
     if (forwardedProto) {
         url.protocol = `${forwardedProto}:`;
+    }
+
+    if (!forwardedHost.includes(":")) {
+        if (forwardedPort && !["80", "443"].includes(forwardedPort)) {
+            url.port = forwardedPort;
+        } else {
+            url.port = "";
+        }
     }
 
     return url;
