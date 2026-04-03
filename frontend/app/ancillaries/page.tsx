@@ -4,8 +4,11 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
     BriefcaseBusiness,
+    CheckCircle2,
     ChefHat,
     ChevronRight,
+    CircleAlert,
+    ClipboardCheck,
     Luggage,
     PlaneTakeoff,
     Sparkles,
@@ -245,6 +248,16 @@ function AncillariesPageContent() {
     const activeOptions = ancillaryCatalog[category];
     const activeSegmentDetails =
         itinerarySegments.find((segment) => segment.key === selectedSegment) ?? itinerarySegments[0] ?? null;
+    const latestQueuedOrder = orders[0] ?? null;
+    const activeQuoteCurrency = quote?.currency ?? "MYR";
+    const existingOrderValue = orders.reduce((total, order) => total + order.totalAmount, 0);
+    const projectedTotal = existingOrderValue + (quote?.totalAmount ?? 0);
+    const queuedCount = orders.filter((order) =>
+        ["PROCESSING", "MANUAL_SERVICE_REQUIRED", "FULFILLED"].includes(order.status)
+    ).length;
+    const unsuccessfulCount = orders.filter((order) =>
+        ["FAILED", "CANCELLED"].includes(order.status)
+    ).length;
 
     const quoteOption = async (preset: AncillaryPreset) => {
         if (!bookingId) return;
@@ -506,6 +519,103 @@ function AncillariesPageContent() {
                         })}
                     </div>
 
+                    <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                        <div className="soft-panel rounded-[2rem] p-6">
+                            <div className="subtle-kicker">Allowance & servicing view</div>
+                            <h3 className="mt-2 text-2xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
+                                What this add-on changes for the traveler.
+                            </h3>
+                            <div className="mt-5 rounded-[1.7rem] bg-white/88 p-5">
+                                <div className="grid gap-4 sm:grid-cols-3">
+                                    <div className="rounded-[1.25rem] bg-[rgba(247,244,239,0.88)] p-4">
+                                        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
+                                            <Luggage size={16} className="text-[var(--accent-strong)]" />
+                                            Baggage
+                                        </div>
+                                        <div className="mt-3 text-sm leading-6 text-slate-500">
+                                            {category === "BAGGAGE"
+                                                ? selectedPreset?.title ?? "Choose a baggage option to preview allowance changes."
+                                                : "Cabin and checked baggage remain exactly as originally ticketed unless a baggage add-on is selected."}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-[1.25rem] bg-[rgba(247,244,239,0.88)] p-4">
+                                        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
+                                            <ChefHat size={16} className="text-[var(--accent-strong)]" />
+                                            Meals
+                                        </div>
+                                        <div className="mt-3 text-sm leading-6 text-slate-500">
+                                            {category === "MEAL"
+                                                ? selectedPreset?.title ?? "Choose a meal request to add structured catering notes."
+                                                : "Meal handling follows the original ticket unless a dedicated meal request is sent into servicing."}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-[1.25rem] bg-[rgba(247,244,239,0.88)] p-4">
+                                        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
+                                            <BriefcaseBusiness size={16} className="text-[var(--accent-strong)]" />
+                                            Seating
+                                        </div>
+                                        <div className="mt-3 text-sm leading-6 text-slate-500">
+                                            {category === "SEAT"
+                                                ? selectedPreset?.title ?? "Choose a seating request to shape traveler comfort."
+                                                : "Seat placement stays as originally booked unless a seating request is queued for the selected sector."}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-5 rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-[rgba(255,247,236,0.6)] p-4">
+                                    <div className="text-xs uppercase tracking-[0.18em] text-[var(--accent-strong)]">
+                                        Active sector
+                                    </div>
+                                    <div className="mt-2 text-lg font-semibold text-[var(--ink)]">
+                                        {activeSegmentDetails?.title ?? selectedSegment}
+                                    </div>
+                                    <div className="mt-1 text-sm text-slate-500">
+                                        {activeSegmentDetails?.timing ??
+                                            "The selected ancillary will be attached to this retrieved sector label."}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="soft-panel rounded-[2rem] p-6">
+                            <div className="subtle-kicker">Policies & handling</div>
+                            <h3 className="mt-2 text-2xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
+                                Operational rules before charge.
+                            </h3>
+                            <div className="mt-5 space-y-3">
+                                <div className="rounded-[1.35rem] bg-white/88 p-4">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
+                                        <CheckCircle2 size={16} className="text-[var(--success)]" />
+                                        Included in this flow
+                                    </div>
+                                    <div className="mt-3 text-sm leading-7 text-slate-500">
+                                        Wallet hold, ancillary ledger write, admin markup capture, and automatic queue logging
+                                        for fulfillment or manual service fallback.
+                                    </div>
+                                </div>
+                                <div className="rounded-[1.35rem] bg-white/88 p-4">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
+                                        <CircleAlert size={16} className="text-[var(--accent-strong)]" />
+                                        Changes & refund logic
+                                    </div>
+                                    <div className="mt-3 text-sm leading-7 text-slate-500">
+                                        Failed or cancelled ancillary requests are designed to release or refund their held
+                                        amounts. Carrier servicing restrictions can still move a request into manual review.
+                                    </div>
+                                </div>
+                                <div className="rounded-[1.35rem] bg-white/88 p-4">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
+                                        <ClipboardCheck size={16} className="text-[var(--accent-strong)]" />
+                                        Queue handling
+                                    </div>
+                                    <div className="mt-3 text-sm leading-7 text-slate-500">
+                                        Every add-on request is stored with its sector, option code, amount split, notes, and
+                                        final servicing status for audit and reporting.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="soft-panel rounded-[2rem] p-6">
                         <div className="subtle-kicker">Service note</div>
                         <h3 className="mt-2 text-2xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
@@ -532,6 +642,22 @@ function AncillariesPageContent() {
                                         carrier={activeSegmentDetails.carrier}
                                         flightNumber={activeSegmentDetails.flightNumber}
                                     />
+                                </div>
+                                <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                                    <div className="rounded-[1.2rem] bg-[rgba(247,244,239,0.88)] px-4 py-3">
+                                        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Queued add-ons</div>
+                                        <div className="mt-2 text-2xl font-semibold text-[var(--ink)]">{queuedCount}</div>
+                                    </div>
+                                    <div className="rounded-[1.2rem] bg-[rgba(247,244,239,0.88)] px-4 py-3">
+                                        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Existing value</div>
+                                        <div className="mt-2 text-2xl font-semibold text-[var(--ink)]">
+                                            {formatCurrency(existingOrderValue, activeQuoteCurrency)}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-[1.2rem] bg-[rgba(247,244,239,0.88)] px-4 py-3">
+                                        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Unsuccessful</div>
+                                        <div className="mt-2 text-2xl font-semibold text-[var(--ink)]">{unsuccessfulCount}</div>
+                                    </div>
                                 </div>
                             </div>
                         ) : null}
@@ -564,6 +690,12 @@ function AncillariesPageContent() {
                                     <span className="font-semibold text-[var(--ink)]">Total charge</span>
                                     <span className="text-2xl font-semibold text-[var(--accent-strong)]">{formatCurrency(quote.totalAmount, quote.currency)}</span>
                                 </div>
+                                <div className="flex items-center justify-between rounded-[1.2rem] bg-[rgba(255,247,236,0.76)] px-3 py-3">
+                                    <span className="font-semibold text-[var(--ink)]">Projected ancillary total</span>
+                                    <span className="text-lg font-semibold text-[var(--ink)]">
+                                        {formatCurrency(projectedTotal, quote.currency)}
+                                    </span>
+                                </div>
                                 <div className="rounded-[1.2rem] bg-[rgba(225,246,236,0.88)] px-3 py-3 text-xs leading-6 text-[var(--success)]">
                                     Wallet hold is placed first. The request is then logged into the ancillary servicing queue and refunded automatically if failed or cancelled later.
                                 </div>
@@ -574,6 +706,21 @@ function AncillariesPageContent() {
                                 >
                                     {action === "create-order" ? "Charging & logging..." : "Charge Wallet & Add To Queue"}
                                 </button>
+                            </div>
+                        ) : null}
+
+                        {latestQueuedOrder ? (
+                            <div className="mt-4 rounded-[1.35rem] bg-[rgba(255,247,236,0.76)] p-4">
+                                <div className="text-xs uppercase tracking-[0.18em] text-[var(--accent-strong)]">
+                                    Latest logged request
+                                </div>
+                                <div className="mt-2 text-sm font-semibold text-[var(--ink)]">
+                                    {latestQueuedOrder.description}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                    {latestQueuedOrder.segmentLabel || "All sectors"} •{" "}
+                                    {formatCurrency(latestQueuedOrder.totalAmount, latestQueuedOrder.currency)}
+                                </div>
                             </div>
                         ) : null}
 
