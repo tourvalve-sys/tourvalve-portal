@@ -571,7 +571,7 @@ public class FlightsController : ControllerBase
     AuthorizedBy=""{Escape(authorizedBy)}""
     TargetBranch=""{Escape(_travelportConfig.TargetBranch)}""
     TraceId=""TV-SEAT-{DateTime.UtcNow:yyyyMMddHHmmss}""
-    ReturnSeatPricing=""false"">
+    ReturnSeatPricing=""true"">
   <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
   <air:SearchTraveler Code=""ADT"">
     <com:Name First=""TourValve"" Last=""Traveler"" />

@@ -621,16 +621,16 @@ export default function BookingPage() {
                                         Live Seat Mapping
                                     </div>
                                     <h3 className="text-2xl font-semibold text-[var(--ink)]">
-                                        Choose real seats by flight leg.
+                                        Preview live seats by flight leg.
                                     </h3>
                                     <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">
-                                        Load the live seat layout for each segment, then pick the exact seat code you want captured into the booking remarks.
+                                        Load the live Travelport seat layout for each segment, then choose the seat code you want carried as a seat request with the booking.
                                     </p>
                                 </div>
 
                                 <div className="flex flex-col gap-3 lg:items-stretch">
                                     <span className="status-pill ghost-button !flex !w-full !justify-center !px-4 !py-2 !text-center !text-[var(--accent-strong)]">
-                                        Pre-book seat map unavailable
+                                        Seat preview only
                                     </span>
                                     <button
                                         type="button"
@@ -663,7 +663,7 @@ export default function BookingPage() {
                                             >
                                                 <div className="font-semibold">{segment.label}</div>
                                                 <div className="mt-1 text-xs opacity-80">
-                                                    {selected ? `Seat ${selected.seatCode} selected` : "No seat chosen yet"}
+                                                    {selected ? `Seat ${selected.seatCode} requested` : "No seat requested yet"}
                                                 </div>
                                             </button>
                                         );
@@ -673,7 +673,7 @@ export default function BookingPage() {
 
                             {selectedSeatSummary && (
                                 <div className="mt-4 rounded-[1.3rem] bg-[rgba(228,243,235,0.76)] px-4 py-3 text-sm text-[var(--success)]">
-                                    {selectedSeatSummary}
+                                    Requested seats: {selectedSeatSummary}
                                 </div>
                             )}
 
@@ -757,7 +757,7 @@ export default function BookingPage() {
                                                 Live seat map unavailable for this fare
                                             </div>
                                             <div>
-                                                Your backup seat preference will still be sent.
+                                                Your backup seat request will still be sent.
                                             </div>
                                             <div className="mt-1 text-xs text-slate-500">
                                                 {seatMap.message || "The airline returned a seat-map response, but there were no seat rows available to render for this leg."}
@@ -769,13 +769,13 @@ export default function BookingPage() {
 
                             {!seatMap && !seatMapLoading && (
                                 <div className="mt-4 rounded-[1.3rem] bg-[rgba(255,247,236,0.82)] px-4 py-3 text-sm leading-7 text-slate-500">
-                                    Start with the leg tabs above, then load the live seat map to replace the generic seat preference with actual seat numbers.
+                                    Start with the leg tabs above, then load the live seat map to replace the generic seat preference with specific seat requests.
                                 </div>
                             )}
                         </div>
 
                         <div className="mt-4 rounded-[1.5rem] bg-[rgba(255,247,236,0.82)] px-4 py-3 text-sm leading-7 text-slate-500">
-                            These options are captured in the booking flow now. Airline fulfilment still depends on carrier rules and what the live reservation accepts.
+                            This is a live Travelport seat-map preview. The chosen seat codes are sent as booking seat requests, while final fulfilment still depends on the airline and fare rules.
                         </div>
                     </div>
                 </div>
