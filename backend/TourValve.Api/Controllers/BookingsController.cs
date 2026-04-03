@@ -59,8 +59,9 @@ public class BookingsController : ControllerBase
         string FrequentFlyerProgram,
         string FrequentFlyerNumber,
         string Note);
-    public record AncillaryQuoteRequest(string Type, string SegmentLabel, string OptionCode, string Description, decimal BaseAmount, string Currency, string Notes);
-    public record AncillaryOrderRequest(string Type, string SegmentLabel, string OptionCode, string Description, decimal BaseAmount, string Currency, string Notes);
+    public record TravelerSelectionRequest(string TravelerKey, string TravelerName, int Quantity);
+    public record AncillaryQuoteRequest(string Type, string SegmentLabel, string OptionCode, string Description, decimal BaseAmount, string Currency, string Notes, List<TravelerSelectionRequest>? TravelerSelections);
+    public record AncillaryOrderRequest(string Type, string SegmentLabel, string OptionCode, string Description, decimal BaseAmount, string Currency, string Notes, List<TravelerSelectionRequest>? TravelerSelections);
     public record AncillaryStatusRequest(string Status, string Notes, string ProviderReference);
 
     [HttpGet]
@@ -219,7 +220,8 @@ public class BookingsController : ControllerBase
             return BadRequest(new { error = "Ancillary type and description are required." });
 
         var normalizedType = request.Type.Trim().ToUpperInvariant();
-        var baseAmount = decimal.Round(Math.Max(request.BaseAmount, 0m), 2, MidpointRounding.AwayFromZero);
+        var selectionCount = GetRequestedAncillaryUnits(request.TravelerSelections);
+        var baseAmount = decimal.Round(Math.Max(request.BaseAmount, 0m) * selectionCount, 2, MidpointRounding.AwayFromZero);
         var markupAmount = _ancillaryMarkup.CalculateMarkupAmount(normalizedType);
         var totalAmount = decimal.Round(baseAmount + markupAmount, 2, MidpointRounding.AwayFromZero);
 
@@ -235,7 +237,17 @@ public class BookingsController : ControllerBase
             currency = string.IsNullOrWhiteSpace(request.Currency) ? "MYR" : request.Currency.Trim().ToUpperInvariant(),
             fulfillmentMode = "TRAVELPORT_REMARK",
             status = "PENDING_PAYMENT",
-            note = request.Notes?.Trim() ?? string.Empty
+            note = BuildAncillaryNotes(request.Notes, request.TravelerSelections),
+            requestedUnits = selectionCount,
+            travelerSelections = request.TravelerSelections?
+                .Where(x => x.Quantity > 0)
+                .Select(x => (object)new
+                {
+                    travelerKey = x.TravelerKey,
+                    travelerName = x.TravelerName,
+                    quantity = x.Quantity
+                })
+                .ToList() ?? new List<object>()
         });
     }
 
@@ -255,7 +267,8 @@ public class BookingsController : ControllerBase
 
         var normalizedType = request.Type.Trim().ToUpperInvariant();
         var currency = string.IsNullOrWhiteSpace(request.Currency) ? "MYR" : request.Currency.Trim().ToUpperInvariant();
-        var baseAmount = decimal.Round(Math.Max(request.BaseAmount, 0m), 2, MidpointRounding.AwayFromZero);
+        var selectionCount = GetRequestedAncillaryUnits(request.TravelerSelections);
+        var baseAmount = decimal.Round(Math.Max(request.BaseAmount, 0m) * selectionCount, 2, MidpointRounding.AwayFromZero);
         var markupAmount = _ancillaryMarkup.CalculateMarkupAmount(normalizedType);
         var totalAmount = decimal.Round(baseAmount + markupAmount, 2, MidpointRounding.AwayFromZero);
         var order = new TourValve.Domain.BookingAncillaryOrder
@@ -273,7 +286,7 @@ public class BookingsController : ControllerBase
             Currency = currency,
             Status = "PENDING_PAYMENT",
             FulfillmentMode = "TRAVELPORT_REMARK",
-            Notes = request.Notes?.Trim() ?? string.Empty,
+            Notes = BuildAncillaryNotes(request.Notes, request.TravelerSelections),
             RequestedAt = DateTime.UtcNow
         };
 
@@ -707,6 +720,37 @@ public class BookingsController : ControllerBase
         });
 
         await _db.SaveChangesAsync();
+    }
+
+    private static int GetRequestedAncillaryUnits(List<TravelerSelectionRequest>? selections)
+    {
+        var count = selections?
+            .Where(x => x.Quantity > 0)
+            .Sum(x => Math.Max(0, x.Quantity)) ?? 0;
+
+        return Math.Max(count, 1);
+    }
+
+    private static string BuildAncillaryNotes(string? notes, List<TravelerSelectionRequest>? selections)
+    {
+        var parts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(notes))
+            parts.Add(notes.Trim());
+
+        var travelerText = selections?
+            .Where(x => x.Quantity > 0)
+            .Select(x =>
+            {
+                var name = string.IsNullOrWhiteSpace(x.TravelerName) ? x.TravelerKey : x.TravelerName;
+                return $"{name} x{x.Quantity}";
+            })
+            .ToList();
+
+        if (travelerText is { Count: > 0 })
+            parts.Add($"Travelers: {string.Join(", ", travelerText)}");
+
+        return string.Join(" | ", parts);
     }
 
     private static string BuildAncillaryRemark(TourValve.Domain.BookingAncillaryOrder order)

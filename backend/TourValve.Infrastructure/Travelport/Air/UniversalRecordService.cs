@@ -98,8 +98,122 @@ public class UniversalRecordService
             locatorCode = locator,
             travelers,
             segments,
+            ancillaryContext = BuildAncillaryContext(doc),
             rawResponse = xml
         };
+    }
+
+    private static object BuildAncillaryContext(XDocument doc)
+    {
+        var baggageTexts = CollectTexts(doc, element =>
+            element.Name.LocalName.Contains("Baggage", StringComparison.OrdinalIgnoreCase) ||
+            element.Name.LocalName.Contains("Bag", StringComparison.OrdinalIgnoreCase) ||
+            element.Name.LocalName.Contains("Allowance", StringComparison.OrdinalIgnoreCase));
+
+        var mealTexts = CollectTexts(doc, element =>
+            element.Name.LocalName.Contains("Meal", StringComparison.OrdinalIgnoreCase) ||
+            LooksLikeSsrFor(element, "MEAL"));
+
+        var seatTexts = CollectTexts(doc, element =>
+            element.Name.LocalName.Contains("Seat", StringComparison.OrdinalIgnoreCase) ||
+            LooksLikeSsrFor(element, "SEAT"));
+
+        var ruleTexts = CollectTexts(doc, element =>
+            element.Name.LocalName.Contains("Penalty", StringComparison.OrdinalIgnoreCase) ||
+            element.Name.LocalName.Contains("Rule", StringComparison.OrdinalIgnoreCase) ||
+            element.Name.LocalName.Contains("Brand", StringComparison.OrdinalIgnoreCase) ||
+            element.Name.LocalName.Contains("FareInfo", StringComparison.OrdinalIgnoreCase) ||
+            element.Name.LocalName.Contains("TextInfo", StringComparison.OrdinalIgnoreCase));
+
+        var seatAssignments = doc.Descendants()
+            .Where(x =>
+                x.Name.LocalName.Equals("SeatAssignment", StringComparison.OrdinalIgnoreCase) ||
+                x.Name.LocalName.Equals("AirSeatAssignment", StringComparison.OrdinalIgnoreCase))
+            .Select(FormatElementText)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(12)
+            .ToList();
+
+        var ssrTexts = CollectTexts(doc, element => element.Name.LocalName.Equals("SSR", StringComparison.OrdinalIgnoreCase), 16);
+        var generalNotes = CollectTexts(doc, element =>
+            element.Name.LocalName.Equals("GeneralRemark", StringComparison.OrdinalIgnoreCase) ||
+            element.Name.LocalName.Equals("Remark", StringComparison.OrdinalIgnoreCase), 16);
+
+        return new
+        {
+            baggageTexts,
+            mealTexts,
+            seatTexts,
+            ruleTexts,
+            seatAssignments,
+            ssrTexts,
+            generalNotes
+        };
+    }
+
+    private static bool LooksLikeSsrFor(XElement element, string target)
+    {
+        if (!element.Name.LocalName.Equals("SSR", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var combined = string.Join(" ",
+            element.Attributes().Select(a => a.Value)
+                .Concat(element.Elements().Select(e => e.Value))
+                .Where(v => !string.IsNullOrWhiteSpace(v)));
+
+        return combined.Contains(target, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static List<string> CollectTexts(XDocument doc, Func<XElement, bool> predicate, int take = 14)
+    {
+        return doc.Descendants()
+            .Where(predicate)
+            .Select(FormatElementText)
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(take)
+            .ToList();
+    }
+
+    private static string FormatElementText(XElement element)
+    {
+        var preferredAttributes = new[]
+        {
+            "Description",
+            "Text",
+            "Value",
+            "Type",
+            "Code",
+            "Category",
+            "TravelerRef",
+            "SeatCode",
+            "Origin",
+            "Destination"
+        };
+
+        var parts = preferredAttributes
+            .Select(name => element.Attribute(name)?.Value?.Trim())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+
+        var innerText = string.Join(" ",
+            element.Elements()
+                .Select(child => child.Value?.Trim())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(innerText))
+            parts.Add(innerText);
+
+        if (parts.Count == 0)
+        {
+            var directValue = element.Value?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(directValue))
+                parts.Add(directValue);
+        }
+
+        return string.Join(" | ", parts.Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
     private static string Escape(string value) =>

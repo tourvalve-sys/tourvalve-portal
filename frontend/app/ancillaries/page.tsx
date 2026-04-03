@@ -218,7 +218,31 @@ function statusTone(status: string) {
 }
 
 function buildSegmentLabel(segment: BookingRetrieveResponse["segments"][number], index: number) {
-    return `Sector ${index + 1} • ${segment.from} -> ${segment.to}`;
+    return `Sector ${index + 1} - ${segment.from} -> ${segment.to}`;
+}
+
+function normalizeTravelerQuantities(
+    travelers: BookingRetrieveResponse["travelers"],
+    previous: Record<string, number>,
+    category: AncillaryCategory
+) {
+    const maxPerTraveler = category === "BAGGAGE" ? 2 : 1;
+    const next: Record<string, number> = {};
+
+    travelers.forEach((traveler, index) => {
+        const existing = previous[traveler.key];
+        next[traveler.key] = Math.min(
+            maxPerTraveler,
+            Math.max(0, existing ?? (index === 0 ? 1 : 0))
+        );
+    });
+
+    return next;
+}
+
+function sanitizeTextList(items: string[] | undefined, fallback: string[]) {
+    const values = (items ?? []).map((item) => item.trim()).filter(Boolean);
+    return values.length ? values.slice(0, 6) : fallback;
 }
 
 function AncillariesPageContent() {
@@ -238,6 +262,7 @@ function AncillariesPageContent() {
     const [selectedPreset, setSelectedPreset] = useState<AncillaryPreset | null>(null);
     const [quote, setQuote] = useState<BookingAncillaryQuote | null>(null);
     const [notes, setNotes] = useState("");
+    const [travelerQuantities, setTravelerQuantities] = useState<Record<string, number>>({});
 
     useEffect(() => {
         if (!bookingId) {
@@ -255,6 +280,15 @@ function AncillariesPageContent() {
                 setBooking(detail);
                 setOrders(ancillaryOrders);
                 setRetrievedRecord(record);
+                setTravelerQuantities(
+                    normalizeTravelerQuantities(
+                        record?.travelers?.length
+                            ? record.travelers
+                            : [{ key: "TRV-1", firstName: "Passenger", lastName: "1" }],
+                        {},
+                        "BAGGAGE"
+                    )
+                );
                 const firstSegment = record?.segments[0];
                 setSelectedSegment(
                     firstSegment
@@ -318,18 +352,56 @@ function AncillariesPageContent() {
     const unsuccessfulCount = orders.filter((order) =>
         ["FAILED", "CANCELLED"].includes(order.status)
     ).length;
-    const travelers = retrievedRecord?.travelers.length
-        ? retrievedRecord.travelers
-        : [
-              {
-                  key: "TRV-1",
-                  firstName: "Passenger",
-                  lastName: "1",
-              },
-          ];
+    const travelers = useMemo(
+        () =>
+            retrievedRecord?.travelers.length
+                ? retrievedRecord.travelers
+                : [
+                      {
+                          key: "TRV-1",
+                          firstName: "Passenger",
+                          lastName: "1",
+                      },
+                  ],
+        [retrievedRecord]
+    );
+    const liveContext = retrievedRecord?.ancillaryContext;
+    const selectedTravelerSelections = travelers
+        .map((traveler) => ({
+            travelerKey: traveler.key,
+            travelerName: `${traveler.firstName} ${traveler.lastName}`.trim(),
+            quantity: travelerQuantities[traveler.key] ?? 0,
+        }))
+        .filter((traveler) => traveler.quantity > 0);
+    const requestedUnits = Math.max(
+        selectedTravelerSelections.reduce((sum, traveler) => sum + traveler.quantity, 0),
+        1
+    );
+    const supplierCategoryTexts = category === "BAGGAGE"
+        ? sanitizeTextList(liveContext?.baggageTexts, [
+              "No exact supplier baggage wording was returned for this record yet.",
+          ])
+        : category === "MEAL"
+            ? sanitizeTextList(liveContext?.mealTexts, [
+                  "No exact supplier meal wording was returned for this record yet.",
+              ])
+            : sanitizeTextList(
+                  [...(liveContext?.seatTexts ?? []), ...(liveContext?.seatAssignments ?? [])],
+                  ["No exact supplier seat wording was returned for this record yet."]
+              );
+    const liveRuleTexts = sanitizeTextList(liveContext?.ruleTexts, [
+        "Exact supplier change and cancellation wording was not returned for this record yet.",
+    ]);
+    useEffect(() => {
+        setTravelerQuantities((current) => normalizeTravelerQuantities(travelers, current, category));
+    }, [category, travelers]);
 
     const quoteOption = async (preset: AncillaryPreset) => {
         if (!bookingId) return;
+        if (selectedTravelerSelections.length === 0) {
+            setError("Select at least one traveler before previewing an ancillary quote.");
+            return;
+        }
         try {
             setAction(`quote-${preset.code}`);
             setError("");
@@ -344,6 +416,7 @@ function AncillariesPageContent() {
                 baseAmount: preset.baseAmount,
                 currency: "MYR",
                 notes,
+                travelerSelections: selectedTravelerSelections,
             });
 
             setQuote(response);
@@ -356,6 +429,10 @@ function AncillariesPageContent() {
 
     const createOrder = async () => {
         if (!bookingId || !selectedPreset) return;
+        if (selectedTravelerSelections.length === 0) {
+            setError("Select at least one traveler before creating the ancillary request.");
+            return;
+        }
         try {
             setAction("create-order");
             setError("");
@@ -369,6 +446,7 @@ function AncillariesPageContent() {
                 baseAmount: selectedPreset.baseAmount,
                 currency: "MYR",
                 notes,
+                travelerSelections: selectedTravelerSelections,
             });
 
             const ancillaryOrders = await getBookingAncillaries(bookingId);
@@ -631,7 +709,9 @@ function AncillariesPageContent() {
                                         </div>
                                         <div className="mt-3 text-sm leading-6 text-slate-500">
                                             {category === "BAGGAGE"
-                                                ? selectedPreset?.title ?? "Choose a baggage option to preview allowance changes."
+                                                ? supplierCategoryTexts[0] ??
+                                                  selectedPreset?.title ??
+                                                  "Choose a baggage option to preview allowance changes."
                                                 : "Cabin and checked baggage remain exactly as originally ticketed unless a baggage add-on is selected."}
                                         </div>
                                     </div>
@@ -642,7 +722,9 @@ function AncillariesPageContent() {
                                         </div>
                                         <div className="mt-3 text-sm leading-6 text-slate-500">
                                             {category === "MEAL"
-                                                ? selectedPreset?.title ?? "Choose a meal request to add structured catering notes."
+                                                ? supplierCategoryTexts[0] ??
+                                                  selectedPreset?.title ??
+                                                  "Choose a meal request to add structured catering notes."
                                                 : "Meal handling follows the original ticket unless a dedicated meal request is sent into servicing."}
                                         </div>
                                     </div>
@@ -653,7 +735,9 @@ function AncillariesPageContent() {
                                         </div>
                                         <div className="mt-3 text-sm leading-6 text-slate-500">
                                             {category === "SEAT"
-                                                ? selectedPreset?.title ?? "Choose a seating request to shape traveler comfort."
+                                                ? supplierCategoryTexts[0] ??
+                                                  selectedPreset?.title ??
+                                                  "Choose a seating request to shape traveler comfort."
                                                 : "Seat placement stays as originally booked unless a seating request is queued for the selected sector."}
                                         </div>
                                     </div>
@@ -668,6 +752,18 @@ function AncillariesPageContent() {
                                     <div className="mt-1 text-sm text-slate-500">
                                         {activeSegmentDetails?.timing ??
                                             "The selected ancillary will be attached to this retrieved sector label."}
+                                    </div>
+                                </div>
+                                <div className="mt-4 rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/84 p-4">
+                                    <div className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                                        Supplier-returned wording
+                                    </div>
+                                    <div className="mt-3 space-y-2">
+                                        {supplierCategoryTexts.map((text) => (
+                                            <div key={text} className="rounded-[1rem] bg-[rgba(247,244,239,0.88)] px-3 py-3 text-sm leading-6 text-slate-600">
+                                                {text}
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
@@ -751,6 +847,39 @@ function AncillariesPageContent() {
                                                     </div>
                                                 ))}
                                             </div>
+                                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[1.1rem] bg-white/85 px-3 py-3">
+                                                <div>
+                                                    <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                                                        Requested quantity
+                                                    </div>
+                                                    <div className="mt-1 text-sm text-slate-500">
+                                                        {category === "BAGGAGE"
+                                                            ? "Select how many baggage units this traveler needs."
+                                                            : `Choose whether this traveler should receive the ${activeMeta.label.toLowerCase()} request.`}
+                                                    </div>
+                                                </div>
+                                                <select
+                                                    value={travelerQuantities[traveler.key] ?? 0}
+                                                    onChange={(event) =>
+                                                        setTravelerQuantities((current) => ({
+                                                            ...current,
+                                                            [traveler.key]: Number(event.target.value),
+                                                        }))
+                                                    }
+                                                    className="rounded-xl border border-[rgba(89,64,46,0.1)] bg-white px-3 py-2 text-sm font-semibold text-[var(--ink)] outline-none"
+                                                >
+                                                    {Array.from(
+                                                        {
+                                                            length: category === "BAGGAGE" ? 3 : 2,
+                                                        },
+                                                        (_, index) => (
+                                                            <option key={index} value={index}>
+                                                                {index}
+                                                            </option>
+                                                        )
+                                                    )}
+                                                </select>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -763,7 +892,7 @@ function AncillariesPageContent() {
                                 Clarify what happens after purchase.
                             </h3>
                             <div className="mt-5 space-y-3">
-                                {(selectedPreset?.rules ?? activeOptions[0].rules).map((rule) => (
+                                {liveRuleTexts.map((rule) => (
                                     <div key={rule} className="rounded-[1.35rem] bg-white/88 p-4">
                                         <div className="flex items-start gap-3">
                                             <CheckCircle2 size={18} className="mt-0.5 text-[var(--success)]" />
@@ -772,8 +901,8 @@ function AncillariesPageContent() {
                                     </div>
                                 ))}
                                 <div className="rounded-[1.35rem] bg-[rgba(255,247,236,0.84)] p-4 text-sm leading-7 text-slate-600">
-                                    We can later extend this panel with airline-specific cancellation coverage, change
-                                    handling, and exact allowance copy once your production ancillary credentials are live.
+                                    {selectedPreset?.rules?.[0] ??
+                                        "The service desk can still use the option card rules below where the supplier does not return a fuller policy wording."}
                                 </div>
                             </div>
                         </div>
@@ -832,6 +961,11 @@ function AncillariesPageContent() {
                                 </div>
                                 <div className="mt-2 text-lg font-semibold text-[var(--ink)]">{selectedPreset.title}</div>
                                 <div className="mt-1 text-sm text-slate-500">{selectedSegment}</div>
+                                <div className="mt-2 text-xs text-slate-500">
+                                    {requestedUnits} requested unit{requestedUnits === 1 ? "" : "s"} across{" "}
+                                    {selectedTravelerSelections.length || 1} traveler
+                                    {selectedTravelerSelections.length === 1 ? "" : "s"}.
+                                </div>
                             </div>
                         ) : (
                             <div className="mt-4 rounded-[1.5rem] bg-[rgba(255,247,236,0.74)] p-4 text-sm text-slate-500">

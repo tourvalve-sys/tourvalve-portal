@@ -290,6 +290,15 @@ export type BookingRetrieveResponse = {
         arrival: string;
         status: string;
     }>;
+    ancillaryContext: {
+        baggageTexts: string[];
+        mealTexts: string[];
+        seatTexts: string[];
+        ruleTexts: string[];
+        seatAssignments: string[];
+        ssrTexts: string[];
+        generalNotes: string[];
+    };
     rawResponse: string;
 };
 
@@ -310,6 +319,11 @@ export type BookingAncillaryRequestPayload = {
     baseAmount: number;
     currency: string;
     notes: string;
+    travelerSelections?: Array<{
+        travelerKey: string;
+        travelerName: string;
+        quantity: number;
+    }>;
 };
 
 export type CreateBookingPayload = {
