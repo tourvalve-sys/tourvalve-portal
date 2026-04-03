@@ -5,8 +5,18 @@ const configuredApiBase =
     process.env.NEXT_PUBLIC_API_BASE ??
     "";
 
-const API_BASE = configuredApiBase.replace(/\/$/, "") ||
-    (typeof window === "undefined" ? "http://127.0.0.1:5274" : "");
+const configuredSiteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.SITE_URL ??
+    "";
+
+const API_BASE =
+    configuredApiBase.replace(/\/$/, "") ||
+    (typeof window !== "undefined"
+        ? ""
+        : process.env.NODE_ENV === "development"
+          ? "http://127.0.0.1:5274"
+          : configuredSiteUrl.replace(/\/$/, ""));
 
 export type LoginPayload = {
     email: string;
