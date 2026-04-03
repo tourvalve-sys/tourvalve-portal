@@ -560,6 +560,14 @@ function normalizeFriendlyError(message: string): string {
         return "The provider could not shop this route with the selected airport code format. Try a different airport nearby or another market.";
     }
 
+    if (/AirPriceReq.*PlatingCarrier|Expected .*AirPriceReq.*PlatingCarrier/i.test(normalized)) {
+        return "The live provider could not price this itinerary with the current response shape. Please try another result or search again.";
+    }
+
+    if (/Error unmarshalling message body/i.test(normalized)) {
+        return "The live provider returned an unexpected pricing response for this itinerary. Please try another result or search again.";
+    }
+
     if (/Run the latest database update against the same PostgreSQL database used by the API/i.test(normalized)) {
         return "The production database is still being prepared for the latest booking features. Please try again shortly.";
     }

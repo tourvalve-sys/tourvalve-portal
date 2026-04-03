@@ -486,9 +486,6 @@ public class FlightsController : ControllerBase
     {
         var authorizedBy = _travelportConfig.Username.Replace("Universal API/", "", StringComparison.OrdinalIgnoreCase);
         var segmentXml = NormalizeSegmentXml(req.AirSegmentXml, req.AirPricingContextXml);
-        var platingCarrierXml = string.IsNullOrWhiteSpace(req.Carrier)
-            ? string.Empty
-            : $@"<air:PlatingCarrier Code=""{Escape(req.Carrier.Trim())}"" />";
 
         return $@"
 <air:AirPriceReq
@@ -502,7 +499,6 @@ public class FlightsController : ControllerBase
     {segmentXml}
   </air:AirItinerary>
   <air:AirPricingModifiers FaresIndicator=""PublicFaresOnly"" />
-  {platingCarrierXml}
   {BuildPassengersXml(req.Adults, req.Child, req.Infant)}
 </air:AirPriceReq>".Trim();
     }
