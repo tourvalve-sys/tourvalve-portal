@@ -381,6 +381,8 @@ public class FlightsController : ControllerBase
 
     private static string BuildSearchLegsXml(FlightSearchRequest req, DateTime departDate, DateTime? returnDate)
     {
+        var cabinModifiersXml = BuildCabinModifiersXml(req.Cabin);
+
         if (req.Segments.Count >= 2)
         {
             return string.Join(Environment.NewLine + Environment.NewLine, req.Segments.Select(segment => $@"
@@ -392,6 +394,7 @@ public class FlightsController : ControllerBase
           <com:CityOrAirport Code=""{Escape(segment.To)}""/>
         </air:SearchDestination>
         <air:SearchDepTime PreferredTime=""{BuildPreferredTime(ParseDate(segment.DepartDate))}""/>
+        {cabinModifiersXml}
       </air:SearchAirLeg>".TrimEnd()));
         }
 
@@ -404,6 +407,7 @@ public class FlightsController : ControllerBase
           <com:CityOrAirport Code=""{Escape(req.To)}""/>
         </air:SearchDestination>
         <air:SearchDepTime PreferredTime=""{BuildPreferredTime(departDate)}""/>
+        {cabinModifiersXml}
       </air:SearchAirLeg>
 
       {(returnDate is null ? "" : $@"
@@ -415,8 +419,23 @@ public class FlightsController : ControllerBase
           <com:CityOrAirport Code=""{Escape(req.From)}""/>
         </air:SearchDestination>
         <air:SearchDepTime PreferredTime=""{BuildPreferredTime(returnDate.Value)}""/>
+        {cabinModifiersXml}
       </air:SearchAirLeg>
       ")}".Trim();
+    }
+
+    private static string BuildCabinModifiersXml(string? requestedCabin)
+    {
+        var normalizedCabin = NormalizeCabin(requestedCabin);
+        if (normalizedCabin is null)
+            return string.Empty;
+
+        return $@"
+        <air:AirLegModifiers>
+          <air:PreferredCabins>
+            <com:CabinClass Type=""{normalizedCabin}"" />
+          </air:PreferredCabins>
+        </air:AirLegModifiers>";
     }
 
     private static string? NormalizeCabin(string? cabin)
