@@ -12,14 +12,23 @@ interface BookingContextType {
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
+function readSessionJson<T>(key: string, fallback: T): T {
+    if (typeof window === "undefined") {
+        return fallback;
+    }
+
+    try {
+        const raw = sessionStorage.getItem(key);
+        return raw ? (JSON.parse(raw) as T) : fallback;
+    } catch {
+        sessionStorage.removeItem(key);
+        return fallback;
+    }
+}
+
 export function BookingProvider({ children }: { children: React.ReactNode }) {
     const [selectedFlight, setSelectedFlightState] = useState<FlightResult | null>(() => {
-        if (typeof window === "undefined") {
-            return null;
-        }
-
-        const storedFlight = sessionStorage.getItem("selectedFlight");
-        return storedFlight ? JSON.parse(storedFlight) : null;
+        return readSessionJson<FlightResult | null>("selectedFlight", null);
     });
 
     const setSelectedFlight = (flight: FlightResult | null) => {
@@ -33,14 +42,7 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
     };
 
     const [travelerCounts, setTravelerCountsState] = useState(() => {
-        if (typeof window === "undefined") {
-            return { adults: 1, child: 0, infant: 0 };
-        }
-
-        const storedTravelerCounts = sessionStorage.getItem("travelerCounts");
-        return storedTravelerCounts
-            ? JSON.parse(storedTravelerCounts)
-            : { adults: 1, child: 0, infant: 0 };
+        return readSessionJson("travelerCounts", { adults: 1, child: 0, infant: 0 });
     });
 
     const setTravelerCounts = (counts: { adults: number; child: number; infant: number }) => {
