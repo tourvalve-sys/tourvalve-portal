@@ -187,6 +187,19 @@ export default function BookingPage() {
     }));
 
     const activeSeatSegment = seatMapSegments[activeSeatSegmentIndex] ?? null;
+    const baggageHighlights = useMemo(() => {
+        if (!selectedFlight) {
+            return [];
+        }
+
+        const items = [
+            selectedFlight.carryOnAllowance?.trim(),
+            selectedFlight.checkedBaggageAllowance?.trim(),
+            ...(selectedFlight.baggageOfferTexts ?? []).map((item) => item.trim()),
+        ].filter(Boolean) as string[];
+
+        return Array.from(new Set(items)).slice(0, 4);
+    }, [selectedFlight]);
 
     useEffect(() => {
         const items: PassengerForm[] = [];
@@ -532,6 +545,29 @@ export default function BookingPage() {
                         </div>
 
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="rounded-[1.5rem] border border-[rgba(45,120,92,0.12)] bg-[rgba(238,248,242,0.88)] p-4 md:col-span-2">
+                                <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--success)]">
+                                    <Luggage size={15} />
+                                    Travelport Baggage Snapshot
+                                </div>
+                                {baggageHighlights.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                        {baggageHighlights.map((item) => (
+                                            <span
+                                                key={item}
+                                                className="rounded-full border border-[rgba(45,120,92,0.14)] bg-white/92 px-3 py-2 text-xs font-medium text-[var(--success)] shadow-[0_8px_18px_rgba(40,116,79,0.08)]"
+                                            >
+                                                {item}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm leading-7 text-slate-600">
+                                        Travelport did not return a baggage allowance snapshot for this itinerary yet. Final baggage details can still be confirmed after pricing or during ancillary servicing.
+                                    </p>
+                                )}
+                            </div>
+
                             <div className="soft-panel rounded-[1.5rem] p-4">
                                 <div className="mb-3 flex items-center gap-2 text-sm text-slate-500">
                                     <Luggage size={16} />

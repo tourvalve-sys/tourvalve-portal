@@ -326,6 +326,16 @@ export default function FlightSearch() {
         .map((segment) => [segment.from || "Origin", segment.to || "Destination"].join(" -> "))
         .join("   |   ");
 
+    const getBaggageHighlights = (flight: FlightResult) => {
+        const highlights = [
+            flight.carryOnAllowance?.trim(),
+            flight.checkedBaggageAllowance?.trim(),
+            ...(flight.baggageOfferTexts ?? []).map((item) => item.trim()),
+        ].filter(Boolean) as string[];
+
+        return Array.from(new Set(highlights)).slice(0, 3);
+    };
+
     const getJourneySummary = (flight: FlightResult) => {
         const itinerarySegments = flight.itinerarySegments?.length
             ? flight.itinerarySegments
@@ -848,6 +858,22 @@ export default function FlightSearch() {
                                                     </div>
                                                     <div className="mt-1 text-xs font-medium text-[var(--accent-strong)]">
                                                         {stopSummary}
+                                                    </div>
+                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                        {getBaggageHighlights(flight).length > 0 ? (
+                                                            getBaggageHighlights(flight).map((text) => (
+                                                                <span
+                                                                    key={text}
+                                                                    className="rounded-full border border-[rgba(45,120,92,0.14)] bg-[rgba(232,245,237,0.92)] px-3 py-1 text-[11px] font-medium text-[var(--success)]"
+                                                                >
+                                                                    {text}
+                                                                </span>
+                                                            ))
+                                                        ) : (
+                                                            <span className="rounded-full border border-[rgba(89,64,46,0.1)] bg-white/85 px-3 py-1 text-[11px] font-medium text-slate-500">
+                                                                Allowance confirmed after pricing
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
 

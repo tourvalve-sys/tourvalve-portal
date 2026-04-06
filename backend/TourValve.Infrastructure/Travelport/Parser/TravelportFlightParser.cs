@@ -59,6 +59,7 @@ public static class TravelportFlightParser
                 ?? "Economy";
 
             var (currency, price) = ParsePrice(totalPrice);
+            var baggageContext = BuildBaggageContext(solution);
 
             results.Add(new FlightDto
             {
@@ -74,6 +75,9 @@ public static class TravelportFlightParser
                 MarkupAmount = 0m,
                 Currency = currency,
                 CabinClass = cabinClass,
+                CarryOnAllowance = baggageContext.CarryOnAllowance,
+                CheckedBaggageAllowance = baggageContext.CheckedBagAllowance,
+                BaggageOfferTexts = baggageContext.OfferTexts,
                 AirPricingSolutionXml = solution.ToString(SaveOptions.DisableFormatting),
                 AirPricingContextXml = doc.Root?.ToString(SaveOptions.DisableFormatting) ?? xml,
                 AirSegmentXml = firstSegment.ToString(SaveOptions.DisableFormatting),
@@ -231,4 +235,194 @@ public static class TravelportFlightParser
 
         return segment;
     }
+
+    private static (string CarryOnAllowance, string CheckedBagAllowance, List<string> OfferTexts) BuildBaggageContext(XElement solution)
+    {
+        var carryOnOffers = solution.Descendants()
+            .Where(x => x.Name.LocalName.Equals("CarryOnAllowanceInfo", StringComparison.OrdinalIgnoreCase))
+            .Select(FormatCarryOnAllowance)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var checkedBagOffers = solution.Descendants()
+            .Where(x => x.Name.LocalName.Equals("BaggageAllowanceInfo", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(FormatCheckedBagAllowances)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var genericBaggageTexts = solution.Descendants()
+            .Where(x =>
+                x.Name.LocalName.Contains("Baggage", StringComparison.OrdinalIgnoreCase) ||
+                x.Name.LocalName.Contains("Allowance", StringComparison.OrdinalIgnoreCase) ||
+                x.Name.LocalName.Contains("CarryOn", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(ReadTextInfoValues)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var offerTexts = carryOnOffers
+            .Concat(checkedBagOffers)
+            .Concat(genericBaggageTexts)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(4)
+            .ToList();
+
+        return (
+            carryOnOffers.FirstOrDefault()
+                ?? genericBaggageTexts.FirstOrDefault(x =>
+                    x.Contains("carry", StringComparison.OrdinalIgnoreCase) ||
+                    x.Contains("cabin", StringComparison.OrdinalIgnoreCase))
+                ?? string.Empty,
+            checkedBagOffers.FirstOrDefault()
+                ?? genericBaggageTexts.FirstOrDefault(x =>
+                    x.Contains("checked", StringComparison.OrdinalIgnoreCase) ||
+                    x.Contains("bag", StringComparison.OrdinalIgnoreCase) ||
+                    x.Contains("piece", StringComparison.OrdinalIgnoreCase) ||
+                    x.Contains("kg", StringComparison.OrdinalIgnoreCase))
+                ?? string.Empty,
+            offerTexts
+        );
+    }
+
+    private static string FormatCarryOnAllowance(XElement carryOnInfo)
+    {
+        var carryOnDetails = carryOnInfo.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName.Equals("CarryOnDetails", StringComparison.OrdinalIgnoreCase));
+
+        var applicableBags = carryOnDetails?.Attribute("ApplicableCarryOnBags")?.Value;
+        var restrictionText = carryOnDetails?.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName.Equals("TextInfo", StringComparison.OrdinalIgnoreCase))
+            ?.Attribute("Text")?.Value
+            ?? carryOnInfo.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName.Equals("TextInfo", StringComparison.OrdinalIgnoreCase))
+                ?.Attribute("Text")?.Value
+            ?? string.Empty;
+
+        var price = FirstNonEmpty(
+            carryOnDetails?.Attribute("TotalPrice")?.Value,
+            carryOnDetails?.Attribute("BasePrice")?.Value);
+
+        var allowance = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(applicableBags))
+            allowance.Add($"{applicableBags} carry-on bag{(applicableBags == "1" ? string.Empty : "s")}");
+
+        if (!string.IsNullOrWhiteSpace(restrictionText))
+            allowance.Add(restrictionText.Trim());
+
+        if (allowance.Count == 0)
+            allowance.AddRange(ReadTextInfoValues(carryOnInfo));
+
+        var summary = string.Join(" • ", allowance.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase));
+
+        if (!string.IsNullOrWhiteSpace(price) && !price.EndsWith("0.00", StringComparison.OrdinalIgnoreCase))
+            return $"Carry-on: {summary} ({price})";
+
+        return string.IsNullOrWhiteSpace(summary) ? string.Empty : $"Carry-on: {summary}";
+    }
+
+    private static IEnumerable<string> FormatCheckedBagAllowances(XElement baggageAllowanceInfo)
+    {
+        var bagDetails = baggageAllowanceInfo.Descendants()
+            .Where(x => x.Name.LocalName.Equals("BagDetails", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (bagDetails.Count == 0)
+        {
+            var fallback = ReadTextInfoValues(baggageAllowanceInfo)
+                .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+
+            if (!string.IsNullOrWhiteSpace(fallback))
+                return new[] { $"Checked baggage: {fallback}" };
+
+            return Array.Empty<string>();
+        }
+
+        return bagDetails
+            .Select(FormatBagDetails)
+            .Where(x => !string.IsNullOrWhiteSpace(x));
+    }
+
+    private static string FormatBagDetails(XElement bagDetails)
+    {
+        var applicable = NormalizeApplicableBagLabel(
+            bagDetails.Attribute("ApplicableBags")?.Value
+            ?? bagDetails.Attribute("BaggageRestriction")?.Value);
+
+        var pieces = bagDetails.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName.Equals("NumberOfPieces", StringComparison.OrdinalIgnoreCase))
+            ?.Value
+            ?.Trim();
+
+        var maxWeightElement = bagDetails.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName.Equals("MaxWeight", StringComparison.OrdinalIgnoreCase));
+        var maxWeight = maxWeightElement?.Attribute("Value")?.Value ?? maxWeightElement?.Value?.Trim();
+        var weightUnit = maxWeightElement?.Attribute("Unit")?.Value;
+
+        var restrictionText = bagDetails.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName.Equals("TextInfo", StringComparison.OrdinalIgnoreCase))
+            ?.Attribute("Text")?.Value
+            ?? string.Empty;
+
+        var price = FirstNonEmpty(
+            bagDetails.Attribute("TotalPrice")?.Value,
+            bagDetails.Attribute("BasePrice")?.Value);
+
+        var allowanceParts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(pieces))
+            allowanceParts.Add($"{pieces} piece{(pieces == "1" ? string.Empty : "s")}");
+
+        if (!string.IsNullOrWhiteSpace(maxWeight))
+            allowanceParts.Add(string.IsNullOrWhiteSpace(weightUnit) ? maxWeight : $"{maxWeight} {weightUnit}");
+
+        if (!string.IsNullOrWhiteSpace(restrictionText))
+            allowanceParts.Add(restrictionText.Trim());
+
+        var allowance = string.Join(" • ", allowanceParts.Distinct(StringComparer.OrdinalIgnoreCase));
+        var label = string.IsNullOrWhiteSpace(applicable) ? "Checked baggage" : applicable;
+
+        if (!string.IsNullOrWhiteSpace(price) && !price.EndsWith("0.00", StringComparison.OrdinalIgnoreCase))
+            return string.IsNullOrWhiteSpace(allowance)
+                ? $"{label}: {price}"
+                : $"{label}: {allowance} ({price})";
+
+        return string.IsNullOrWhiteSpace(allowance)
+            ? label
+            : $"{label}: {allowance}";
+    }
+
+    private static IEnumerable<string> ReadTextInfoValues(XElement container)
+    {
+        return container.Descendants()
+            .Where(x => x.Name.LocalName.Equals("TextInfo", StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.Attribute("Text")?.Value?.Trim() ?? x.Value?.Trim() ?? string.Empty)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeApplicableBagLabel(string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+            return string.Empty;
+
+        var normalized = rawValue.Trim();
+
+        return normalized switch
+        {
+            "1stChecked" => "1st checked bag",
+            "2ndChecked" => "2nd checked bag",
+            "3rdChecked" => "3rd checked bag",
+            _ => normalized
+                .Replace("Checked", " checked ", StringComparison.Ordinal)
+                .Replace("CarryOn", " carry-on ", StringComparison.Ordinal)
+                .Replace("_", " ", StringComparison.Ordinal)
+                .Trim()
+        };
+    }
+
+    private static string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 }

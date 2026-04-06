@@ -46,6 +46,9 @@ export type FlightResult = {
     markupAmount: number;
     currency: string;
     cabinClass: string;
+    carryOnAllowance: string;
+    checkedBaggageAllowance: string;
+    baggageOfferTexts: string[];
     airPricingSolutionXml: string;
     airPricingContextXml: string;
     airSegmentXml: string;

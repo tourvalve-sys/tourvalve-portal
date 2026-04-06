@@ -30,6 +30,9 @@ public class FlightDto
     public decimal MarkupAmount { get; set; }
     public string Currency { get; set; } = "USD";
     public string CabinClass { get; set; } = "Economy";
+    public string CarryOnAllowance { get; set; } = string.Empty;
+    public string CheckedBaggageAllowance { get; set; } = string.Empty;
+    public List<string> BaggageOfferTexts { get; set; } = new();
     public string AirPricingSolutionXml { get; set; } = string.Empty;
     public string AirPricingContextXml { get; set; } = string.Empty;
     public string AirSegmentXml { get; set; } = string.Empty;
