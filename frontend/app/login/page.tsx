@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, ShieldCheck, Sparkles } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { loginUser } from "@/lib/api";
 import Link from "next/link";
 import { hasSessionCookie, removeToken, setToken } from "@/lib/auth";
@@ -71,9 +71,8 @@ export default function LoginPage() {
 
             <div className="relative z-10 mx-auto grid min-h-[calc(100vh-5rem)] max-w-7xl items-center gap-10 lg:grid-cols-[1.2fr_0.9fr]">
                 <div className="text-white fade-in-delay">
-                    <div className="subtle-kicker !text-white/70">Classic Travel Operations</div>
                     <h1
-                        className="hero-title mt-4 max-w-3xl !text-white"
+                        className="hero-title max-w-3xl !text-white"
                         style={{ textShadow: "0 10px 30px rgba(0, 0, 0, 0.34)" }}
                     >
                         A reservation portal that feels tailored, not templated.
@@ -84,20 +83,6 @@ export default function LoginPage() {
                     >
                         TourValve now connects live air search, reservation handling, wallet settlement, and booking intelligence in one elevated workspace.
                     </p>
-
-                    <div className="mt-8 flex flex-wrap gap-3 text-sm">
-                        <div className="status-pill status-success !bg-white/10 !text-white">
-                            Live Travelport
-                        </div>
-                        <div className="status-pill !bg-white/10 !text-white">
-                            <ShieldCheck size={14} />
-                            Wallet Controlled
-                        </div>
-                        <div className="status-pill !bg-white/10 !text-white">
-                            <Sparkles size={14} />
-                            Premium UI
-                        </div>
-                    </div>
                 </div>
 
                 <div className="premium-panel rounded-[2.25rem] p-8 md:p-10">
