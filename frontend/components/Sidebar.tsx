@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Briefcase, LayoutGrid, PlaneTakeoff, ScrollText, Users, Wallet } from "lucide-react";
+import { BarChart3, Briefcase, LayoutGrid, LogOut, PlaneTakeoff, ScrollText, Users, Wallet } from "lucide-react";
 import { removeToken } from "@/lib/auth";
 
 const menu = [
@@ -14,6 +14,16 @@ const menu = [
     { name: "Audit Trail", path: "/audit-trail", icon: ScrollText },
     { name: "Reports", path: "/reports", icon: BarChart3 },
 ];
+
+const mobileLabels: Record<string, string> = {
+    Dashboard: "Home",
+    "Flight Search": "Search",
+    Bookings: "Trips",
+    Wallet: "Wallet",
+    Agents: "Agents",
+    "Audit Trail": "Audit",
+    Reports: "Reports",
+};
 
 export default function Sidebar() {
     const pathname = usePathname();
@@ -78,12 +88,19 @@ export default function Sidebar() {
             </aside>
 
             <div className="xl:hidden">
-                <div className="mx-3 mt-3 rounded-[1.5rem] bg-[linear-gradient(160deg,#17304d,#102136)] px-4 py-4 text-white shadow-[0_18px_34px_rgba(16,33,54,0.24)]">
-                    <div className="subtle-kicker text-white/60">TourValve Mobile Desk</div>
-                    <div className="mt-2 font-display text-2xl">TourValve</div>
+                <div className="mx-3 mt-3 rounded-[1.35rem] bg-[linear-gradient(160deg,#17304d,#102136)] px-4 py-3.5 text-white shadow-[0_18px_34px_rgba(16,33,54,0.24)]">
+                    <div className="flex items-end justify-between gap-3">
+                        <div>
+                            <div className="subtle-kicker text-white/60">TourValve Mobile Desk</div>
+                            <div className="mt-1 font-display text-[1.65rem] leading-none">TourValve</div>
+                        </div>
+                        <div className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+                            Live
+                        </div>
+                    </div>
                 </div>
 
-                <nav className="premium-panel fixed inset-x-3 bottom-3 z-40 flex items-center gap-2 overflow-x-auto rounded-[1.75rem] px-3 py-3 shadow-[0_20px_45px_rgba(36,26,17,0.22)]">
+                <nav className="premium-panel fixed inset-x-3 bottom-3 z-40 flex items-center gap-1.5 overflow-x-auto rounded-[1.45rem] px-2 py-2.5 shadow-[0_20px_45px_rgba(36,26,17,0.22)]">
                     {menu.map((item) => {
                         const Icon = item.icon;
                         const active = pathname === item.path;
@@ -92,23 +109,23 @@ export default function Sidebar() {
                             <Link
                                 key={item.name}
                                 href={item.path}
-                                className={`flex min-w-[4.75rem] flex-1 flex-col items-center justify-center gap-1 rounded-[1.2rem] px-2 py-2 text-center text-[11px] font-semibold transition ${
+                                className={`flex min-w-[4.35rem] flex-1 flex-col items-center justify-center gap-1 rounded-[1rem] px-2 py-2 text-center text-[10px] font-semibold transition ${
                                     active
                                         ? "bg-[linear-gradient(135deg,#b07a43,#6d4320)] text-white"
-                                        : "text-slate-600"
+                                        : "text-slate-600 hover:bg-white/65"
                                 }`}
                             >
                                 <Icon size={17} />
-                                <span className="leading-tight">{item.name.replace(" ", "\n")}</span>
+                                <span className="leading-tight">{mobileLabels[item.name] ?? item.name}</span>
                             </Link>
                         );
                     })}
 
                     <button
                         onClick={handleLogout}
-                        className="flex min-w-[4.75rem] flex-col items-center justify-center gap-1 rounded-[1.2rem] px-2 py-2 text-center text-[11px] font-semibold text-[var(--danger)]"
+                        className="flex min-w-[4.35rem] flex-col items-center justify-center gap-1 rounded-[1rem] px-2 py-2 text-center text-[10px] font-semibold text-[var(--danger)] hover:bg-[rgba(166,61,64,0.06)]"
                     >
-                        <Users size={17} />
+                        <LogOut size={17} />
                         <span className="leading-tight">Logout</span>
                     </button>
                 </nav>

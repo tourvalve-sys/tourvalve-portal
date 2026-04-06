@@ -309,13 +309,69 @@ h4,
 }
 
 @media (max-width: 767px) {
+  html {
+    background:
+      radial-gradient(circle at top left, rgba(154, 106, 58, 0.12), transparent 24%),
+      linear-gradient(180deg, #fbf7f0 0%, #f2ecdf 55%, #efe6d7 100%);
+  }
+
   .premium-panel,
   .soft-panel {
     border-radius: 1.6rem;
+    backdrop-filter: blur(12px);
   }
 
   .data-table th,
   .data-table td {
     padding: 0.9rem 0.95rem;
+  }
+
+  .page-shell::before,
+  .page-shell::after {
+    width: 12rem;
+    height: 12rem;
+    filter: blur(14px);
+    opacity: 0.18;
+  }
+
+  .page-shell::before {
+    top: -2.5rem;
+    right: -3rem;
+  }
+
+  .page-shell::after {
+    bottom: -4.5rem;
+    left: -3.5rem;
+  }
+
+  .classic-grid {
+    background-size: 18px 18px;
+  }
+
+  .hero-title {
+    font-size: clamp(2.1rem, 10vw, 3.1rem);
+    line-height: 0.97;
+    letter-spacing: -0.03em;
+  }
+
+  .subtle-kicker {
+    letter-spacing: 0.18em;
+    font-size: 0.64rem;
+  }
+
+  .status-pill {
+    gap: 0.35rem;
+    padding: 0.38rem 0.72rem;
+    font-size: 0.64rem;
+    letter-spacing: 0.06em;
+  }
+
+  .status-pill::before {
+    width: 0.42rem;
+    height: 0.42rem;
+  }
+
+  .mobile-table-shell .data-table {
+    min-width: 36rem;
   }
 }

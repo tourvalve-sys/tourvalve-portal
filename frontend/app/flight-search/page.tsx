@@ -445,27 +445,27 @@ export default function FlightSearch() {
 
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,248,239,0.86),rgba(247,239,227,0.92))] backdrop-blur-sm"></div>
 
-            <div className="relative z-10 px-3 py-4 sm:px-4 md:p-6">
-                <div className="mx-auto mb-8 max-w-7xl fade-in-delay">
-                    <div className="subtle-kicker mb-3">Journey Atelier</div>
+            <div className="relative z-10 px-2 py-3 sm:px-4 md:p-6">
+                <div className="mx-auto mb-6 max-w-7xl fade-in-delay sm:mb-8">
+                    <div className="subtle-kicker mb-2 sm:mb-3">Journey Atelier</div>
                     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                         <div>
                             <h1 className="hero-title max-w-3xl">
                                 Find routes with a luxury-desk feel.
                             </h1>
-                            <p className="mt-4 max-w-2xl text-[15px] leading-7 text-slate-600">
+                            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:mt-4 sm:text-[15px] sm:leading-7">
                                 Search, price, and push bookable itineraries into reservation with a calmer, more premium sales flow.
                             </p>
                         </div>
 
-                        <div className="premium-panel rounded-full px-4 py-3 status-pill status-success">
+                        <div className="premium-panel hidden rounded-full px-4 py-3 status-pill status-success md:inline-flex">
                             Shop {"->"} Price {"->"} Book
                         </div>
                     </div>
                 </div>
 
-                <div className="mx-auto max-w-6xl rounded-[2rem] premium-panel classic-grid p-4 md:p-8">
-                    <div className="mb-6 flex flex-wrap gap-3">
+                <div className="mx-auto max-w-6xl rounded-[1.7rem] premium-panel classic-grid p-3.5 sm:p-4 md:rounded-[2rem] md:p-8">
+                    <div className="mb-5 flex flex-wrap gap-2.5 sm:mb-6 sm:gap-3">
                         <button
                             onClick={() => setTripType("oneway")}
                             className={`rounded-full px-4 py-2 text-sm transition ${tripType === "oneway" ? "gold-button" : "ghost-button"}`}
@@ -488,20 +488,20 @@ export default function FlightSearch() {
                     </div>
 
                     {tripType === "multicity" ? (
-                        <div className="mb-5 space-y-4">
-                            <div className="rounded-[1.5rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.72)] px-4 py-4">
+                        <div className="mb-4 space-y-3.5 sm:mb-5 sm:space-y-4">
+                            <div className="rounded-[1.35rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.72)] px-4 py-4 sm:rounded-[1.5rem]">
                                 <div className="subtle-kicker mb-2">Multi-City Routing</div>
-                                <div className="text-sm leading-7 text-slate-600">
+                                <div className="text-sm leading-6 text-slate-600 sm:leading-7">
                                     Live multi-city shopping currently supports up to two flight legs per search for the most reliable pricing results. Search longer itineraries in smaller groups.
                                 </div>
-                            <div className="mt-3 overflow-x-auto rounded-2xl bg-[rgba(176,122,67,0.08)] px-4 py-3 text-sm font-medium text-[var(--ink)]">
+                            <div className="mt-3 overflow-x-auto rounded-[1.1rem] bg-[rgba(176,122,67,0.08)] px-4 py-3 text-sm font-medium text-[var(--ink)] sm:rounded-2xl">
                                     {multiCitySummary || "Your routing summary will appear here as you add each segment."}
                                 </div>
                             </div>
                             {multiCitySegments.map((segment, index) => (
                                 <div
                                     key={`segment-${index}`}
-                                    className={`soft-panel relative overflow-visible rounded-[1.7rem] p-4 ${
+                                    className={`soft-panel relative overflow-visible rounded-[1.45rem] p-4 sm:rounded-[1.7rem] ${
                                         activeField?.mode === "multi" && activeField.index === index ? "z-20" : "z-0"
                                     }`}
                                 >
@@ -522,12 +522,12 @@ export default function FlightSearch() {
                                             </button>
                                         )}
                                     </div>
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                    <div className="grid grid-cols-1 gap-3 md:gap-4 md:grid-cols-3">
                                         <div className="relative">
                                             <label className="text-sm text-gray-500">From</label>
                                             <input
                                                 placeholder="KUL"
-                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4"
+                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 px-4 py-3.5"
                                                 value={segment.from}
                                                 onFocus={() => setActiveField({ mode: "multi", field: "from", index })}
                                                 onChange={(e) => updateMultiCitySegment(index, "from", e.target.value)}
@@ -541,7 +541,7 @@ export default function FlightSearch() {
                                             <label className="text-sm text-gray-500">To</label>
                                             <input
                                                 placeholder="SIN"
-                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4"
+                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 px-4 py-3.5"
                                                 value={segment.to}
                                                 onFocus={() => setActiveField({ mode: "multi", field: "to", index })}
                                                 onChange={(e) => updateMultiCitySegment(index, "to", e.target.value)}
@@ -555,7 +555,7 @@ export default function FlightSearch() {
                                             <label className="text-sm text-gray-500">Departure</label>
                                             <input
                                                 type="date"
-                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4"
+                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 px-4 py-3.5"
                                                 min={index === 0 ? today : (multiCitySegments[index - 1]?.departDate || today)}
                                                 value={segment.departDate}
                                                 onChange={(e) => updateMultiCitySegment(index, "departDate", e.target.value)}
@@ -577,12 +577,12 @@ export default function FlightSearch() {
                         </div>
                     ) : (
                         <>
-                            <div className="mb-5 grid grid-cols-1 items-center gap-4 md:grid-cols-3">
+                            <div className="mb-4 grid grid-cols-1 items-center gap-3 md:mb-5 md:gap-4 md:grid-cols-3">
                                 <div className="relative">
                                     <label className="text-sm text-gray-500">From</label>
                                     <input
                                         placeholder="KUL"
-                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4"
+                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 px-4 py-3.5"
                                         value={form.from}
                                         onFocus={() => setActiveField({ mode: "single", field: "from" })}
                                         onChange={(e) =>
@@ -595,7 +595,7 @@ export default function FlightSearch() {
                                 <div className="flex justify-center">
                                     <button
                                         onClick={swapAirports}
-                                        className="rounded-full soft-panel p-4 transition hover:scale-105"
+                                        className="rounded-full soft-panel p-3.5 transition hover:scale-105"
                                     >
                                         <ArrowLeftRight size={18} />
                                     </button>
@@ -605,7 +605,7 @@ export default function FlightSearch() {
                                     <label className="text-sm text-gray-500">To</label>
                                     <input
                                         placeholder="BKK"
-                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4"
+                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 px-4 py-3.5"
                                         value={form.to}
                                         onFocus={() => setActiveField({ mode: "single", field: "to" })}
                                         onChange={(e) =>
@@ -616,12 +616,12 @@ export default function FlightSearch() {
                                 </div>
                             </div>
 
-                            <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="mb-4 grid grid-cols-1 gap-3 md:mb-5 md:gap-4 md:grid-cols-2">
                                 <div>
                                     <label className="text-sm text-gray-500">Departure</label>
                                     <input
                                         type="date"
-                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4"
+                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 px-4 py-3.5"
                                         min={today}
                                         value={form.departDate}
                                         onChange={(e) =>
@@ -635,7 +635,7 @@ export default function FlightSearch() {
                                         <label className="text-sm text-gray-500">Return</label>
                                         <input
                                             type="date"
-                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4"
+                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 px-4 py-3.5"
                                             min={form.departDate || today}
                                             value={form.returnDate}
                                             onChange={(e) =>
@@ -648,8 +648,8 @@ export default function FlightSearch() {
                         </>
                     )}
 
-                    <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                        <div className="soft-panel rounded-[1.6rem] p-4">
+                    <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+                        <div className="soft-panel rounded-[1.45rem] p-4 sm:rounded-[1.6rem]">
                             <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
                                 <UsersRound size={16} />
                                 Adults
@@ -665,7 +665,7 @@ export default function FlightSearch() {
                             />
                         </div>
 
-                        <div className="soft-panel rounded-[1.6rem] p-4">
+                        <div className="soft-panel rounded-[1.45rem] p-4 sm:rounded-[1.6rem]">
                             <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
                                 <UserRound size={16} />
                                 Children
@@ -681,7 +681,7 @@ export default function FlightSearch() {
                             />
                         </div>
 
-                        <div className="soft-panel rounded-[1.6rem] p-4">
+                        <div className="soft-panel rounded-[1.45rem] p-4 sm:rounded-[1.6rem]">
                             <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
                                 <Baby size={16} />
                                 Infants
@@ -702,7 +702,7 @@ export default function FlightSearch() {
                                 <button
                                     key={cabin}
                                     onClick={() => setForm({ ...form, cabin })}
-                                    className={`flex-1 rounded-2xl py-3 text-sm transition ${form.cabin === cabin ? "gold-button" : "ghost-button"}`}
+                                    className={`min-w-[5rem] flex-1 rounded-2xl py-3 text-sm transition ${form.cabin === cabin ? "gold-button" : "ghost-button"}`}
                                 >
                                     {cabin}
                                 </button>
@@ -725,15 +725,15 @@ export default function FlightSearch() {
                     <button
                         onClick={handleSearch}
                         disabled={loading}
-                        className="gold-button inline-flex w-full items-center justify-center gap-3 rounded-2xl py-4 font-semibold transition disabled:opacity-60"
+                        className="gold-button inline-flex w-full items-center justify-center gap-3 rounded-[1.25rem] py-4 font-semibold transition disabled:opacity-60 sm:rounded-2xl"
                     >
                         <Search size={18} />
                         {loading ? "Searching..." : "Search Flights"}
                     </button>
                 </div>
 
-                <div className="mx-auto mt-6 grid max-w-7xl grid-cols-1 gap-6 xl:grid-cols-[0.36fr_0.64fr]">
-                    <div className="h-fit space-y-5 rounded-[1.9rem] soft-panel p-6 fade-in">
+                <div className="mx-auto mt-6 grid max-w-7xl grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[0.36fr_0.64fr]">
+                    <div className="h-fit space-y-4 rounded-[1.6rem] soft-panel p-4 fade-in sm:space-y-5 sm:rounded-[1.9rem] sm:p-6">
                         <div className="flex items-center gap-2">
                             <SlidersHorizontal size={16} className="text-[var(--accent-strong)]" />
                             <h3 className="font-display text-2xl text-[var(--ink)]">Filters</h3>
@@ -854,10 +854,10 @@ export default function FlightSearch() {
                                 return (
                                     <div
                                         key={flight.id}
-                                        className={`premium-panel rounded-[1.9rem] p-5 sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
+                                        className={`premium-panel rounded-[1.55rem] p-4 sm:rounded-[1.9rem] sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
                                     >
-                                        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-                                            <div className="grid flex-1 gap-5 xl:grid-cols-[1.05fr_1.2fr_0.9fr] xl:items-center">
+                                        <div className="flex flex-col gap-4 sm:gap-5 xl:flex-row xl:items-center xl:justify-between">
+                                            <div className="grid flex-1 gap-4 sm:gap-5 xl:grid-cols-[1.05fr_1.2fr_0.9fr] xl:items-center">
                                                 <div>
                                                     <AirlineBrand
                                                         carrier={flight.carrier || "FL"}
@@ -867,10 +867,10 @@ export default function FlightSearch() {
                                                 </div>
 
                                                 <div>
-                                                    <div className="font-semibold text-slate-800">
+                                                    <div className="text-[15px] font-semibold leading-6 text-slate-800 sm:text-base">
                                                         {itineraryPath}
                                                     </div>
-                                                    <div className="mt-1 text-xs text-slate-500">
+                                                    <div className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-xs">
                                                         {new Date(flight.departure).toLocaleString()} to {new Date(flight.arrival).toLocaleString()}
                                                     </div>
                                                     <div className="mt-1 text-xs font-medium text-[var(--accent-strong)]">
@@ -905,10 +905,10 @@ export default function FlightSearch() {
                                             </div>
 
                                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:min-w-[18rem] xl:justify-end">
-                                                <div className="text-right">
+                                                <div className="text-left sm:text-right">
                                                     {isBookable ? (
                                                         <>
-                                                            <div className="text-2xl font-bold text-[var(--success)]">
+                                                            <div className="text-[1.8rem] font-bold leading-none text-[var(--success)] sm:text-2xl">
                                                                 {flight.currency} {flight.price.toFixed(2)}
                                                             </div>
                                                             <div className="text-xs text-slate-500">bookable wallet amount</div>

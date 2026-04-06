@@ -466,26 +466,26 @@ export default function BookingPage() {
     }
 
     return (
-        <div className="min-h-screen px-3 py-4 sm:px-4 md:p-6 fade-in">
-            <div className="mb-8">
-                <div className="subtle-kicker mb-3">Reservation Atelier</div>
-                <h1 className="hero-title mb-3">Complete your booking.</h1>
+        <div className="min-h-screen px-2 py-3 sm:px-4 md:p-6 fade-in">
+            <div className="mb-6 sm:mb-8">
+                <div className="subtle-kicker mb-2 sm:mb-3">Reservation Atelier</div>
+                <h1 className="hero-title mb-2 sm:mb-3">Complete your booking.</h1>
                 <p className="max-w-2xl text-slate-600">
                     Passenger details, itinerary review, and traveler preferences now sit in one polished reservation flow.
                 </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div className="space-y-6 lg:col-span-2">
-                    <div className="premium-panel rounded-[2rem] p-6">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
+                <div className="space-y-4 sm:space-y-6 lg:col-span-2">
+                    <div className="premium-panel rounded-[1.6rem] p-4 sm:rounded-[2rem] sm:p-6">
                         <h2 className="mb-4 font-semibold">Passenger Details</h2>
 
                         {passengers.map((passenger, index) => (
-                            <div key={index} className="mb-5 rounded-[1.5rem] soft-panel p-5">
+                            <div key={index} className="mb-4 rounded-[1.35rem] soft-panel p-4 sm:mb-5 sm:rounded-[1.5rem] sm:p-5">
                                 <div className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
                                     {travelerLabel(passenger.travelerType)} {index + 1}
                                 </div>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
                                     <input
                                         placeholder="First Name"
                                         className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
@@ -523,10 +523,10 @@ export default function BookingPage() {
                         ))}
                     </div>
 
-                    <div className="soft-panel rounded-[2rem] p-6">
+                    <div className="soft-panel rounded-[1.6rem] p-4 sm:rounded-[2rem] sm:p-6">
                         <h2 className="mb-4 font-semibold">Contact Information</h2>
 
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
                             <input
                                 placeholder="Email Address"
                                 className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
@@ -542,14 +542,14 @@ export default function BookingPage() {
                         </div>
                     </div>
 
-                    <div className="premium-panel rounded-[2rem] p-6">
+                    <div className="premium-panel rounded-[1.6rem] p-4 sm:rounded-[2rem] sm:p-6">
                         <div className="mb-4 flex items-center gap-3">
                             <Ticket className="text-[var(--accent-strong)]" size={18} />
                             <h2 className="font-semibold">Traveler Preferences</h2>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                            <div className="rounded-[1.5rem] border border-[rgba(45,120,92,0.12)] bg-[rgba(238,248,242,0.88)] p-4 md:col-span-2">
+                        <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
+                            <div className="rounded-[1.35rem] border border-[rgba(45,120,92,0.12)] bg-[rgba(238,248,242,0.88)] p-4 md:col-span-2 sm:rounded-[1.5rem]">
                                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--success)]">
                                     <Luggage size={15} />
                                     Travelport Baggage Snapshot
@@ -572,7 +572,7 @@ export default function BookingPage() {
                                 )}
                             </div>
 
-                            <div className="soft-panel rounded-[1.5rem] p-4">
+                            <div className="soft-panel rounded-[1.35rem] p-4 sm:rounded-[1.5rem]">
                                 <div className="mb-3 flex items-center gap-2 text-sm text-slate-500">
                                     <Luggage size={16} />
                                     Baggage
@@ -590,7 +590,7 @@ export default function BookingPage() {
                                 </select>
                             </div>
 
-                            <div className="soft-panel rounded-[1.5rem] p-4">
+                            <div className="soft-panel rounded-[1.35rem] p-4 sm:rounded-[1.5rem]">
                                 <div className="mb-3 flex items-center gap-2 text-sm text-slate-500">
                                     <BriefcaseBusiness size={16} />
                                     Backup Seat Preference
@@ -608,7 +608,7 @@ export default function BookingPage() {
                                 </select>
                             </div>
 
-                            <div className="soft-panel rounded-[1.5rem] p-4">
+                            <div className="soft-panel rounded-[1.35rem] p-4 sm:rounded-[1.5rem]">
                                 <div className="mb-3 flex items-center gap-2 text-sm text-slate-500">
                                     <ChefHat size={16} />
                                     Meal Selection
@@ -627,7 +627,7 @@ export default function BookingPage() {
                                 </select>
                             </div>
 
-                            <div className="soft-panel rounded-[1.5rem] p-4">
+                            <div className="soft-panel rounded-[1.35rem] p-4 sm:rounded-[1.5rem]">
                                 <div className="mb-3 flex items-center gap-2 text-sm text-slate-500">
                                     <CreditCard size={16} />
                                     Frequent Flyer
@@ -852,14 +852,14 @@ export default function BookingPage() {
                     </div>
                 </div>
 
-                <div className="space-y-6">
-                    <div className="space-y-6 lg:sticky lg:top-6">
-                        <div className="premium-panel overflow-hidden rounded-[2rem] p-6 float-slow">
-                            <div className="rounded-[1.7rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,250,244,0.98),rgba(247,238,224,0.9))] p-5 shadow-[0_18px_42px_rgba(62,43,25,0.08)]">
+                <div className="space-y-4 sm:space-y-6">
+                    <div className="space-y-4 sm:space-y-6 lg:sticky lg:top-6">
+                        <div className="premium-panel overflow-hidden rounded-[1.6rem] p-4 float-slow sm:rounded-[2rem] sm:p-6">
+                            <div className="rounded-[1.4rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,250,244,0.98),rgba(247,238,224,0.9))] p-4 shadow-[0_18px_42px_rgba(62,43,25,0.08)] sm:rounded-[1.7rem] sm:p-5">
                                 <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-start">
                                     <div className="min-w-0">
                                         <div className="subtle-kicker mb-2">Flight Summary</div>
-                                        <h2 className="text-[2rem] font-semibold leading-tight text-[var(--ink)] sm:text-[2.2rem]">
+                                        <h2 className="text-[1.8rem] font-semibold leading-tight text-[var(--ink)] sm:text-[2.2rem]">
                                             {selectedFlight.from} {"->"} {selectedFlight.to}
                                         </h2>
                                         <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
@@ -869,14 +869,14 @@ export default function BookingPage() {
                                         </p>
                                     </div>
 
-                                    <div className="rounded-[1.6rem] border border-[rgba(45,120,92,0.14)] bg-white/84 px-4 py-3 text-left shadow-[0_14px_30px_rgba(62,43,25,0.08)] sm:text-center">
+                                    <div className="rounded-[1.35rem] border border-[rgba(45,120,92,0.14)] bg-white/84 px-4 py-3 text-left shadow-[0_14px_30px_rgba(62,43,25,0.08)] sm:rounded-[1.6rem] sm:text-center">
                                         <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                                             Fare Total
                                         </div>
                                         <div className="mt-2 text-sm font-medium uppercase tracking-[0.16em] text-[var(--success)]">
                                             {selectedFlight.currency}
                                         </div>
-                                        <div className="mt-1 text-[2rem] font-semibold leading-none text-[var(--success)]">
+                                        <div className="mt-1 text-[1.75rem] font-semibold leading-none text-[var(--success)] sm:text-[2rem]">
                                             {selectedFlight.price.toFixed(2)}
                                         </div>
                                     </div>
@@ -895,11 +895,11 @@ export default function BookingPage() {
                                 </div>
                             </div>
 
-                            <div className="mt-5 space-y-4">
+                            <div className="mt-4 space-y-3 sm:mt-5 sm:space-y-4">
                                 {itinerarySegments.map((segment, index) => (
                                     <div
                                         key={`${segment.carrier}-${segment.flightNumber}-${index}`}
-                                        className="rounded-[1.6rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,255,255,0.94),rgba(250,246,239,0.88))] p-4 shadow-[0_16px_36px_rgba(66,49,30,0.08)]"
+                                        className="rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,255,255,0.94),rgba(250,246,239,0.88))] p-4 shadow-[0_16px_36px_rgba(66,49,30,0.08)] sm:rounded-[1.6rem]"
                                     >
                                         <div className="mb-3 flex items-center justify-between gap-3">
                                             <span className="rounded-full bg-[rgba(36,77,67,0.08)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--success)]">
@@ -918,20 +918,20 @@ export default function BookingPage() {
                                             />
                                         </div>
 
-                                        <div className="mt-4 rounded-[1.35rem] border border-[rgba(89,64,46,0.06)] bg-[rgba(247,241,231,0.78)] px-4 py-4">
+                                        <div className="mt-4 rounded-[1.2rem] border border-[rgba(89,64,46,0.06)] bg-[rgba(247,241,231,0.78)] px-4 py-4 sm:rounded-[1.35rem]">
                                             <div className="flex items-center justify-between gap-4 text-sm font-semibold text-[var(--ink)]">
                                                 <div className="min-w-0">
                                                     <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
                                                         Depart
                                                     </div>
-                                                    <div className="mt-1 text-lg">{segment.from}</div>
+                                                    <div className="mt-1 text-base sm:text-lg">{segment.from}</div>
                                                 </div>
                                                 <span className="text-slate-300">{"->"}</span>
                                                 <div className="min-w-0 text-right">
                                                     <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
                                                         Arrive
                                                     </div>
-                                                    <div className="mt-1 text-lg">{segment.to}</div>
+                                                    <div className="mt-1 text-base sm:text-lg">{segment.to}</div>
                                                 </div>
                                             </div>
                                             <div className="mt-3 rounded-[1rem] bg-white/70 px-3 py-2 text-xs leading-6 text-slate-500">
@@ -943,7 +943,7 @@ export default function BookingPage() {
                                 ))}
                             </div>
 
-                            <div className="mt-5 rounded-[1.6rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,255,255,0.9),rgba(249,244,236,0.86))] p-4 shadow-[0_12px_28px_rgba(66,49,30,0.07)]">
+                            <div className="mt-4 rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,255,255,0.9),rgba(249,244,236,0.86))] p-4 shadow-[0_12px_28px_rgba(66,49,30,0.07)] sm:mt-5 sm:rounded-[1.6rem]">
                                 <div className="flex items-end justify-between gap-4 text-sm">
                                     <div>
                                         <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -957,7 +957,7 @@ export default function BookingPage() {
                                         <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
                                             Wallet capture
                                         </div>
-                                        <div className="mt-1 text-2xl font-semibold text-[var(--ink)]">
+                                        <div className="mt-1 text-[1.7rem] font-semibold text-[var(--ink)] sm:text-2xl">
                                             {selectedFlight.currency} {selectedFlight.price.toFixed(2)}
                                         </div>
                                     </div>
@@ -973,7 +973,7 @@ export default function BookingPage() {
                             <button
                                 onClick={handleBooking}
                                 disabled={loading}
-                                className="gold-button mt-6 w-full rounded-2xl py-3 font-semibold disabled:opacity-60"
+                                className="gold-button mt-5 w-full rounded-[1.2rem] py-3.5 font-semibold disabled:opacity-60 sm:mt-6 sm:rounded-2xl"
                             >
                                 {loading ? "Booking..." : "Confirm Booking"}
                             </button>
