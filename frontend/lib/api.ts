@@ -133,6 +133,18 @@ export type FlightSeatMapResponse = {
     from: string;
     to: string;
     message: string;
+    diagnostics?: {
+        rowCount: number;
+        facilityCount: number;
+        seatLikeFacilityCount: number;
+        distinctSeatCodeCount: number;
+        sampleSeatCodes: string[];
+        hasRowNodes: boolean;
+        hasFacilityNodes: boolean;
+        supplierMessages: string[];
+        structuralHints: string[];
+        parserAssessment: string;
+    };
     rows: Array<{
         number: string;
         seats: Array<{

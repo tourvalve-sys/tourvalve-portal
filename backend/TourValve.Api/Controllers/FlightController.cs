@@ -684,17 +684,53 @@ public class FlightsController : ControllerBase
         var doc = XDocument.Parse(xml);
 
         var segment = doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "AirSegment");
-        var message = doc.Descendants()
+        var responseMessages = doc.Descendants()
             .Where(x => x.Name.LocalName == "ResponseMessage")
-            .Select(x => x.Value?.Trim() ?? string.Empty)
-            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
-            ?? doc.Descendants()
-                .Where(x => x.Name.LocalName == "Remark")
-                .Select(x => x.Value?.Trim() ?? string.Empty)
-                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
-            ?? string.Empty;
-        var rows = doc.Descendants()
+            .Select(x => x.Value?.Trim() ?? string.Empty);
+        var remarks = doc.Descendants()
+            .Where(x => x.Name.LocalName == "Remark")
+            .Select(x => x.Value?.Trim() ?? string.Empty);
+        var supplierMessages = responseMessages
+            .Concat(remarks)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToList();
+        var message = supplierMessages.FirstOrDefault() ?? string.Empty;
+
+        var rowNodes = doc.Descendants()
             .Where(x => x.Name.LocalName == "Row")
+            .ToList();
+        var facilityNodes = doc.Descendants()
+            .Where(x => x.Name.LocalName == "Facility")
+            .ToList();
+        var seatLikeFacilities = facilityNodes
+            .Where(facility =>
+                string.Equals(facility.Attribute("Type")?.Value, "Seat", StringComparison.OrdinalIgnoreCase) ||
+                (
+                    !string.IsNullOrWhiteSpace(facility.Attribute("SeatCode")?.Value) &&
+                    !string.Equals(facility.Attribute("Type")?.Value, "Aisle", StringComparison.OrdinalIgnoreCase)
+                ))
+            .ToList();
+        var rawSeatCodes = seatLikeFacilities
+            .Select(facility => (facility.Attribute("SeatCode")?.Value ?? string.Empty).Trim())
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(12)
+            .ToList();
+        var structuralHints = doc.Descendants()
+            .Select(x => x.Name.LocalName)
+            .Where(name =>
+                name.Contains("Seat", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("Facility", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("Row", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("Cabin", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("Compartment", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(20)
+            .ToList();
+
+        var rows = rowNodes
             .Select(row => new
             {
                 number = row.Attribute("Number")?.Value ?? string.Empty,
@@ -734,6 +770,28 @@ public class FlightsController : ControllerBase
                 ? "The airline returned a seat-map response, but there were no seat rows available to render for this leg. This can happen when the carrier does not publish a pre-book graphical seat map for that fare."
                 : message,
             rows,
+            diagnostics = new
+            {
+                rowCount = rowNodes.Count,
+                facilityCount = facilityNodes.Count,
+                seatLikeFacilityCount = seatLikeFacilities.Count,
+                distinctSeatCodeCount = rawSeatCodes.Count,
+                sampleSeatCodes = rawSeatCodes,
+                hasRowNodes = rowNodes.Count > 0,
+                hasFacilityNodes = facilityNodes.Count > 0,
+                supplierMessages,
+                structuralHints,
+                parserAssessment =
+                    rowNodes.Count == 0 && facilityNodes.Count == 0
+                        ? "Travelport responded without row/facility seat-map nodes."
+                        : rowNodes.Count == 0 && seatLikeFacilities.Count > 0
+                            ? "Travelport returned seat-like facilities without row containers. Parser extension may be needed for this carrier response."
+                            : rowNodes.Count > 0 && seatLikeFacilities.Count == 0
+                                ? "Travelport returned row nodes, but no seat-like facilities were detected inside them."
+                                : rows.Count == 0
+                                    ? "Travelport returned seat-map structure, but no selectable seat rows were rendered from it."
+                                    : "Seat-map rows were parsed successfully."
+            },
             rawResponse = xml
         };
     }

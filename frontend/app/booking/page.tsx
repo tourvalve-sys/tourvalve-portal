@@ -25,6 +25,7 @@ import {
     LATEST_BOOKING_CONFIRMATION_KEY,
     type BookingConfirmationState,
 } from "@/lib/bookingConfirmation";
+import { getUserFromToken } from "@/lib/auth";
 import { useBooking } from "../context/BookingContext";
 
 type PassengerForm = {
@@ -132,6 +133,7 @@ function seatTone(seat: {
 export default function BookingPage() {
     const router = useRouter();
     const { selectedFlight, travelerCounts, setSelectedFlight } = useBooking();
+    const currentUser = useMemo(() => getUserFromToken(), []);
     const isHydrated = useSyncExternalStore(
         () => () => {},
         () => true,
@@ -200,6 +202,7 @@ export default function BookingPage() {
 
         return Array.from(new Set(items)).slice(0, 4);
     }, [selectedFlight]);
+    const canViewSeatDiagnostics = currentUser?.role === "ADMIN";
 
     useEffect(() => {
         const items: PassengerForm[] = [];
@@ -799,6 +802,38 @@ export default function BookingPage() {
                                             <div className="mt-1 text-xs text-slate-500">
                                                 {seatMap.message || "The airline returned a seat-map response, but there were no seat rows available to render for this leg."}
                                             </div>
+                                            {canViewSeatDiagnostics && seatMap.diagnostics && (
+                                                <div className="mt-4 rounded-[1.1rem] border border-[rgba(32,63,92,0.12)] bg-[rgba(243,248,252,0.95)] px-4 py-3 text-xs leading-6 text-slate-600">
+                                                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                                        Admin seat-map diagnostics
+                                                    </div>
+                                                    <div>{seatMap.diagnostics.parserAssessment}</div>
+                                                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                                                        <span>Rows: {seatMap.diagnostics.rowCount}</span>
+                                                        <span>Facilities: {seatMap.diagnostics.facilityCount}</span>
+                                                        <span>Seat-like facilities: {seatMap.diagnostics.seatLikeFacilityCount}</span>
+                                                        <span>Seat codes: {seatMap.diagnostics.distinctSeatCodeCount}</span>
+                                                    </div>
+                                                    {seatMap.diagnostics.supplierMessages.length > 0 && (
+                                                        <div className="mt-2">
+                                                            <div className="font-semibold text-slate-500">Supplier messages</div>
+                                                            <div>{seatMap.diagnostics.supplierMessages.join(" | ")}</div>
+                                                        </div>
+                                                    )}
+                                                    {seatMap.diagnostics.structuralHints.length > 0 && (
+                                                        <div className="mt-2">
+                                                            <div className="font-semibold text-slate-500">Response hints</div>
+                                                            <div>{seatMap.diagnostics.structuralHints.join(", ")}</div>
+                                                        </div>
+                                                    )}
+                                                    {seatMap.diagnostics.sampleSeatCodes.length > 0 && (
+                                                        <div className="mt-2">
+                                                            <div className="font-semibold text-slate-500">Sample seat codes</div>
+                                                            <div>{seatMap.diagnostics.sampleSeatCodes.join(", ")}</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
