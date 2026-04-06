@@ -216,12 +216,18 @@ public static class TravelportFlightParser
             ?? bookingInfo?.Attribute("BookingCode")?.Value
             ?? bookingInfo?.Attribute("CabinClass")?.Value
             ?? string.Empty;
+        var hostTokenRef = segment.Attribute("HostTokenRef")?.Value
+            ?? bookingInfo?.Attribute("HostTokenRef")?.Value
+            ?? string.Empty;
 
         if (!string.IsNullOrWhiteSpace(providerCode))
             segment.SetAttributeValue("ProviderCode", providerCode);
 
         if (!string.IsNullOrWhiteSpace(classOfService))
             segment.SetAttributeValue("ClassOfService", classOfService);
+
+        if (!string.IsNullOrWhiteSpace(hostTokenRef))
+            segment.SetAttributeValue("HostTokenRef", hostTokenRef);
 
         return segment;
     }
