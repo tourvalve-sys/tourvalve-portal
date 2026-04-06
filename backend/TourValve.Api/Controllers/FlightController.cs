@@ -97,7 +97,7 @@ public class FlightsController : ControllerBase
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
                 error = "Live Travelport search failed.",
-                detail
+                detail = BuildProviderFriendlyDetail(detail, "search")
             });
         }
 
@@ -152,7 +152,7 @@ public class FlightsController : ControllerBase
                 error = string.IsNullOrWhiteSpace(req.Cabin)
                     ? "Travelport returned no usable flights for this search."
                     : $"Travelport returned no usable {normalizedCabin?.ToLowerInvariant() ?? "requested"} cabin fares for this search.",
-                detail = response.Length > 1200 ? response[..1200] : response
+                detail = BuildProviderFriendlyDetail(response, "search")
             });
         }
 
@@ -189,7 +189,7 @@ public class FlightsController : ControllerBase
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
                 error = "Live Travelport pricing failed.",
-                detail = ex.Message
+                detail = BuildProviderFriendlyDetail(ex.Message, "pricing")
             });
         }
 
@@ -204,7 +204,7 @@ public class FlightsController : ControllerBase
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
                 error = "Travelport did not return a bookable fare for this availability.",
-                detail = pricedResponse.Length > 1200 ? pricedResponse[..1200] : pricedResponse
+                detail = BuildProviderFriendlyDetail(pricedResponse, "pricing")
             });
         }
 
@@ -239,7 +239,7 @@ public class FlightsController : ControllerBase
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
                 error = "Live Travelport seat map failed.",
-                detail = ex.Message
+                detail = BuildProviderFriendlyDetail(ex.Message, "seat map")
             });
         }
 
@@ -500,6 +500,25 @@ public class FlightsController : ControllerBase
 
     private static string BuildMultiCityTimeoutMessage(int segmentCount)
         => $"The live provider took too long to price this {segmentCount}-segment multi-city itinerary. In the current live setup, search up to two segments at a time for the most reliable results.";
+
+    private static string BuildProviderFriendlyDetail(string raw, string context)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return $"The live provider returned an unexpected {context} response.";
+
+        if (raw.Contains("Gateway Time-out", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+            return $"The live provider took too long to respond during {context}. Please try again.";
+
+        if (raw.Contains("Error unmarshalling message body", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("travelport.com/schema", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("faultstring", StringComparison.OrdinalIgnoreCase))
+            return $"The live provider returned an unexpected {context} response. Please try another itinerary or search again.";
+
+        return raw.Length > 240
+            ? raw[..240]
+            : raw;
+    }
 
     private string BuildPriceXml(FlightPriceRequest req)
     {

@@ -515,16 +515,23 @@ function extractXmlError(raw: string): string | null {
 
 function normalizeFriendlyError(message: string): string {
     const normalized = message.trim();
+    const htmlStripped = normalized
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const safeMessage = htmlStripped || normalized;
 
-    if (!normalized) {
+    if (!safeMessage) {
         return "Something went wrong while contacting the portal service.";
     }
 
-    if (normalized === "Failed to fetch") {
+    if (safeMessage === "Failed to fetch") {
         return "The portal could not reach the backend service. Please make sure the API is running.";
     }
 
-    if (/Unable to connect to the remote server|ECONNREFUSED|network/i.test(normalized)) {
+    if (/Unable to connect to the remote server|ECONNREFUSED|network/i.test(safeMessage)) {
         return "The backend service is not reachable right now. Please check that the API is running and try again.";
     }
 
@@ -532,55 +539,69 @@ function normalizeFriendlyError(message: string): string {
         return "The live provider took too long to respond to this search. For multi-city itineraries, try fewer segments at a time or try again shortly.";
     }
 
-    if (/408 Request Timeout|timed out|timeout/i.test(normalized)) {
+    if (/502 Bad Gateway|Bad Gateway|upstream prematurely closed connection|<title>502/i.test(normalized)) {
+        return "The live provider returned an unexpected gateway response. Please try the search again or choose another result.";
+    }
+
+    if (/408 Request Timeout|timed out|timeout/i.test(safeMessage)) {
         return "The live provider timed out while processing this request. Please try again in a moment.";
     }
 
-    if (/mock mode is disabled/i.test(normalized)) {
+    if (/mock mode is disabled/i.test(safeMessage)) {
         return "Live Travelport mode is required for this action, and mock mode is currently disabled.";
     }
 
-    if (/credentials are missing/i.test(normalized)) {
+    if (/credentials are missing/i.test(safeMessage)) {
         return "Live Travelport credentials are missing or incomplete for this action.";
     }
 
-    if (/No flight records found for this date or market/i.test(normalized)) {
+    if (/No flight records found for this date or market/i.test(safeMessage)) {
         return "No fares were returned for this route and date. Try another date, another carrier, or a different cabin.";
     }
 
-    if (/NO AVAILABILITY FOR THIS REQUEST/i.test(normalized)) {
+    if (/NO AVAILABILITY FOR THIS REQUEST/i.test(safeMessage)) {
         return "This route is not currently returning live availability for the selected airport pair. Try a nearby major airport, another date, or a different carrier market.";
     }
 
-    if (/OriginLocation@LocationCode|DestinationLocation@LocationCode|ACH carriers may not support Airport codes supplied/i.test(normalized)) {
+    if (/OriginLocation@LocationCode|DestinationLocation@LocationCode|ACH carriers may not support Airport codes supplied/i.test(safeMessage)) {
         return "The selected airport code is valid in the directory, but it is not currently supported for live fare shopping in this provider market. Try a nearby main airport or another route.";
     }
 
-    if (/Invalid data type\s*\/\s*length\s*\/\s*value of attribute or element supplied/i.test(normalized)) {
+    if (/Invalid data type\s*\/\s*length\s*\/\s*value of attribute or element supplied/i.test(safeMessage)) {
         return "The provider could not shop this route with the selected airport code format. Try a different airport nearby or another market.";
     }
 
-    if (/AirPriceReq.*PlatingCarrier|Expected .*AirPriceReq.*PlatingCarrier/i.test(normalized)) {
+    if (/AirPriceReq.*PlatingCarrier|Expected .*AirPriceReq.*PlatingCarrier/i.test(safeMessage)) {
         return "The live provider could not price this itinerary with the current response shape. Please try another result or search again.";
     }
 
-    if (/Error unmarshalling message body/i.test(normalized)) {
-        return "The live provider returned an unexpected pricing response for this itinerary. Please try another result or search again.";
+    if (
+        /Error unmarshalling message body/i.test(safeMessage) ||
+        /travelport\.com\/schema\/air_v\d+_\d+/i.test(safeMessage) ||
+        /Expected .*AirPriceReq/i.test(safeMessage) ||
+        /Expected .*LowFareSearchReq/i.test(safeMessage) ||
+        /Expected .*AvailabilitySearchReq/i.test(safeMessage)
+    ) {
+        return "The live provider returned an unexpected response for this itinerary. Please try another result or search again.";
     }
 
-    if (/Run the latest database update against the same PostgreSQL database used by the API/i.test(normalized)) {
+    if (/Run the latest database update against the same PostgreSQL database used by the API/i.test(safeMessage)) {
         return "The production database is still being prepared for the latest booking features. Please try again shortly.";
     }
 
-    if (/Registration service is still preparing the production database/i.test(normalized)) {
+    if (/Registration service is still preparing the production database/i.test(safeMessage)) {
         return "Registration is temporarily unavailable while the production database finishes preparing. Please try again shortly.";
     }
 
-    if (/relation .* does not exist|column .* does not exist|42P01|42703/i.test(normalized)) {
+    if (/relation .* does not exist|column .* does not exist|42P01|42703/i.test(safeMessage)) {
         return "The production database is still catching up with the latest portal features. Please try again shortly.";
     }
 
-    return normalized;
+    if (/travelport/i.test(safeMessage) && /(schema|xml|fault|string|response)/i.test(safeMessage)) {
+        return "The live provider returned an unexpected response. Please try again or choose another itinerary.";
+    }
+
+    return safeMessage;
 }
 
 export async function loginUser(
