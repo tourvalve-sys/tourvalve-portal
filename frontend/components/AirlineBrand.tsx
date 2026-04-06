@@ -103,6 +103,13 @@ const carrierAliases: Record<string, string> = {
     "1X": "JQ",
 };
 
+const badgePreferredCodes = new Set([
+    "BI",
+    "MH",
+    "VN",
+    "W1",
+]);
+
 const brandMap: Record<
     string,
     {
@@ -201,6 +208,7 @@ export default function AirlineBrand({
         gradient: "from-[#1d2a44] via-[#35527c] to-[#7ea3d8]",
         glow: "shadow-[0_18px_36px_rgba(29,42,68,0.22)]",
     };
+    const forceBadge = badgePreferredCodes.has(normalized);
     const logoSources = useMemo(
         () => [
             `https://www.gstatic.com/flights/airline_logos/70px/${encodeURIComponent(normalized)}.png`,
@@ -210,7 +218,7 @@ export default function AirlineBrand({
     );
     const activeLogoSource = logoSourceIndex[normalized] ?? 0;
     const logoUrl = logoSources[activeLogoSource];
-    const logoFailed = activeLogoSource >= logoSources.length;
+    const logoFailed = forceBadge || activeLogoSource >= logoSources.length;
 
     const logoBadge = (
         <div
