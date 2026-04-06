@@ -279,6 +279,7 @@ export default function BookingPage() {
             const response = await getFlightSeatMap({
                 airSegmentXml: activeSeatSegment.airSegmentXml,
                 airPricingSolutionXml: selectedFlight?.airPricingSolutionXml ?? "",
+                airPricingContextXml: selectedFlight?.airPricingContextXml ?? "",
                 frequentFlyerProgram: servicePreferences.frequentFlyerProgram,
                 frequentFlyerNumber: servicePreferences.frequentFlyerNumber,
             });

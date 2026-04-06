@@ -631,7 +631,10 @@ public class FlightsController : ControllerBase
         var loyaltyXml = !string.IsNullOrWhiteSpace(loyaltySupplierCode) && !string.IsNullOrWhiteSpace(req.FrequentFlyerNumber)
             ? $@"<com:LoyaltyCard SupplierCode=""{Escape(loyaltySupplierCode.Trim())}"" CardNumber=""{Escape(req.FrequentFlyerNumber.Trim())}"" />"
             : string.Empty;
-        var hostTokensXml = ExtractHostTokensXml(req.AirPricingSolutionXml);
+        var hostTokensXml = ExtractHostTokensXml(
+            !string.IsNullOrWhiteSpace(req.AirPricingContextXml)
+                ? req.AirPricingContextXml
+                : req.AirPricingSolutionXml);
 
         return $@"
 <air:SeatMapReq
@@ -640,7 +643,8 @@ public class FlightsController : ControllerBase
     AuthorizedBy=""{Escape(authorizedBy)}""
     TargetBranch=""{Escape(_travelportConfig.TargetBranch)}""
     TraceId=""TV-SEAT-{DateTime.UtcNow:yyyyMMddHHmmss}""
-    ReturnSeatPricing=""true"">
+    ReturnSeatPricing=""true""
+    ReturnBrandingInfo=""true"">
   <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
   <air:SearchTraveler Code=""ADT"">
     <com:Name First=""TourValve"" Last=""Traveler"" />
@@ -778,6 +782,7 @@ public sealed class FlightSeatMapRequest
 {
     public string AirSegmentXml { get; set; } = string.Empty;
     public string AirPricingSolutionXml { get; set; } = string.Empty;
+    public string AirPricingContextXml { get; set; } = string.Empty;
     public string FrequentFlyerProgram { get; set; } = string.Empty;
     public string FrequentFlyerNumber { get; set; } = string.Empty;
 }

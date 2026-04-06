@@ -122,6 +122,7 @@ export type AirBookingServicePreferencesPayload = {
 export type FlightSeatMapPayload = {
     airSegmentXml: string;
     airPricingSolutionXml: string;
+    airPricingContextXml: string;
     frequentFlyerProgram: string;
     frequentFlyerNumber: string;
 };
