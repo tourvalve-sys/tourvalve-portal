@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 
 type AirlineBrandProps = {
@@ -220,10 +221,12 @@ export default function AirlineBrand({
                     {normalized}
                 </div>
             ) : (
-                <img
+                <Image
                     src={logoUrl}
                     alt={`${brand.name} logo`}
                     className="h-full w-full object-contain p-2"
+                    width={compact ? 44 : 56}
+                    height={compact ? 44 : 56}
                     loading="lazy"
                     onError={() =>
                         setFailedLogos((current) =>
