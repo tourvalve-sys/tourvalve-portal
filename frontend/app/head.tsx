@@ -1,8 +1,45 @@
 export default function Head() {
-    const title = "TourValve | B2B Flight Booking Portal";
+    const title = "TourValve Official Site | B2B Flight Booking Portal and Agent Reservations";
     const description =
-        "TourValve is a B2B flight booking portal for live air search, reservation handling, wallet settlement, agent operations, and reporting.";
+        "TourValve is a B2B flight booking portal for live air search, reservation handling, wallet settlement, agent operations, and reporting in one elevated workspace.";
     const siteUrl = "https://tourvalve.com";
+    const jsonLd = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "Organization",
+                "@id": `${siteUrl}/#organization`,
+                name: "TourValve",
+                url: siteUrl,
+                logo: `${siteUrl}/icon.png`,
+            },
+            {
+                "@type": "WebSite",
+                "@id": `${siteUrl}/#website`,
+                url: siteUrl,
+                name: "TourValve",
+                description,
+                publisher: {
+                    "@id": `${siteUrl}/#organization`,
+                },
+            },
+            {
+                "@type": "SiteNavigationElement",
+                name: "Login",
+                url: `${siteUrl}/login`,
+            },
+            {
+                "@type": "SiteNavigationElement",
+                name: "Request Agent Access",
+                url: `${siteUrl}/register`,
+            },
+            {
+                "@type": "SiteNavigationElement",
+                name: "Forgot Password",
+                url: `${siteUrl}/forgot-password`,
+            },
+        ],
+    };
 
     return (
         <>
@@ -21,11 +58,18 @@ export default function Head() {
             <meta property="og:description" content={description} />
             <meta property="og:url" content={siteUrl} />
             <meta property="og:image" content={`${siteUrl}/icon.png`} />
+            <meta property="og:locale" content="en_MY" />
 
             <meta name="twitter:card" content="summary_large_image" />
             <meta name="twitter:title" content={title} />
             <meta name="twitter:description" content={description} />
             <meta name="twitter:image" content={`${siteUrl}/icon.png`} />
+            <meta name="application-name" content="TourValve" />
+
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+            />
         </>
     );
 }
