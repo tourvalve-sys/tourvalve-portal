@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useMemo, useState } from "react";
 
 type AirlineBrandProps = {
@@ -194,17 +193,22 @@ export default function AirlineBrand({
     compact = false,
 }: AirlineBrandProps) {
     const normalized = normalizeCarrierCode(carrier, flightNumber);
-    const [failedLogos, setFailedLogos] = useState<Record<string, boolean>>({});
+    const [logoSourceIndex, setLogoSourceIndex] = useState<Record<string, number>>({});
     const brand = brandMap[normalized] ?? {
         name: carrierNames[normalized] ?? `Airline ${normalized}`,
         gradient: "from-[#1d2a44] via-[#35527c] to-[#7ea3d8]",
         glow: "shadow-[0_18px_36px_rgba(29,42,68,0.22)]",
     };
-    const logoUrl = useMemo(
-        () => `https://images.kiwi.com/airlines/64/${encodeURIComponent(normalized)}.png`,
+    const logoSources = useMemo(
+        () => [
+            `https://www.gstatic.com/flights/airline_logos/70px/${encodeURIComponent(normalized)}.png`,
+            `https://images.kiwi.com/airlines/64/${encodeURIComponent(normalized)}.png`,
+        ],
         [normalized]
     );
-    const logoFailed = failedLogos[normalized] ?? false;
+    const activeLogoSource = logoSourceIndex[normalized] ?? 0;
+    const logoUrl = logoSources[activeLogoSource];
+    const logoFailed = activeLogoSource >= logoSources.length;
 
     const logoBadge = (
         <div
@@ -221,20 +225,40 @@ export default function AirlineBrand({
                     {normalized}
                 </div>
             ) : (
-                <Image
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
                     src={logoUrl}
                     alt={`${brand.name} logo`}
                     className="h-full w-full object-contain p-2"
                     width={compact ? 44 : 56}
                     height={compact ? 44 : 56}
                     loading="lazy"
+                    referrerPolicy="no-referrer"
                     onError={() =>
-                        setFailedLogos((current) =>
-                            current[normalized]
-                                ? current
-                                : { ...current, [normalized]: true }
-                        )
+                        setLogoSourceIndex((current) => {
+                            const nextIndex = (current[normalized] ?? 0) + 1;
+                            if (nextIndex === (current[normalized] ?? 0)) {
+                                return current;
+                            }
+
+                            return {
+                                ...current,
+                                [normalized]: nextIndex,
+                            };
+                        })
                     }
+                    onLoad={(event) => {
+                        const image = event.currentTarget;
+                        const naturalWidth = image.naturalWidth ?? 0;
+                        const naturalHeight = image.naturalHeight ?? 0;
+
+                        if (naturalWidth <= 1 || naturalHeight <= 1) {
+                            setLogoSourceIndex((current) => ({
+                                ...current,
+                                [normalized]: logoSources.length,
+                            }));
+                        }
+                    }}
                 />
             )}
         </div>
