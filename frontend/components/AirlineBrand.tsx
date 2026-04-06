@@ -110,6 +110,15 @@ const badgePreferredCodes = new Set([
     "W1",
 ]);
 
+const preferredLogoSourceIndex: Record<string, number> = {
+    MH: 1,
+    BI: 1,
+    VN: 1,
+    OD: 1,
+    TR: 1,
+    SQ: 1,
+};
+
 const brandMap: Record<
     string,
     {
@@ -216,7 +225,8 @@ export default function AirlineBrand({
         ],
         [normalized]
     );
-    const activeLogoSource = logoSourceIndex[normalized] ?? 0;
+    const activeLogoSource =
+        logoSourceIndex[normalized] ?? preferredLogoSourceIndex[normalized] ?? 0;
     const logoUrl = logoSources[activeLogoSource];
     const logoFailed = forceBadge || activeLogoSource >= logoSources.length;
 
