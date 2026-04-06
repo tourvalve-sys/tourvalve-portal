@@ -44,6 +44,7 @@ export default function FlightSearch() {
     const [hasSearched, setHasSearched] = useState(false);
     const [activeField, setActiveField] = useState<ActiveAirportField>(null);
     const [pricingFlightId, setPricingFlightId] = useState<string | null>(null);
+    const [pricingErrors, setPricingErrors] = useState<Record<string, string>>({});
     const [filters, setFilters] = useState<FilterState>({
         maxPrice: 50000,
         nonstopOnly: false,
@@ -139,6 +140,7 @@ export default function FlightSearch() {
             setError("");
             setSearchNotice("");
             setResults([]);
+            setPricingErrors({});
             setSelectedFlight(null);
             setHasSearched(true);
             setActiveField(null);
@@ -184,13 +186,24 @@ export default function FlightSearch() {
         }
 
         if (!flight.airSegmentXml) {
-            setError("This availability cannot be priced because the travel segment data is missing.");
+            setPricingErrors((current) => ({
+                ...current,
+                [flight.id]: "This availability cannot be priced because the travel segment data is missing.",
+            }));
             return;
         }
 
         try {
             setPricingFlightId(flight.id);
-            setError("");
+            setPricingErrors((current) => {
+                if (!(flight.id in current)) {
+                    return current;
+                }
+
+                const next = { ...current };
+                delete next[flight.id];
+                return next;
+            });
 
             const pricedFlight = await priceFlight({
                 airSegmentXml: flight.airSegmentXml,
@@ -212,7 +225,10 @@ export default function FlightSearch() {
             setSelectedFlight(pricedFlight);
             router.push("/booking");
         } catch (value: unknown) {
-            setError(getErrorMessage(value));
+            setPricingErrors((current) => ({
+                ...current,
+                [flight.id]: getErrorMessage(value),
+            }));
         } finally {
             setPricingFlightId(null);
         }
@@ -817,6 +833,7 @@ export default function FlightSearch() {
                                     matchesReturnSearch,
                                     nonstopEligible,
                                 } = getJourneySummary(flight);
+                                const pricingError = pricingErrors[flight.id];
                                 const itineraryPath = itinerarySegments
                                     .flatMap((segment, segmentIndex) =>
                                         segmentIndex === 0 ? [segment.from, segment.to] : [segment.to]
@@ -903,6 +920,11 @@ export default function FlightSearch() {
                                                             </div>
                                                             <div className="text-xs text-slate-500">run live pricing to continue</div>
                                                         </>
+                                                    )}
+                                                    {!isBookable && pricingError && (
+                                                        <div className="mt-2 max-w-[16rem] text-xs leading-5 text-red-600">
+                                                            {pricingError}
+                                                        </div>
                                                     )}
                                                 </div>
 
