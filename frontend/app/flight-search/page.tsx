@@ -859,60 +859,62 @@ export default function FlightSearch() {
                                         key={flight.id}
                                         className={`premium-panel rounded-[1.55rem] p-4 sm:rounded-[1.9rem] sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
                                     >
-                                        <div className="flex flex-col gap-4 sm:gap-5 xl:flex-row xl:items-center xl:justify-between">
-                                            <div className="grid flex-1 gap-4 sm:gap-5 xl:grid-cols-[1.05fr_1.2fr_0.9fr] xl:items-center">
-                                                <div>
+                                        <div className="grid gap-4 sm:gap-5 lg:grid-cols-[minmax(10.5rem,0.95fr)_minmax(15rem,1.45fr)_minmax(9rem,0.9fr)_minmax(12rem,1fr)] lg:items-center">
+                                            <div className="flex items-start lg:items-center">
+                                                <div className="w-full max-w-[13rem]">
                                                     <AirlineBrand
                                                         carrier={flight.carrier || "FL"}
                                                         flightNumber={flight.flightNumber || "Live itinerary"}
                                                         compact
                                                     />
                                                 </div>
+                                            </div>
 
-                                                <div>
-                                                    <div className="text-[15px] font-semibold leading-6 text-slate-800 sm:text-base">
-                                                        {itineraryPath}
-                                                    </div>
-                                                    <div className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-xs">
-                                                        {new Date(flight.departure).toLocaleString()} to {new Date(flight.arrival).toLocaleString()}
-                                                    </div>
-                                                    <div className="mt-1 text-xs font-medium text-[var(--accent-strong)]">
-                                                        {stopSummary}
-                                                    </div>
-                                                    <div className="mt-3 flex flex-wrap gap-2">
-                                                        {getBaggageHighlights(flight).length > 0 ? (
-                                                            getBaggageHighlights(flight).map((text) => (
-                                                                <span
-                                                                    key={text}
-                                                                    className="rounded-full border border-[rgba(45,120,92,0.14)] bg-[rgba(232,245,237,0.92)] px-3 py-1 text-[11px] font-medium text-[var(--success)]"
-                                                                >
-                                                                    {text}
-                                                                </span>
-                                                            ))
-                                                        ) : (
-                                                            <span className="rounded-full border border-[rgba(89,64,46,0.1)] bg-white/85 px-3 py-1 text-[11px] font-medium text-slate-500">
-                                                                Allowance confirmed after pricing
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                            <div className="min-w-0">
+                                                <div className="text-[15px] font-semibold leading-6 text-slate-800 sm:text-base">
+                                                    <span className="block truncate">{itineraryPath}</span>
                                                 </div>
-
-                                                <div className="flex flex-wrap gap-2">
-                                                    <span className={`status-pill ${isBookable ? "status-success" : ""}`}>
-                                                        {isBookable
-                                                            ? "Ready To Book"
-                                                            : isScheduleOnlyResult
-                                                                ? "Schedule Only"
-                                                                : "Needs Pricing"}
+                                                <div className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-xs">
+                                                    <span className="block">
+                                                        {new Date(flight.departure).toLocaleString()} to {new Date(flight.arrival).toLocaleString()}
                                                     </span>
-                                                    <span className="status-pill ghost-button !text-[var(--ink)]">
-                                                        {form.cabin}
-                                                    </span>
+                                                </div>
+                                                <div className="mt-1 text-xs font-medium text-[var(--accent-strong)]">
+                                                    {stopSummary}
+                                                </div>
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    {getBaggageHighlights(flight).length > 0 ? (
+                                                        getBaggageHighlights(flight).map((text) => (
+                                                            <span
+                                                                key={text}
+                                                                className="rounded-full border border-[rgba(45,120,92,0.14)] bg-[rgba(232,245,237,0.92)] px-3 py-1 text-[11px] font-medium text-[var(--success)]"
+                                                            >
+                                                                {text}
+                                                            </span>
+                                                        ))
+                                                    ) : (
+                                                        <span className="rounded-full border border-[rgba(89,64,46,0.1)] bg-white/85 px-3 py-1 text-[11px] font-medium text-slate-500">
+                                                            Allowance confirmed after pricing
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
 
-                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:min-w-[18rem] xl:justify-end">
-                                                <div className="text-left sm:text-right">
+                                            <div className="flex flex-wrap gap-2 lg:flex-col lg:items-start">
+                                                <span className={`status-pill ${isBookable ? "status-success" : ""}`}>
+                                                    {isBookable
+                                                        ? "Ready To Book"
+                                                        : isScheduleOnlyResult
+                                                            ? "Schedule Only"
+                                                            : "Needs Pricing"}
+                                                </span>
+                                                <span className="status-pill ghost-button !text-[var(--ink)]">
+                                                    {form.cabin}
+                                                </span>
+                                            </div>
+
+                                            <div className="flex flex-col gap-3 border-t border-[rgba(89,64,46,0.08)] pt-4 sm:flex-row sm:items-center sm:justify-between lg:border-t-0 lg:pt-0">
+                                                <div className="text-left lg:text-right">
                                                     {isBookable ? (
                                                         <>
                                                             <div className="text-[1.8rem] font-bold leading-none text-[var(--success)] sm:text-2xl">
@@ -933,7 +935,7 @@ export default function FlightSearch() {
                                                         </>
                                                     )}
                                                     {!isBookable && pricingError && (
-                                                        <div className="mt-2 max-w-[16rem] text-xs leading-5 text-red-600">
+                                                        <div className="mt-2 max-w-[16rem] text-xs leading-5 text-red-600 lg:ml-auto">
                                                             {pricingError}
                                                         </div>
                                                     )}
