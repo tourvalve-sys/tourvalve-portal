@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import {
     ArrowLeftRight,
     Baby,
+    Check,
     MapPin,
     Search,
     SlidersHorizontal,
@@ -14,16 +15,15 @@ import {
 import { useRouter } from "next/navigation";
 import { priceFlight, searchFlights, type FlightResult } from "@/lib/api";
 import { findAirportMatches, type AirportOption } from "@/lib/airports";
-import AirlineBrand from "@/components/AirlineBrand";
+import AirlineBrand, { getAirlineDisplayName } from "@/components/AirlineBrand";
 import { useBooking } from "../context/BookingContext";
 
 type FilterState = {
     maxPrice: number;
-    nonstopOnly: boolean;
-    pricedOnly: boolean;
+    stopCounts: number[];
     sortBy: "recommended" | "earliest" | "cheapest";
     departureWindow: "any" | "morning" | "afternoon" | "evening";
-    airline: string;
+    airlines: string[];
 };
 
 type ActiveAirportField =
@@ -50,11 +50,10 @@ export default function FlightSearch() {
     const [searchMode, setSearchMode] = useState<SearchMode>("lowfare");
     const [filters, setFilters] = useState<FilterState>({
         maxPrice: 50000,
-        nonstopOnly: false,
-        pricedOnly: false,
+        stopCounts: [],
         sortBy: "recommended",
         departureWindow: "any",
-        airline: "",
+        airlines: [],
     });
 
     const [form, setForm] = useState({
@@ -368,7 +367,6 @@ export default function FlightSearch() {
                 arrival: flight.arrival,
             }];
 
-        const totalStopCount = Math.max(itinerarySegments.length - 1, 0);
         const isDirectReturn =
             itinerarySegments.length === 2 &&
             itinerarySegments[0]?.from === itinerarySegments[1]?.to &&
@@ -377,6 +375,9 @@ export default function FlightSearch() {
             itinerarySegments.length > 1 &&
             itinerarySegments[0]?.from === itinerarySegments[itinerarySegments.length - 1]?.to;
         const matchesReturnSearch = tripType === "return" && isRoundTripItinerary;
+        const totalStopCount = matchesReturnSearch
+            ? Math.max(itinerarySegments.length - 2, 0)
+            : Math.max(itinerarySegments.length - 1, 0);
         const nonstopEligible = matchesReturnSearch ? isDirectReturn : totalStopCount === 0;
 
         return {
@@ -388,23 +389,34 @@ export default function FlightSearch() {
         };
     };
 
+    const airlineOptions = useMemo(() => {
+        const seen = new Map<string, { code: string; name: string }>();
+
+        for (const flight of results) {
+            const code = flight.carrier?.trim().toUpperCase();
+            if (!code || seen.has(code)) {
+                continue;
+            }
+
+            seen.set(code, {
+                code,
+                name: getAirlineDisplayName(flight.carrier, flight.flightNumber),
+            });
+        }
+
+        return [...seen.values()].sort((left, right) => left.name.localeCompare(right.name));
+    }, [results]);
+
     const filteredResults = [...results]
         .filter((flight) => {
-            const { nonstopEligible } = getJourneySummary(flight);
-
-            if (filters.pricedOnly && !(flight.airPricingSolutionXml && flight.price > 0)) {
-                return false;
-            }
+            const { totalStopCount } = getJourneySummary(flight);
 
             if (flight.price > 0 && flight.price > filters.maxPrice) {
                 return false;
             }
 
-            if (filters.airline.trim()) {
-                const airline = `${flight.carrier} ${flight.flightNumber}`.toLowerCase();
-                if (!airline.includes(filters.airline.trim().toLowerCase())) {
-                    return false;
-                }
+            if (filters.airlines.length > 0 && !filters.airlines.includes(flight.carrier.trim().toUpperCase())) {
+                return false;
             }
 
             if (filters.departureWindow !== "any") {
@@ -420,8 +432,8 @@ export default function FlightSearch() {
                 }
             }
 
-            if (filters.nonstopOnly) {
-                return nonstopEligible;
+            if (filters.stopCounts.length > 0) {
+                return filters.stopCounts.includes(totalStopCount >= 2 ? 2 : totalStopCount);
             }
 
             return true;
@@ -802,39 +814,46 @@ export default function FlightSearch() {
                             />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-3 gap-3">
                             <button
-                                onClick={() => setFilters({ ...filters, pricedOnly: !filters.pricedOnly })}
-                                className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${filters.pricedOnly ? "gold-button" : "ghost-button"}`}
-                            >
-                                Priced Only
-                            </button>
-                            <button
-                                onClick={() => setFilters({ ...filters, nonstopOnly: !filters.nonstopOnly })}
-                                className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${filters.nonstopOnly ? "gold-button" : "ghost-button"}`}
+                                onClick={() =>
+                                    setFilters((current) => ({
+                                        ...current,
+                                        stopCounts: current.stopCounts.includes(0)
+                                            ? current.stopCounts.filter((count) => count !== 0)
+                                            : [...current.stopCounts, 0].sort(),
+                                    }))
+                                }
+                                className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${filters.stopCounts.includes(0) ? "gold-button" : "ghost-button"}`}
                             >
                                 Nonstop
                             </button>
-                        </div>
-
-                        <div>
-                            <label className="mb-2 block text-sm text-slate-500">Search Source</label>
-                            <div className="grid grid-cols-2 gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setSearchMode("lowfare")}
-                                    className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${searchMode === "lowfare" ? "gold-button" : "ghost-button"}`}
-                                >
-                                    Low Fare
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setSearchMode("availability")}
-                                    className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${searchMode === "availability" ? "gold-button" : "ghost-button"}`}
-                                >
-                                    Air Availability
-                                </button>
-                            </div>
+                            <button
+                                onClick={() =>
+                                    setFilters((current) => ({
+                                        ...current,
+                                        stopCounts: current.stopCounts.includes(1)
+                                            ? current.stopCounts.filter((count) => count !== 1)
+                                            : [...current.stopCounts, 1].sort(),
+                                    }))
+                                }
+                                className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${filters.stopCounts.includes(1) ? "gold-button" : "ghost-button"}`}
+                            >
+                                Stops / 1
+                            </button>
+                            <button
+                                onClick={() =>
+                                    setFilters((current) => ({
+                                        ...current,
+                                        stopCounts: current.stopCounts.includes(2)
+                                            ? current.stopCounts.filter((count) => count !== 2)
+                                            : [...current.stopCounts, 2].sort(),
+                                    }))
+                                }
+                                className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${filters.stopCounts.includes(2) ? "gold-button" : "ghost-button"}`}
+                            >
+                                Stops / 2+
+                            </button>
                         </div>
 
                         <div>
@@ -865,13 +884,53 @@ export default function FlightSearch() {
                         </div>
 
                         <div>
-                            <label className="mb-2 block text-sm text-slate-500">Airline / Flight No.</label>
-                            <input
-                                placeholder="e.g. MH or AK"
-                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
-                                value={filters.airline}
-                                onChange={(e) => setFilters({ ...filters, airline: e.target.value })}
-                            />
+                            <label className="mb-2 block text-sm text-slate-500">Airlines</label>
+                            <div className="rounded-[1.4rem] border border-[rgba(89,64,46,0.12)] bg-white/80 p-3">
+                                {airlineOptions.length === 0 ? (
+                                    <div className="text-sm leading-6 text-slate-500">
+                                        Run a Travelport search to list the returned airlines here.
+                                    </div>
+                                ) : (
+                                    <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                                        {airlineOptions.map((airline) => {
+                                            const active = filters.airlines.includes(airline.code);
+
+                                            return (
+                                                <label
+                                                    key={airline.code}
+                                                    className="flex cursor-pointer items-center gap-3 rounded-2xl px-3 py-2 transition hover:bg-[rgba(176,122,67,0.08)]"
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={active}
+                                                        onChange={() =>
+                                                            setFilters((current) => ({
+                                                                ...current,
+                                                                airlines: active
+                                                                    ? current.airlines.filter((item) => item !== airline.code)
+                                                                    : [...current.airlines, airline.code],
+                                                            }))
+                                                        }
+                                                        className="sr-only"
+                                                    />
+                                                    <span
+                                                        className={`flex h-5 w-5 items-center justify-center rounded-md border transition ${
+                                                            active
+                                                                ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white"
+                                                                : "border-[rgba(89,64,46,0.18)] bg-white text-transparent"
+                                                        }`}
+                                                    >
+                                                        <Check size={13} />
+                                                    </span>
+                                                    <span className="min-w-0 text-sm text-[var(--ink)]">
+                                                        {airline.name}
+                                                    </span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 

@@ -205,6 +205,13 @@ function normalizeCarrierCode(carrier: string | undefined, flightNumber: string 
     return carrierAliases[candidate] ?? candidate;
 }
 
+export function getAirlineDisplayName(carrier: string | undefined, flightNumber?: string) {
+    const normalized = normalizeCarrierCode(carrier, flightNumber);
+    return brandMap[normalized]?.name
+        ?? carrierNames[normalized]
+        ?? `Airline ${normalized}`;
+}
+
 export default function AirlineBrand({
     carrier,
     flightNumber,
