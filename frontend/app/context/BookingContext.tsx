@@ -48,6 +48,77 @@ interface BookingContextType {
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
+function normalizeFlightResult(value: unknown): FlightResult | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    const flight = value as Partial<FlightResult>;
+    if (
+        typeof flight.id !== "string" ||
+        typeof flight.carrier !== "string" ||
+        typeof flight.flightNumber !== "string" ||
+        typeof flight.from !== "string" ||
+        typeof flight.to !== "string" ||
+        typeof flight.departure !== "string" ||
+        typeof flight.arrival !== "string"
+    ) {
+        return null;
+    }
+
+    return {
+        id: flight.id,
+        carrier: flight.carrier,
+        flightNumber: flight.flightNumber,
+        from: flight.from,
+        to: flight.to,
+        departure: flight.departure,
+        arrival: flight.arrival,
+        price: typeof flight.price === "number" ? flight.price : 0,
+        basePrice: typeof flight.basePrice === "number" ? flight.basePrice : 0,
+        markupAmount: typeof flight.markupAmount === "number" ? flight.markupAmount : 0,
+        currency: typeof flight.currency === "string" ? flight.currency : "MYR",
+        cabinClass: typeof flight.cabinClass === "string" ? flight.cabinClass : "Economy",
+        carryOnAllowance: typeof flight.carryOnAllowance === "string" ? flight.carryOnAllowance : "",
+        checkedBaggageAllowance: typeof flight.checkedBaggageAllowance === "string" ? flight.checkedBaggageAllowance : "",
+        baggageOfferTexts: Array.isArray(flight.baggageOfferTexts)
+            ? flight.baggageOfferTexts.filter((item): item is string => typeof item === "string")
+            : [],
+        airPricingSolutionXml: typeof flight.airPricingSolutionXml === "string" ? flight.airPricingSolutionXml : "",
+        airPricingContextXml: typeof flight.airPricingContextXml === "string" ? flight.airPricingContextXml : "",
+        airSegmentXml: typeof flight.airSegmentXml === "string" ? flight.airSegmentXml : "",
+        airSegmentXmls: Array.isArray(flight.airSegmentXmls)
+            ? flight.airSegmentXmls.filter((item): item is string => typeof item === "string")
+            : [],
+        itinerarySegments: Array.isArray(flight.itinerarySegments)
+            ? flight.itinerarySegments
+                .filter(
+                    (segment): segment is FlightResult["itinerarySegments"][number] =>
+                        Boolean(segment) &&
+                        typeof segment === "object" &&
+                        typeof segment.carrier === "string" &&
+                        typeof segment.flightNumber === "string" &&
+                        typeof segment.from === "string" &&
+                        typeof segment.to === "string" &&
+                        typeof segment.departure === "string" &&
+                        typeof segment.arrival === "string"
+                )
+            : [],
+    };
+}
+
+function createPersistedFlightSnapshot(flight: FlightResult): FlightResult {
+    return {
+        ...flight,
+        airPricingContextXml: flight.airPricingContextXml.length > 120000 ? "" : flight.airPricingContextXml,
+        airPricingSolutionXml: flight.airPricingSolutionXml.length > 120000 ? "" : flight.airPricingSolutionXml,
+        airSegmentXml: flight.airSegmentXml.length > 40000 ? "" : flight.airSegmentXml,
+        airSegmentXmls: flight.airSegmentXmls.map((segmentXml) =>
+            segmentXml.length > 40000 ? "" : segmentXml
+        ),
+    };
+}
+
 function readSessionJson<T>(key: string, fallback: T): T {
     if (typeof window === "undefined") {
         return fallback;
@@ -64,17 +135,30 @@ function readSessionJson<T>(key: string, fallback: T): T {
 
 export function BookingProvider({ children }: { children: React.ReactNode }) {
     const [selectedFlight, setSelectedFlightState] = useState<FlightResult | null>(() => {
-        return readSessionJson<FlightResult | null>("selectedFlight", null);
+        const storedFlight = readSessionJson<unknown>("selectedFlight", null);
+        return normalizeFlightResult(storedFlight);
     });
 
     const setSelectedFlight = (flight: FlightResult | null) => {
-        if (flight) {
-            sessionStorage.setItem("selectedFlight", JSON.stringify(flight));
-        } else {
-            sessionStorage.removeItem("selectedFlight");
+        setSelectedFlightState(flight);
+
+        if (typeof window === "undefined") {
+            return;
         }
 
-        setSelectedFlightState(flight);
+        try {
+            if (flight) {
+                sessionStorage.setItem("selectedFlight", JSON.stringify(createPersistedFlightSnapshot(flight)));
+            } else {
+                sessionStorage.removeItem("selectedFlight");
+            }
+        } catch {
+            try {
+                sessionStorage.removeItem("selectedFlight");
+            } catch {
+                // Ignore browser storage cleanup failures and keep in-memory state alive.
+            }
+        }
     };
 
     const [travelerCounts, setTravelerCountsState] = useState(() => {

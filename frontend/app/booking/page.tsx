@@ -132,13 +132,43 @@ function seatTone(seat: {
 
 export default function BookingPage() {
     const router = useRouter();
-    const { selectedFlight, travelerCounts, setSelectedFlight } = useBooking();
+    const { selectedFlight: rawSelectedFlight, travelerCounts, setSelectedFlight } = useBooking();
     const currentUser = useMemo(() => getUserFromToken(), []);
     const isHydrated = useSyncExternalStore(
         () => () => {},
         () => true,
         () => false
     );
+    const selectedFlight = useMemo(() => {
+        if (!rawSelectedFlight) {
+            return null;
+        }
+
+        return {
+            ...rawSelectedFlight,
+            price: Number.isFinite(rawSelectedFlight.price) ? rawSelectedFlight.price : 0,
+            basePrice: Number.isFinite(rawSelectedFlight.basePrice) ? rawSelectedFlight.basePrice : 0,
+            markupAmount: Number.isFinite(rawSelectedFlight.markupAmount) ? rawSelectedFlight.markupAmount : 0,
+            baggageOfferTexts: Array.isArray(rawSelectedFlight.baggageOfferTexts)
+                ? rawSelectedFlight.baggageOfferTexts.filter((item): item is string => typeof item === "string")
+                : [],
+            airSegmentXmls: Array.isArray(rawSelectedFlight.airSegmentXmls)
+                ? rawSelectedFlight.airSegmentXmls.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+                : [],
+            itinerarySegments: Array.isArray(rawSelectedFlight.itinerarySegments)
+                ? rawSelectedFlight.itinerarySegments.filter(
+                    (segment): segment is NonNullable<typeof rawSelectedFlight.itinerarySegments>[number] =>
+                        Boolean(segment) &&
+                        typeof segment.carrier === "string" &&
+                        typeof segment.flightNumber === "string" &&
+                        typeof segment.from === "string" &&
+                        typeof segment.to === "string" &&
+                        typeof segment.departure === "string" &&
+                        typeof segment.arrival === "string"
+                )
+                : [],
+        };
+    }, [rawSelectedFlight]);
 
     const [passengers, setPassengers] = useState<PassengerForm[]>([]);
     const [contactEmail, setContactEmail] = useState("");
