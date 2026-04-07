@@ -518,6 +518,41 @@ async function readJson<T>(res: Response): Promise<T> {
     return data as T;
 }
 
+async function readAuthJson<T>(res: Response): Promise<T> {
+    const raw = await res.text();
+    let data: unknown = null;
+
+    try {
+        data = raw ? JSON.parse(raw) : null;
+    } catch {
+        data = null;
+    }
+
+    if (!res.ok) {
+        const payload = data as { error?: string; message?: string; detail?: string } | null;
+        const safeMessage = payload?.detail || payload?.error || payload?.message || raw || "Login failed";
+        const normalized = safeMessage.trim();
+
+        if (res.status === 401) {
+            throw new Error("Invalid credentials");
+        }
+
+        if (
+            /502 Bad Gateway|Bad Gateway|504 Gateway Time-?out|Gateway Time-?out|upstream|timed out|timeout/i.test(normalized)
+        ) {
+            throw new Error("The portal could not complete sign in right now. Please try again in a moment.");
+        }
+
+        throw new Error(normalized || "Login failed");
+    }
+
+    if (data === null) {
+        return raw as T;
+    }
+
+    return data as T;
+}
+
 function extractXmlError(raw: string): string | null {
     if (!raw || !raw.includes("<")) {
         return null;
@@ -632,7 +667,7 @@ export async function loginUser(
         body: JSON.stringify(payload),
     });
 
-    return readJson<LoginResponse>(res);
+    return readAuthJson<LoginResponse>(res);
 }
 
 export async function registerUser(payload: {
