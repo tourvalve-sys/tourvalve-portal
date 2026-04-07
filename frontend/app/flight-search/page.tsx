@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
     ArrowLeftRight,
@@ -231,6 +231,7 @@ export default function FlightSearch() {
     const [pricingErrors, setPricingErrors] = useState<Record<string, string>>(restoredState?.pricingErrors ?? {});
     const [searchMode, setSearchMode] = useState<SearchMode>(restoredState?.searchMode ?? "lowfare");
     const [filters, setFilters] = useState<FilterState>(restoredState?.filters ?? createDefaultFilters());
+    const searchModeRef = useRef<SearchMode>(restoredState?.searchMode ?? "lowfare");
 
     const [form, setForm] = useState(restoredState?.form ?? createDefaultForm());
     const [multiCitySegments, setMultiCitySegments] = useState(
@@ -249,6 +250,7 @@ export default function FlightSearch() {
         setActiveField(null);
         setPricingFlightId(null);
         setPricingErrors(defaults.pricingErrors);
+        searchModeRef.current = defaults.searchMode;
         setSearchMode(defaults.searchMode);
         setFilters(defaults.filters);
         setForm(defaults.form);
@@ -265,6 +267,10 @@ export default function FlightSearch() {
             sessionStorage.removeItem(FLIGHT_SEARCH_STATE_KEY);
         }
     };
+
+    useEffect(() => {
+        searchModeRef.current = searchMode;
+    }, [searchMode]);
 
     useEffect(() => {
         setFlightSearchState({
@@ -342,7 +348,16 @@ export default function FlightSearch() {
     const getErrorMessage = (value: unknown) =>
         value instanceof Error ? value.message : "Flight search failed";
 
+    const selectSearchMode = (mode: SearchMode) => {
+        searchModeRef.current = mode;
+        setSearchMode(mode);
+        setSearchNotice("");
+        setError("");
+    };
+
     const handleSearch = async () => {
+        const activeSearchMode = searchModeRef.current;
+
         if (form.adults <= 0) {
             setError("At least one adult passenger is required.");
             return;
@@ -406,7 +421,7 @@ export default function FlightSearch() {
 
             const searchResponse = await searchFlights({
                 ...form,
-                searchMode,
+                searchMode: activeSearchMode,
                 from: tripType === "multicity" ? multiCitySegments[0]?.from.toUpperCase() ?? "" : form.from.toUpperCase(),
                 to: tripType === "multicity" ? multiCitySegments[0]?.to.toUpperCase() ?? "" : form.to.toUpperCase(),
                 departDate: tripType === "multicity" ? multiCitySegments[0]?.departDate ?? "" : form.departDate,
@@ -1028,7 +1043,7 @@ export default function FlightSearch() {
                         <div className="grid gap-3 md:grid-cols-2">
                             <button
                                 type="button"
-                                onClick={() => setSearchMode("lowfare")}
+                                onClick={() => selectSearchMode("lowfare")}
                                 className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
                                     searchMode === "lowfare"
                                         ? "border-[rgba(176,122,67,0.45)] bg-[rgba(176,122,67,0.14)] shadow-[0_18px_30px_rgba(122,82,45,0.12)]"
@@ -1042,7 +1057,7 @@ export default function FlightSearch() {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setSearchMode("availability")}
+                                onClick={() => selectSearchMode("availability")}
                                 className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
                                     searchMode === "availability"
                                         ? "border-[rgba(45,120,92,0.28)] bg-[rgba(232,245,237,0.88)] shadow-[0_18px_30px_rgba(45,120,92,0.1)]"
