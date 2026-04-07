@@ -16,23 +16,44 @@ export default function LoginPage() {
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [sessionNotice, setSessionNotice] = useState("");
+    const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
         if (!hasSessionCookie()) {
             removeToken();
         }
+    }, []);
 
-        if (typeof window === "undefined") {
-            return;
-        }
+    useEffect(() => {
+        const syncLoginState = () => {
+            const reason = new URLSearchParams(window.location.search).get("reason");
 
-        const reason = new URLSearchParams(window.location.search).get("reason");
-        if (reason === "inactive") {
-            setError("Your session became inactive and you were logged out for security.");
-        } else if (reason === "session-ended") {
-            setError("Your session has ended. Please sign in again.");
-        }
+            if (reason === "inactive") {
+                setSessionNotice("Your session became inactive and you were logged out for security.");
+                setHasAttemptedLogin(false);
+                return;
+            }
+
+            if (reason === "session-ended") {
+                setSessionNotice("Your session has ended. Please sign in again.");
+                setHasAttemptedLogin(false);
+                return;
+            }
+
+            setSessionNotice("");
+            setError("");
+            setHasAttemptedLogin(false);
+        };
+
+        window.addEventListener("pageshow", syncLoginState);
+        document.addEventListener("visibilitychange", syncLoginState);
+
+        return () => {
+            window.removeEventListener("pageshow", syncLoginState);
+            document.removeEventListener("visibilitychange", syncLoginState);
+        };
     }, []);
 
     const getErrorMessage = (error: unknown) =>
@@ -42,6 +63,7 @@ export default function LoginPage() {
         try {
             setLoading(true);
             setError("");
+            setHasAttemptedLogin(true);
 
             const data = await loginUser(form);
             setToken(data.token);
@@ -98,7 +120,13 @@ export default function LoginPage() {
                         Sign in to manage live reservations, agent wallets, and booking performance.
                     </p>
 
-                    {error && (
+                    {sessionNotice && (
+                        <div className="mt-5 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                            {sessionNotice}
+                        </div>
+                    )}
+
+                    {hasAttemptedLogin && error && (
                         <div className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
                             {error}
                         </div>
