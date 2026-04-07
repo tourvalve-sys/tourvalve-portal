@@ -34,12 +34,13 @@ type ActiveAirportField =
 type SearchMode = "lowfare" | "availability";
 
 const FLIGHT_SEARCH_STATE_KEY = "flightSearchState";
-const FLIGHT_SEARCH_STATE_VERSION = 2;
+const FLIGHT_SEARCH_STATE_VERSION = 3;
 
 type FlightSearchUiState = {
     tripType: "oneway" | "return" | "multicity";
     searchNotice: string;
     hasSearched: boolean;
+    lastSearchedKey: string | null;
     pricingErrors: Record<string, string>;
     searchMode: SearchMode;
     filters: FilterState;
@@ -94,11 +95,44 @@ const createDefaultFlightSearchUiState = (): FlightSearchUiState => ({
     searchMode: "lowfare",
     hasSearched: false,
     searchNotice: "",
+    lastSearchedKey: null,
     pricingErrors: {},
     filters: createDefaultFilters(),
     form: createDefaultForm(),
     multiCitySegments: createDefaultMultiCitySegments(),
 });
+
+function buildSearchSignature(args: {
+    tripType: "oneway" | "return" | "multicity";
+    searchMode: SearchMode;
+    form: ReturnType<typeof createDefaultForm>;
+    multiCitySegments: Array<{
+        from: string;
+        to: string;
+        departDate: string;
+    }>;
+}) {
+    return JSON.stringify({
+        tripType: args.tripType,
+        searchMode: args.searchMode,
+        cabin: args.form.cabin,
+        adults: args.form.adults,
+        child: args.form.child,
+        infant: args.form.infant,
+        from: args.form.from.trim().toUpperCase(),
+        to: args.form.to.trim().toUpperCase(),
+        departDate: args.form.departDate,
+        returnDate: args.tripType === "return" ? args.form.returnDate : "",
+        segments:
+            args.tripType === "multicity"
+                ? args.multiCitySegments.map((segment) => ({
+                      from: segment.from.trim().toUpperCase(),
+                      to: segment.to.trim().toUpperCase(),
+                      departDate: segment.departDate,
+                  }))
+                : [],
+    });
+}
 
 function sanitizePersistedFlightSearchUiState(value: unknown): FlightSearchUiState | null {
     if (!value || typeof value !== "object") {
@@ -115,6 +149,9 @@ function sanitizePersistedFlightSearchUiState(value: unknown): FlightSearchUiSta
         (candidate.searchMode !== "lowfare" && candidate.searchMode !== "availability") ||
         typeof candidate.searchNotice !== "string" ||
         typeof candidate.hasSearched !== "boolean" ||
+        (candidate.lastSearchedKey !== null &&
+            candidate.lastSearchedKey !== undefined &&
+            typeof candidate.lastSearchedKey !== "string") ||
         !candidate.pricingErrors ||
         typeof candidate.pricingErrors !== "object" ||
         !filters ||
@@ -155,6 +192,7 @@ function sanitizePersistedFlightSearchUiState(value: unknown): FlightSearchUiSta
         searchMode: candidate.searchMode,
         searchNotice: candidate.searchNotice,
         hasSearched: candidate.hasSearched,
+        lastSearchedKey: typeof candidate.lastSearchedKey === "string" ? candidate.lastSearchedKey : null,
         pricingErrors: Object.fromEntries(
             Object.entries(candidate.pricingErrors).filter(
                 (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"
@@ -226,6 +264,7 @@ export default function FlightSearch() {
     const [error, setError] = useState("");
     const [searchNotice, setSearchNotice] = useState(restoredState?.searchNotice ?? "");
     const [hasSearched, setHasSearched] = useState(restoredState?.hasSearched ?? false);
+    const [lastSearchedKey, setLastSearchedKey] = useState<string | null>(restoredState?.lastSearchedKey ?? null);
     const [activeField, setActiveField] = useState<ActiveAirportField>(null);
     const [pricingFlightId, setPricingFlightId] = useState<string | null>(null);
     const [pricingErrors, setPricingErrors] = useState<Record<string, string>>(restoredState?.pricingErrors ?? {});
@@ -247,6 +286,7 @@ export default function FlightSearch() {
         setError("");
         setSearchNotice(defaults.searchNotice);
         setHasSearched(defaults.hasSearched);
+        setLastSearchedKey(defaults.lastSearchedKey);
         setActiveField(null);
         setPricingFlightId(null);
         setPricingErrors(defaults.pricingErrors);
@@ -278,6 +318,7 @@ export default function FlightSearch() {
             results,
             searchNotice,
             hasSearched,
+            lastSearchedKey,
             pricingErrors,
             searchMode,
             filters,
@@ -288,6 +329,7 @@ export default function FlightSearch() {
         filters,
         form,
         hasSearched,
+        lastSearchedKey,
         multiCitySegments,
         pricingErrors,
         results,
@@ -311,6 +353,7 @@ export default function FlightSearch() {
                         tripType,
                         searchNotice,
                         hasSearched,
+                        lastSearchedKey,
                         pricingErrors,
                         searchMode,
                         filters,
@@ -326,12 +369,26 @@ export default function FlightSearch() {
         filters,
         form,
         hasSearched,
+        lastSearchedKey,
         multiCitySegments,
         pricingErrors,
         searchMode,
         searchNotice,
         tripType,
     ]);
+
+    const currentSearchKey = useMemo(
+        () =>
+            buildSearchSignature({
+                tripType,
+                searchMode,
+                form,
+                multiCitySegments,
+            }),
+        [form, multiCitySegments, searchMode, tripType]
+    );
+
+    const isSearchDraftDirty = Boolean(lastSearchedKey && currentSearchKey !== lastSearchedKey);
 
     const swapAirports = () => {
         if (tripType === "multicity") {
@@ -357,6 +414,12 @@ export default function FlightSearch() {
 
     const handleSearch = async () => {
         const activeSearchMode = searchModeRef.current;
+        const requestSearchKey = buildSearchSignature({
+            tripType,
+            searchMode: activeSearchMode,
+            form,
+            multiCitySegments,
+        });
 
         if (form.adults <= 0) {
             setError("At least one adult passenger is required.");
@@ -417,6 +480,7 @@ export default function FlightSearch() {
             setFilters((current) => ({ ...current, airlines: [] }));
             setSelectedFlight(null);
             setHasSearched(true);
+            setLastSearchedKey(requestSearchKey);
             setActiveField(null);
 
             const searchResponse = await searchFlights({
@@ -1085,7 +1149,7 @@ export default function FlightSearch() {
                         </div>
                     )}
 
-                    {!error && searchNotice && (
+                    {!error && searchNotice && !isSearchDraftDirty && (
                         <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 shadow-sm">
                             {searchNotice}
                         </div>
@@ -1250,6 +1314,15 @@ export default function FlightSearch() {
                                 <div className="font-semibold text-[var(--ink)]">Searching live flight inventory...</div>
                                 <div className="mt-2 max-w-2xl text-sm leading-7 text-slate-500">
                                     We are checking the latest provider availability, pricing, and cabin options for your selected route. Results will appear here once the search completes.
+                                </div>
+                            </div>
+                        ) : isSearchDraftDirty ? (
+                            <div className="rounded-[1.75rem] soft-panel p-8 text-slate-500 fade-in">
+                                <div className="font-medium text-[var(--ink)]">
+                                    Search criteria changed. Run a new search to refresh these results.
+                                </div>
+                                <div className="mt-2 text-sm leading-6 text-slate-500">
+                                    Your previous route results are hidden so old warnings and flight cards do not carry over into the next destination search.
                                 </div>
                             </div>
                         ) : filteredResults.length === 0 ? (

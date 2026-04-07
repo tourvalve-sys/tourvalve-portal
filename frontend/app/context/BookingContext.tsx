@@ -8,6 +8,7 @@ type FlightSearchUiState = {
     searchMode: "lowfare" | "availability";
     hasSearched: boolean;
     searchNotice: string;
+    lastSearchedKey: string | null;
     pricingErrors: Record<string, string>;
     filters: {
         maxPrice: number;
