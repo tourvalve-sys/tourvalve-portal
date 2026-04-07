@@ -467,6 +467,7 @@ export default function FlightSearch() {
 
             const pricedFlight = await priceFlight({
                 airSegmentXml: flight.airSegmentXml,
+                airSegmentXmls: flight.airSegmentXmls,
                 airPricingContextXml: flight.airPricingContextXml,
                 carrier: flight.carrier,
                 flightNumber: flight.flightNumber,

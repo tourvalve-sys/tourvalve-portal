@@ -87,6 +87,7 @@ export type FlightSearchResponse = {
 
 export type FlightPricePayload = {
     airSegmentXml: string;
+    airSegmentXmls?: string[];
     airPricingContextXml: string;
     carrier: string;
     flightNumber: string;

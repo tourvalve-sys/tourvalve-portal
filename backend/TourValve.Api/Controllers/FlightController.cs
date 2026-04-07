@@ -164,7 +164,7 @@ public class FlightsController : ControllerBase
     public async Task<IActionResult> Price([FromBody] FlightPriceRequest req, [FromQuery] bool debugRaw = false)
     {
         var includeMarkup = !User.IsInRole("ADMIN");
-        if (string.IsNullOrWhiteSpace(req.AirSegmentXml))
+        if (string.IsNullOrWhiteSpace(req.AirSegmentXml) && req.AirSegmentXmls.Count == 0)
             return BadRequest(new { error = "Air segment data is required for pricing." });
 
         if (req.Adults <= 0)
@@ -206,10 +206,15 @@ public class FlightsController : ControllerBase
         }
 
         if (string.IsNullOrWhiteSpace(priced.AirSegmentXml))
-            priced.AirSegmentXml = req.AirSegmentXml;
+            priced.AirSegmentXml = req.AirSegmentXmls.FirstOrDefault() ?? req.AirSegmentXml;
 
-        if (priced.AirSegmentXmls.Count == 0 && !string.IsNullOrWhiteSpace(req.AirSegmentXml))
-            priced.AirSegmentXmls.Add(req.AirSegmentXml);
+        if (priced.AirSegmentXmls.Count == 0)
+        {
+            if (req.AirSegmentXmls.Count > 0)
+                priced.AirSegmentXmls = req.AirSegmentXmls.Where(segmentXml => !string.IsNullOrWhiteSpace(segmentXml)).ToList();
+            else if (!string.IsNullOrWhiteSpace(req.AirSegmentXml))
+                priced.AirSegmentXmls.Add(req.AirSegmentXml);
+        }
 
         return Ok(_markup.ApplyForRole(priced, includeMarkup));
     }
@@ -536,7 +541,7 @@ public class FlightsController : ControllerBase
     private string BuildPriceXml(FlightPriceRequest req)
     {
         var authorizedBy = _travelportConfig.Username.Replace("Universal API/", "", StringComparison.OrdinalIgnoreCase);
-        var segmentXml = NormalizeSegmentXml(req.AirSegmentXml, req.AirPricingContextXml);
+        var segmentXml = BuildPriceSegmentsXml(req);
 
         return $@"
 <air:AirPriceReq
@@ -552,6 +557,23 @@ public class FlightsController : ControllerBase
   <air:AirPricingModifiers FaresIndicator=""PublicFaresOnly"" />
   {BuildPassengersXml(req.Adults, req.Child, req.Infant)}
 </air:AirPriceReq>".Trim();
+    }
+
+    private static string BuildPriceSegmentsXml(FlightPriceRequest req)
+    {
+        var rawSegments = req.AirSegmentXmls
+            .Where(segmentXml => !string.IsNullOrWhiteSpace(segmentXml))
+            .ToList();
+
+        if (rawSegments.Count == 0 && !string.IsNullOrWhiteSpace(req.AirSegmentXml))
+        {
+            rawSegments.Add(req.AirSegmentXml);
+        }
+
+        return string.Join(
+            Environment.NewLine + "    ",
+            rawSegments.Select(segmentXml => NormalizeSegmentXml(segmentXml, req.AirPricingContextXml))
+        );
     }
 
     private static string BuildPassengersXml(int adults, int child, int infant)

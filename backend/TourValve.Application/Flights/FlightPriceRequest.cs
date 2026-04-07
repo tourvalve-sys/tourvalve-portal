@@ -3,6 +3,7 @@ namespace TourValve.Application.Flights;
 public class FlightPriceRequest
 {
     public string AirSegmentXml { get; set; } = string.Empty;
+    public List<string> AirSegmentXmls { get; set; } = new();
     public string AirPricingContextXml { get; set; } = string.Empty;
     public string Carrier { get; set; } = string.Empty;
     public string FlightNumber { get; set; } = string.Empty;
