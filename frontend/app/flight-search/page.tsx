@@ -898,7 +898,7 @@ export default function FlightSearch() {
                             />
                         </div>
 
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-3 gap-2.5">
                             <button
                                 onClick={() =>
                                     setFilters((current) => ({
@@ -908,7 +908,7 @@ export default function FlightSearch() {
                                             : [...current.stopCounts, 0].sort(),
                                     }))
                                 }
-                                className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${filters.stopCounts.includes(0) ? "gold-button" : "ghost-button"}`}
+                                className={`min-h-[4.25rem] min-w-0 rounded-2xl px-2 py-3 text-center text-[13px] font-semibold leading-4 transition ${filters.stopCounts.includes(0) ? "gold-button" : "ghost-button"}`}
                             >
                                 Nonstop
                             </button>
@@ -921,7 +921,7 @@ export default function FlightSearch() {
                                             : [...current.stopCounts, 1].sort(),
                                     }))
                                 }
-                                className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${filters.stopCounts.includes(1) ? "gold-button" : "ghost-button"}`}
+                                className={`min-h-[4.25rem] min-w-0 rounded-2xl px-2 py-3 text-center text-[13px] font-semibold leading-4 transition ${filters.stopCounts.includes(1) ? "gold-button" : "ghost-button"}`}
                             >
                                 Stops / 1
                             </button>
@@ -934,14 +934,14 @@ export default function FlightSearch() {
                                             : [...current.stopCounts, 2].sort(),
                                     }))
                                 }
-                                className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${filters.stopCounts.includes(2) ? "gold-button" : "ghost-button"}`}
+                                className={`min-h-[4.25rem] min-w-0 rounded-2xl px-2 py-3 text-center text-[13px] font-semibold leading-4 transition ${filters.stopCounts.includes(2) ? "gold-button" : "ghost-button"}`}
                             >
                                 Stops / 2+
                             </button>
                         </div>
 
                         <div>
-                            <label className="mb-2 block text-sm text-slate-500">Departure Window</label>
+                            <label className="mb-2 block text-sm text-slate-500">Departure Time</label>
                             <select
                                 className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
                                 value={filters.departureWindow}
