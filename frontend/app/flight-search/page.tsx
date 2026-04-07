@@ -466,7 +466,7 @@ export default function FlightSearch() {
                     </div>
                 </div>
 
-                <div className="mx-auto max-w-6xl rounded-[1.7rem] premium-panel classic-grid p-3.5 sm:p-4 md:rounded-[2rem] md:p-8">
+                <div className="mx-auto max-w-[88rem] rounded-[1.7rem] premium-panel classic-grid p-3.5 sm:p-4 md:rounded-[2rem] md:p-8">
                     <div className="mb-5 flex flex-wrap gap-2.5 sm:mb-6 sm:gap-3">
                         <button
                             onClick={() => setTripType("oneway")}
@@ -734,8 +734,8 @@ export default function FlightSearch() {
                     </button>
                 </div>
 
-                <div className="mx-auto mt-6 grid max-w-7xl grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[0.36fr_0.64fr]">
-                    <div className="h-fit space-y-4 rounded-[1.6rem] soft-panel p-4 fade-in sm:space-y-5 sm:rounded-[1.9rem] sm:p-6">
+                <div className="mx-auto mt-6 grid max-w-[88rem] grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]">
+                    <div className="h-fit min-w-0 space-y-4 rounded-[1.6rem] soft-panel p-4 fade-in sm:space-y-5 sm:rounded-[1.9rem] sm:p-6 xl:sticky xl:top-28">
                         <div className="flex items-center gap-2">
                             <SlidersHorizontal size={16} className="text-[var(--accent-strong)]" />
                             <h3 className="font-display text-2xl text-[var(--ink)]">Filters</h3>
@@ -760,13 +760,13 @@ export default function FlightSearch() {
                         <div className="grid grid-cols-2 gap-3">
                             <button
                                 onClick={() => setFilters({ ...filters, pricedOnly: !filters.pricedOnly })}
-                                className={`rounded-2xl px-4 py-3 text-sm transition ${filters.pricedOnly ? "gold-button" : "ghost-button"}`}
+                                className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${filters.pricedOnly ? "gold-button" : "ghost-button"}`}
                             >
                                 Priced Only
                             </button>
                             <button
                                 onClick={() => setFilters({ ...filters, nonstopOnly: !filters.nonstopOnly })}
-                                className={`rounded-2xl px-4 py-3 text-sm transition ${filters.nonstopOnly ? "gold-button" : "ghost-button"}`}
+                                className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${filters.nonstopOnly ? "gold-button" : "ghost-button"}`}
                             >
                                 Nonstop
                             </button>
@@ -859,9 +859,9 @@ export default function FlightSearch() {
                                         key={flight.id}
                                         className={`premium-panel rounded-[1.55rem] p-4 sm:rounded-[1.9rem] sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
                                     >
-                                        <div className="grid gap-4 sm:gap-5 lg:grid-cols-[minmax(10.5rem,0.95fr)_minmax(15rem,1.45fr)_minmax(9rem,0.9fr)_minmax(12rem,1fr)] lg:items-center">
-                                            <div className="flex items-start lg:items-center">
-                                                <div className="w-full max-w-[13rem]">
+                                        <div className="grid gap-4 sm:gap-5 2xl:grid-cols-[minmax(11rem,12.5rem)_minmax(17rem,1.3fr)_minmax(10rem,0.8fr)_minmax(14rem,0.95fr)] 2xl:items-center">
+                                            <div className="flex items-start 2xl:items-center">
+                                                <div className="w-full max-w-[14rem]">
                                                     <AirlineBrand
                                                         carrier={flight.carrier || "FL"}
                                                         flightNumber={flight.flightNumber || "Live itinerary"}
@@ -900,7 +900,7 @@ export default function FlightSearch() {
                                                 </div>
                                             </div>
 
-                                            <div className="flex flex-wrap gap-2 lg:flex-col lg:items-start">
+                                            <div className="flex flex-wrap gap-2 2xl:flex-col 2xl:items-start">
                                                 <span className={`status-pill ${isBookable ? "status-success" : ""}`}>
                                                     {isBookable
                                                         ? "Ready To Book"
@@ -913,8 +913,8 @@ export default function FlightSearch() {
                                                 </span>
                                             </div>
 
-                                            <div className="flex flex-col gap-3 border-t border-[rgba(89,64,46,0.08)] pt-4 sm:flex-row sm:items-center sm:justify-between lg:border-t-0 lg:pt-0">
-                                                <div className="text-left lg:text-right">
+                                            <div className="flex flex-col gap-3 border-t border-[rgba(89,64,46,0.08)] pt-4 sm:flex-row sm:items-center sm:justify-between 2xl:border-t-0 2xl:pt-0">
+                                                <div className="text-left 2xl:text-right">
                                                     {isBookable ? (
                                                         <>
                                                             <div className="text-[1.8rem] font-bold leading-none text-[var(--success)] sm:text-2xl">
@@ -935,7 +935,7 @@ export default function FlightSearch() {
                                                         </>
                                                     )}
                                                     {!isBookable && pricingError && (
-                                                        <div className="mt-2 max-w-[16rem] text-xs leading-5 text-red-600 lg:ml-auto">
+                                                        <div className="mt-2 max-w-[18rem] text-xs leading-5 text-red-600 2xl:ml-auto">
                                                             {pricingError}
                                                         </div>
                                                     )}
