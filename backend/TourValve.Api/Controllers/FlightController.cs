@@ -615,6 +615,10 @@ public class FlightsController : ControllerBase
     {
         var authorizedBy = _travelportConfig.Username.Replace("Universal API/", "", StringComparison.OrdinalIgnoreCase);
         var segmentXml = BuildPriceSegmentsXml(req);
+        var hostTokensXml = ExtractHostTokensXml(req.AirPricingContextXml);
+        var faresIndicator = IsAvailabilityPricingContext(req.AirPricingContextXml)
+            ? "AllFares"
+            : "PublicFaresOnly";
 
         return $@"
 <air:AirPriceReq
@@ -627,7 +631,8 @@ public class FlightsController : ControllerBase
   <air:AirItinerary>
     {segmentXml}
   </air:AirItinerary>
-  <air:AirPricingModifiers FaresIndicator=""PublicFaresOnly"" />
+  {hostTokensXml}
+  <air:AirPricingModifiers FaresIndicator=""{faresIndicator}"" ReturnFareAttributes=""true"" />
   {BuildPassengersXml(req.Adults, req.Child, req.Infant)}
 </air:AirPriceReq>".Trim();
     }
@@ -964,6 +969,26 @@ public class FlightsController : ControllerBase
         catch
         {
             return string.Empty;
+        }
+    }
+
+    private static bool IsAvailabilityPricingContext(string contextXml)
+    {
+        if (string.IsNullOrWhiteSpace(contextXml))
+            return false;
+
+        try
+        {
+            var doc = XDocument.Parse(contextXml);
+            var rootName = doc.Root?.Name.LocalName ?? string.Empty;
+
+            return string.Equals(rootName, "AvailabilitySearchRsp", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(rootName, "AirAvailabilitySearchRsp", StringComparison.OrdinalIgnoreCase)
+                || doc.Descendants().Any(x => x.Name.LocalName == "AirItinerarySolution");
+        }
+        catch
+        {
+            return false;
         }
     }
 

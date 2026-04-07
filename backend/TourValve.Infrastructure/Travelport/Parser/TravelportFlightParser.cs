@@ -98,6 +98,11 @@ public static class TravelportFlightParser
 
         if (results.Count == 0)
         {
+            results.AddRange(ParseAirPricePoints(doc, currencyType, ref index, xml));
+        }
+
+        if (results.Count == 0)
+        {
             results.AddRange(ParseAvailabilityItineraries(doc, currencyType, ref index, xml));
 
             if (results.Count > 0)
@@ -191,6 +196,94 @@ public static class TravelportFlightParser
                     });
                 }
             }
+        }
+
+        return results;
+    }
+
+    private static List<FlightDto> ParseAirPricePoints(XDocument doc, string currencyType, ref int index, string xml)
+    {
+        var pricePoints = doc.Descendants()
+            .Where(x => x.Name.LocalName == "AirPricePoint")
+            .ToList();
+
+        if (pricePoints.Count == 0)
+        {
+            return new List<FlightDto>();
+        }
+
+        var results = new List<FlightDto>();
+
+        foreach (var point in pricePoints)
+        {
+            var segmentRefs = point.Descendants()
+                .Where(x => x.Name.LocalName == "AirSegmentRef")
+                .Select(x => x.Attribute("Key")?.Value)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Cast<string>()
+                .ToList();
+
+            var segments = segmentRefs
+                .Select(segmentKey =>
+                    doc.Descendants().FirstOrDefault(x =>
+                        x.Name.LocalName == "AirSegment" &&
+                        x.Attribute("Key")?.Value == segmentKey))
+                .Where(x => x != null)
+                .Cast<XElement>()
+                .Select(segment => EnrichStandaloneSegment(doc, segment))
+                .ToList();
+
+            if (segments.Count == 0)
+            {
+                continue;
+            }
+
+            var firstSegment = segments.First();
+            var lastSegment = segments.Last();
+            var classOfService = segments
+                .Select(ResolveStandaloneClassOfService)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+                ?? "Economy";
+
+            var totalPrice = point.Attribute("TotalPrice")?.Value
+                ?? point.Attribute("ApproximateTotalPrice")?.Value
+                ?? point.Descendants().FirstOrDefault(x => x.Name.LocalName == "AirPricingInfo")?.Attribute("TotalPrice")?.Value
+                ?? $"{currencyType}0.00";
+
+            var (currency, price) = ParsePrice(totalPrice);
+            var baggageContext = BuildBaggageContext(point);
+
+            results.Add(new FlightDto
+            {
+                Id = point.Attribute("Key")?.Value ?? $"price-point-{index++}",
+                Carrier = firstSegment.Attribute("Carrier")?.Value ?? string.Empty,
+                FlightNumber = firstSegment.Attribute("FlightNumber")?.Value ?? string.Empty,
+                From = firstSegment.Attribute("Origin")?.Value ?? string.Empty,
+                To = lastSegment.Attribute("Destination")?.Value ?? string.Empty,
+                Departure = firstSegment.Attribute("DepartureTime")?.Value ?? string.Empty,
+                Arrival = lastSegment.Attribute("ArrivalTime")?.Value ?? string.Empty,
+                Price = price,
+                BasePrice = price,
+                MarkupAmount = 0m,
+                Currency = currency,
+                CabinClass = string.IsNullOrWhiteSpace(classOfService) ? "Economy" : classOfService,
+                CarryOnAllowance = baggageContext.CarryOnAllowance,
+                CheckedBaggageAllowance = baggageContext.CheckedBagAllowance,
+                BaggageOfferTexts = baggageContext.OfferTexts,
+                AirPricingSolutionXml = point.ToString(SaveOptions.DisableFormatting),
+                AirPricingContextXml = doc.Root?.ToString(SaveOptions.DisableFormatting) ?? xml,
+                AirSegmentXml = firstSegment.ToString(SaveOptions.DisableFormatting),
+                AirSegmentXmls = segments.Select(segment => segment.ToString(SaveOptions.DisableFormatting)).ToList(),
+                ItinerarySegments = segments.Select(segment => new FlightSegmentDto
+                {
+                    Carrier = segment.Attribute("Carrier")?.Value ?? string.Empty,
+                    FlightNumber = segment.Attribute("FlightNumber")?.Value ?? string.Empty,
+                    From = segment.Attribute("Origin")?.Value ?? string.Empty,
+                    To = segment.Attribute("Destination")?.Value ?? string.Empty,
+                    Departure = segment.Attribute("DepartureTime")?.Value ?? string.Empty,
+                    Arrival = segment.Attribute("ArrivalTime")?.Value ?? string.Empty
+                }).ToList()
+            });
         }
 
         return results;
