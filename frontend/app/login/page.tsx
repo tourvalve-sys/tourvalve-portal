@@ -59,7 +59,7 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="relative min-h-screen overflow-hidden px-6 py-10 fade-in">
+        <div className="relative min-h-screen overflow-hidden px-4 py-6 fade-in sm:px-6 sm:py-10">
             <Image
                 src="/images/flight-bg.jpg"
                 alt="background"
@@ -67,10 +67,16 @@ export default function LoginPage() {
                 priority
                 className="absolute inset-0 h-full w-full object-cover scale-105"
             />
-            <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(10,22,38,0.76),rgba(55,34,19,0.54),rgba(251,247,240,0.25))]" />
+            <div
+                className="absolute inset-0"
+                style={{
+                    background:
+                        "linear-gradient(120deg, rgba(10, 22, 38, 0.76), rgba(55, 34, 19, 0.54), rgba(251, 247, 240, 0.25))",
+                }}
+            />
 
-            <div className="relative z-10 mx-auto grid min-h-[calc(100vh-5rem)] max-w-7xl items-center gap-10 lg:grid-cols-[1.2fr_0.9fr]">
-                <div className="text-white fade-in-delay">
+            <div className="relative z-20 mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl flex-col items-center justify-center gap-8 lg:min-h-[calc(100vh-5rem)] lg:flex-row lg:gap-12">
+                <div className="w-full max-w-3xl text-white fade-in-delay">
                     <h1
                         className="hero-title max-w-3xl !text-white"
                         style={{ textShadow: "0 10px 30px rgba(0, 0, 0, 0.34)" }}
@@ -85,7 +91,7 @@ export default function LoginPage() {
                     </p>
                 </div>
 
-                <div className="premium-panel rounded-[2.25rem] p-8 md:p-10">
+                <div className="premium-panel w-full max-w-xl rounded-[2.25rem] p-6 shadow-[0_26px_80px_rgba(15,23,42,0.24)] sm:p-8 md:p-10">
                     <div className="subtle-kicker mb-3">Member Access</div>
                     <h2 className="font-display text-4xl text-[var(--ink)]">Welcome back</h2>
                     <p className="mt-3 text-sm leading-7 text-slate-600">
