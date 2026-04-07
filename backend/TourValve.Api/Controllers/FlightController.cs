@@ -49,9 +49,10 @@ public class FlightsController : ControllerBase
             var availabilityDiagnostic = await GetAvailabilityDiagnosticAsync(req, departDate, returnDate);
             if (availabilityDiagnostic.Exists)
             {
+                var availabilityFlights = FilterAvailabilityResults(availabilityDiagnostic.Flights, req);
                 return Ok(new
                 {
-                    flights = availabilityDiagnostic.Flights.Select(flight => _markup.ApplyForRole(flight, includeMarkup)).ToList(),
+                    flights = availabilityFlights.Select(flight => _markup.ApplyForRole(flight, includeMarkup)).ToList(),
                     diagnosticMessage = "Air availability shows timetable options. Use Price Flight on a result to request a live fare before booking."
                 });
             }
@@ -514,6 +515,78 @@ public class FlightsController : ControllerBase
         {
             return (false, null, new List<FlightDto>());
         }
+    }
+
+    private static List<FlightDto> FilterAvailabilityResults(List<FlightDto> flights, FlightSearchRequest req)
+    {
+        var normalizedCabin = NormalizeCabin(req.Cabin);
+        var requestedFrom = (req.From ?? string.Empty).Trim().ToUpperInvariant();
+        var requestedTo = (req.To ?? string.Empty).Trim().ToUpperInvariant();
+
+        return flights
+            .Where(flight => MatchesAvailabilityRoute(flight, requestedFrom, requestedTo))
+            .Where(flight => normalizedCabin is null || SupportsRequestedCabin(flight, normalizedCabin))
+            .Select(flight =>
+            {
+                if (!string.IsNullOrWhiteSpace(normalizedCabin))
+                {
+                    flight.CabinClass = normalizedCabin;
+                }
+
+                return flight;
+            })
+            .ToList();
+    }
+
+    private static bool MatchesAvailabilityRoute(FlightDto flight, string requestedFrom, string requestedTo)
+    {
+        var actualFrom = (flight.From ?? string.Empty).Trim().ToUpperInvariant();
+        var actualTo = (flight.To ?? string.Empty).Trim().ToUpperInvariant();
+
+        if (string.IsNullOrWhiteSpace(requestedFrom) || string.IsNullOrWhiteSpace(requestedTo))
+        {
+            return true;
+        }
+
+        return actualFrom == requestedFrom && actualTo == requestedTo;
+    }
+
+    private static bool SupportsRequestedCabin(FlightDto flight, string normalizedCabin)
+    {
+        var segmentXmls = flight.AirSegmentXmls
+            .Where(segmentXml => !string.IsNullOrWhiteSpace(segmentXml))
+            .ToList();
+
+        if (segmentXmls.Count == 0 && !string.IsNullOrWhiteSpace(flight.AirSegmentXml))
+        {
+            segmentXmls.Add(flight.AirSegmentXml);
+        }
+
+        if (segmentXmls.Count == 0)
+        {
+            return string.Equals(NormalizeCabin(flight.CabinClass), normalizedCabin, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return segmentXmls.All(segmentXml => SegmentSupportsCabin(segmentXml, normalizedCabin));
+    }
+
+    private static bool SegmentSupportsCabin(string segmentXml, string normalizedCabin)
+    {
+        var segment = XElement.Parse(segmentXml);
+
+        var directCabin = NormalizeCabin(segment.Attribute("ClassOfService")?.Value);
+        if (string.Equals(directCabin, normalizedCabin, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var bookingCodeCabins = segment.Descendants()
+            .Where(x => x.Name.LocalName == "BookingCodeInfo")
+            .Select(x => NormalizeCabin(x.Attribute("CabinClass")?.Value))
+            .Where(cabin => !string.IsNullOrWhiteSpace(cabin))
+            .Cast<string>();
+
+        return bookingCodeCabins.Any(cabin => string.Equals(cabin, normalizedCabin, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string BuildMultiCityTimeoutMessage(int segmentCount)
