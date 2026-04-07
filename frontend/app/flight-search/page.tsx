@@ -34,10 +34,10 @@ type ActiveAirportField =
 type SearchMode = "lowfare" | "availability";
 
 const FLIGHT_SEARCH_STATE_KEY = "flightSearchState";
+const FLIGHT_SEARCH_STATE_VERSION = 2;
 
-type PersistedFlightSearchState = {
+type FlightSearchUiState = {
     tripType: "oneway" | "return" | "multicity";
-    results: FlightResult[];
     searchNotice: string;
     hasSearched: boolean;
     pricingErrors: Record<string, string>;
@@ -60,14 +60,140 @@ type PersistedFlightSearchState = {
     }>;
 };
 
-function readPersistedFlightSearchState(): PersistedFlightSearchState | null {
+type PersistedFlightSearchState = {
+    version: typeof FLIGHT_SEARCH_STATE_VERSION;
+    ui: FlightSearchUiState;
+};
+
+const createDefaultFilters = (): FilterState => ({
+    maxPrice: 50000,
+    stopCounts: [],
+    sortBy: "recommended",
+    departureWindow: "any",
+    airlines: [],
+});
+
+const createDefaultForm = () => ({
+    from: "",
+    to: "",
+    departDate: "",
+    returnDate: "",
+    adults: 1,
+    child: 0,
+    infant: 0,
+    cabin: "Economy",
+});
+
+const createDefaultMultiCitySegments = () => ([
+    { from: "", to: "", departDate: "" },
+    { from: "", to: "", departDate: "" },
+]);
+
+function sanitizePersistedFlightSearchUiState(value: unknown): FlightSearchUiState | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    const candidate = value as Partial<FlightSearchUiState>;
+    const filters = candidate.filters;
+    const form = candidate.form;
+    const multiCitySegments = candidate.multiCitySegments;
+
+    if (
+        (candidate.tripType !== "oneway" && candidate.tripType !== "return" && candidate.tripType !== "multicity") ||
+        (candidate.searchMode !== "lowfare" && candidate.searchMode !== "availability") ||
+        typeof candidate.searchNotice !== "string" ||
+        typeof candidate.hasSearched !== "boolean" ||
+        !candidate.pricingErrors ||
+        typeof candidate.pricingErrors !== "object" ||
+        !filters ||
+        typeof filters !== "object" ||
+        typeof filters.maxPrice !== "number" ||
+        !Array.isArray(filters.stopCounts) ||
+        (filters.sortBy !== "recommended" && filters.sortBy !== "earliest" && filters.sortBy !== "cheapest") ||
+        (filters.departureWindow !== "any" && filters.departureWindow !== "morning" && filters.departureWindow !== "afternoon" && filters.departureWindow !== "evening") ||
+        !Array.isArray(filters.airlines) ||
+        !form ||
+        typeof form !== "object" ||
+        typeof form.from !== "string" ||
+        typeof form.to !== "string" ||
+        typeof form.departDate !== "string" ||
+        typeof form.returnDate !== "string" ||
+        typeof form.adults !== "number" ||
+        typeof form.child !== "number" ||
+        typeof form.infant !== "number" ||
+        typeof form.cabin !== "string" ||
+        !Array.isArray(multiCitySegments)
+    ) {
+        return null;
+    }
+
+    const normalizedSegments = multiCitySegments
+        .filter(
+            (segment): segment is { from: string; to: string; departDate: string } =>
+                Boolean(segment) &&
+                typeof segment === "object" &&
+                typeof segment.from === "string" &&
+                typeof segment.to === "string" &&
+                typeof segment.departDate === "string"
+        )
+        .slice(0, 4);
+
+    return {
+        tripType: candidate.tripType,
+        searchMode: candidate.searchMode,
+        searchNotice: candidate.searchNotice,
+        hasSearched: candidate.hasSearched,
+        pricingErrors: Object.fromEntries(
+            Object.entries(candidate.pricingErrors).filter(
+                (entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"
+            )
+        ),
+        filters: {
+            maxPrice: Number.isFinite(filters.maxPrice) ? filters.maxPrice : 50000,
+            stopCounts: filters.stopCounts.filter((count): count is number => count === 0 || count === 1 || count === 2),
+            sortBy: filters.sortBy,
+            departureWindow: filters.departureWindow,
+            airlines: filters.airlines.filter((airline): airline is string => typeof airline === "string"),
+        },
+        form: {
+            from: form.from,
+            to: form.to,
+            departDate: form.departDate,
+            returnDate: form.returnDate,
+            adults: form.adults,
+            child: form.child,
+            infant: form.infant,
+            cabin: form.cabin,
+        },
+        multiCitySegments: normalizedSegments.length >= 2 ? normalizedSegments : createDefaultMultiCitySegments(),
+    };
+}
+
+function readPersistedFlightSearchState(): FlightSearchUiState | null {
     if (typeof window === "undefined") {
         return null;
     }
 
     try {
         const raw = sessionStorage.getItem(FLIGHT_SEARCH_STATE_KEY);
-        return raw ? (JSON.parse(raw) as PersistedFlightSearchState) : null;
+        if (!raw) {
+            return null;
+        }
+
+        const parsed = JSON.parse(raw) as PersistedFlightSearchState | FlightSearchUiState;
+        if (
+            parsed &&
+            typeof parsed === "object" &&
+            "version" in parsed &&
+            parsed.version === FLIGHT_SEARCH_STATE_VERSION &&
+            "ui" in parsed
+        ) {
+            return sanitizePersistedFlightSearchUiState(parsed.ui);
+        }
+
+        sessionStorage.removeItem(FLIGHT_SEARCH_STATE_KEY);
+        return null;
     } catch {
         sessionStorage.removeItem(FLIGHT_SEARCH_STATE_KEY);
         return null;
@@ -76,66 +202,42 @@ function readPersistedFlightSearchState(): PersistedFlightSearchState | null {
 
 export default function FlightSearch() {
     const router = useRouter();
-    const { setSelectedFlight, setTravelerCounts } = useBooking();
+    const { flightSearchState, setFlightSearchState, setSelectedFlight, setTravelerCounts } = useBooking();
     const today = new Date().toISOString().split("T")[0];
-    const persistedState = readPersistedFlightSearchState();
+    const persistedUiState = readPersistedFlightSearchState();
+    const restoredState = flightSearchState ?? persistedUiState;
 
     const [tripType, setTripType] = useState<"oneway" | "return" | "multicity">(
-        persistedState?.tripType ?? "oneway"
+        restoredState?.tripType ?? "oneway"
     );
-    const [results, setResults] = useState<FlightResult[]>(persistedState?.results ?? []);
+    const [results, setResults] = useState<FlightResult[]>(flightSearchState?.results ?? []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-    const [searchNotice, setSearchNotice] = useState(persistedState?.searchNotice ?? "");
-    const [hasSearched, setHasSearched] = useState(persistedState?.hasSearched ?? false);
+    const [searchNotice, setSearchNotice] = useState(restoredState?.searchNotice ?? "");
+    const [hasSearched, setHasSearched] = useState(restoredState?.hasSearched ?? false);
     const [activeField, setActiveField] = useState<ActiveAirportField>(null);
     const [pricingFlightId, setPricingFlightId] = useState<string | null>(null);
-    const [pricingErrors, setPricingErrors] = useState<Record<string, string>>(persistedState?.pricingErrors ?? {});
-    const [searchMode, setSearchMode] = useState<SearchMode>(persistedState?.searchMode ?? "lowfare");
-    const [filters, setFilters] = useState<FilterState>({
-        maxPrice: persistedState?.filters.maxPrice ?? 50000,
-        stopCounts: persistedState?.filters.stopCounts ?? [],
-        sortBy: persistedState?.filters.sortBy ?? "recommended",
-        departureWindow: persistedState?.filters.departureWindow ?? "any",
-        airlines: persistedState?.filters.airlines ?? [],
-    });
+    const [pricingErrors, setPricingErrors] = useState<Record<string, string>>(restoredState?.pricingErrors ?? {});
+    const [searchMode, setSearchMode] = useState<SearchMode>(restoredState?.searchMode ?? "lowfare");
+    const [filters, setFilters] = useState<FilterState>(restoredState?.filters ?? createDefaultFilters());
 
-    const [form, setForm] = useState({
-        from: persistedState?.form.from ?? "",
-        to: persistedState?.form.to ?? "",
-        departDate: persistedState?.form.departDate ?? "",
-        returnDate: persistedState?.form.returnDate ?? "",
-        adults: persistedState?.form.adults ?? 1,
-        child: persistedState?.form.child ?? 0,
-        infant: persistedState?.form.infant ?? 0,
-        cabin: persistedState?.form.cabin ?? "Economy",
-    });
+    const [form, setForm] = useState(restoredState?.form ?? createDefaultForm());
     const [multiCitySegments, setMultiCitySegments] = useState(
-        persistedState?.multiCitySegments ?? [
-            { from: "", to: "", departDate: "" },
-            { from: "", to: "", departDate: "" },
-        ]
+        restoredState?.multiCitySegments ?? createDefaultMultiCitySegments()
     );
 
     useEffect(() => {
-        if (typeof window === "undefined") {
-            return;
-        }
-
-        sessionStorage.setItem(
-            FLIGHT_SEARCH_STATE_KEY,
-            JSON.stringify({
-                tripType,
-                results,
-                searchNotice,
-                hasSearched,
-                pricingErrors,
-                searchMode,
-                filters,
-                form,
-                multiCitySegments,
-            } satisfies PersistedFlightSearchState)
-        );
+        setFlightSearchState({
+            tripType,
+            results,
+            searchNotice,
+            hasSearched,
+            pricingErrors,
+            searchMode,
+            filters,
+            form,
+            multiCitySegments,
+        });
     }, [
         filters,
         form,
@@ -143,6 +245,43 @@ export default function FlightSearch() {
         multiCitySegments,
         pricingErrors,
         results,
+        searchMode,
+        searchNotice,
+        setFlightSearchState,
+        tripType,
+    ]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        try {
+            sessionStorage.setItem(
+                FLIGHT_SEARCH_STATE_KEY,
+                JSON.stringify({
+                    version: FLIGHT_SEARCH_STATE_VERSION,
+                    ui: {
+                        tripType,
+                        searchNotice,
+                        hasSearched,
+                        pricingErrors,
+                        searchMode,
+                        filters,
+                        form,
+                        multiCitySegments,
+                    },
+                } satisfies PersistedFlightSearchState)
+            );
+        } catch {
+            sessionStorage.removeItem(FLIGHT_SEARCH_STATE_KEY);
+        }
+    }, [
+        filters,
+        form,
+        hasSearched,
+        multiCitySegments,
+        pricingErrors,
         searchMode,
         searchNotice,
         tripType,
@@ -220,6 +359,7 @@ export default function FlightSearch() {
             setSearchNotice("");
             setResults([]);
             setPricingErrors({});
+            setFilters((current) => ({ ...current, airlines: [] }));
             setSelectedFlight(null);
             setHasSearched(true);
             setActiveField(null);
@@ -490,6 +630,29 @@ export default function FlightSearch() {
 
         return [...seen.values()].sort((left, right) => left.name.localeCompare(right.name));
     }, [results]);
+
+    useEffect(() => {
+        if (airlineOptions.length === 0) {
+            if (filters.airlines.length === 0) {
+                return;
+            }
+
+            setFilters((current) => ({ ...current, airlines: [] }));
+            return;
+        }
+
+        const validAirlineCodes = new Set(airlineOptions.map((airline) => airline.code));
+        const nextAirlines = filters.airlines.filter((airline) => validAirlineCodes.has(airline));
+
+        if (nextAirlines.length === filters.airlines.length) {
+            return;
+        }
+
+        setFilters((current) => ({
+            ...current,
+            airlines: current.airlines.filter((airline) => validAirlineCodes.has(airline)),
+        }));
+    }, [airlineOptions, filters.airlines]);
 
     const filteredResults = [...results]
         .filter((flight) => {

@@ -3,11 +3,47 @@
 import { createContext, useContext, useState } from "react";
 import type { FlightResult } from "@/lib/api";
 
+type FlightSearchUiState = {
+    tripType: "oneway" | "return" | "multicity";
+    searchMode: "lowfare" | "availability";
+    hasSearched: boolean;
+    searchNotice: string;
+    pricingErrors: Record<string, string>;
+    filters: {
+        maxPrice: number;
+        stopCounts: number[];
+        sortBy: "recommended" | "earliest" | "cheapest";
+        departureWindow: "any" | "morning" | "afternoon" | "evening";
+        airlines: string[];
+    };
+    form: {
+        from: string;
+        to: string;
+        departDate: string;
+        returnDate: string;
+        adults: number;
+        child: number;
+        infant: number;
+        cabin: string;
+    };
+    multiCitySegments: Array<{
+        from: string;
+        to: string;
+        departDate: string;
+    }>;
+};
+
+type FlightSearchState = FlightSearchUiState & {
+    results: FlightResult[];
+};
+
 interface BookingContextType {
     selectedFlight: FlightResult | null;
     setSelectedFlight: (flight: FlightResult | null) => void;
     travelerCounts: { adults: number; child: number; infant: number };
     setTravelerCounts: (counts: { adults: number; child: number; infant: number }) => void;
+    flightSearchState: FlightSearchState | null;
+    setFlightSearchState: (state: FlightSearchState | null) => void;
 }
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
@@ -50,8 +86,17 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
         setTravelerCountsState(counts);
     };
 
+    const [flightSearchState, setFlightSearchState] = useState<FlightSearchState | null>(null);
+
     return (
-        <BookingContext.Provider value={{ selectedFlight, setSelectedFlight, travelerCounts, setTravelerCounts }}>
+        <BookingContext.Provider value={{
+            selectedFlight,
+            setSelectedFlight,
+            travelerCounts,
+            setTravelerCounts,
+            flightSearchState,
+            setFlightSearchState,
+        }}>
             {children}
         </BookingContext.Provider>
     );
