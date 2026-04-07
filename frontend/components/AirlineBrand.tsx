@@ -105,7 +105,6 @@ const carrierAliases: Record<string, string> = {
 
 const badgePreferredCodes = new Set([
     "BI",
-    "MH",
     "VN",
     "W1",
 ]);

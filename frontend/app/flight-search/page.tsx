@@ -1293,7 +1293,7 @@ export default function FlightSearch() {
                                         key={flight.id}
                                         className={`premium-panel rounded-[1.55rem] p-4 sm:rounded-[1.9rem] sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
                                     >
-                                        <div className="grid gap-5 xl:grid-cols-[minmax(10rem,11.5rem)_minmax(17rem,1.4fr)_minmax(10rem,0.85fr)_minmax(12rem,0.9fr)] xl:items-center">
+                                        <div className="grid gap-5 xl:grid-cols-[minmax(10rem,11.5rem)_minmax(17rem,1.45fr)_minmax(10rem,0.82fr)_minmax(13.5rem,1fr)] xl:items-center">
                                             <div className="flex items-start 2xl:items-center">
                                                 <div className="w-full max-w-[14rem]">
                                                     <AirlineBrand
@@ -1353,7 +1353,8 @@ export default function FlightSearch() {
                                             </div>
 
                                             <div className="flex flex-col gap-3 border-t border-[rgba(89,64,46,0.08)] pt-4 sm:flex-row sm:items-center sm:justify-between xl:border-t-0 xl:pt-0">
-                                                <div className="text-left xl:text-right">
+                                                <div className={`grid gap-3 ${isAvailabilityCard ? "xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:gap-4" : ""}`}>
+                                                <div className={`text-left ${isAvailabilityCard ? "xl:text-left" : "xl:text-right"}`}>
                                                     {isBookable ? (
                                                         <>
                                                             <div className="text-[1.8rem] font-bold leading-none text-[var(--success)] sm:text-2xl">
@@ -1383,7 +1384,7 @@ export default function FlightSearch() {
                                                 <button
                                                     onClick={() => handleSelect(flight)}
                                                     disabled={isPricing || (!isBookable && !flight.airSegmentXml)}
-                                                    className={`rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${(isPricing || (!isBookable && !flight.airSegmentXml)) ? "cursor-not-allowed opacity-70" : ""}`}
+                                                    className={`rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${isAvailabilityCard ? "min-w-[5.75rem] self-start xl:self-center" : ""} ${(isPricing || (!isBookable && !flight.airSegmentXml)) ? "cursor-not-allowed opacity-70" : ""}`}
                                                 >
                                                     {isPricing
                                                         ? "Pricing..."
@@ -1393,6 +1394,7 @@ export default function FlightSearch() {
                                                                 ? "Price & Book"
                                                                 : "Price Flight"}
                                                 </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
