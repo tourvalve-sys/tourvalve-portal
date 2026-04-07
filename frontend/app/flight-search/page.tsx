@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
     ArrowLeftRight,
@@ -33,42 +33,119 @@ type ActiveAirportField =
 
 type SearchMode = "lowfare" | "availability";
 
+const FLIGHT_SEARCH_STATE_KEY = "flightSearchState";
+
+type PersistedFlightSearchState = {
+    tripType: "oneway" | "return" | "multicity";
+    results: FlightResult[];
+    searchNotice: string;
+    hasSearched: boolean;
+    pricingErrors: Record<string, string>;
+    searchMode: SearchMode;
+    filters: FilterState;
+    form: {
+        from: string;
+        to: string;
+        departDate: string;
+        returnDate: string;
+        adults: number;
+        child: number;
+        infant: number;
+        cabin: string;
+    };
+    multiCitySegments: Array<{
+        from: string;
+        to: string;
+        departDate: string;
+    }>;
+};
+
+function readPersistedFlightSearchState(): PersistedFlightSearchState | null {
+    if (typeof window === "undefined") {
+        return null;
+    }
+
+    try {
+        const raw = sessionStorage.getItem(FLIGHT_SEARCH_STATE_KEY);
+        return raw ? (JSON.parse(raw) as PersistedFlightSearchState) : null;
+    } catch {
+        sessionStorage.removeItem(FLIGHT_SEARCH_STATE_KEY);
+        return null;
+    }
+}
+
 export default function FlightSearch() {
     const router = useRouter();
     const { setSelectedFlight, setTravelerCounts } = useBooking();
     const today = new Date().toISOString().split("T")[0];
+    const persistedState = readPersistedFlightSearchState();
 
-    const [tripType, setTripType] = useState<"oneway" | "return" | "multicity">("oneway");
-    const [results, setResults] = useState<FlightResult[]>([]);
+    const [tripType, setTripType] = useState<"oneway" | "return" | "multicity">(
+        persistedState?.tripType ?? "oneway"
+    );
+    const [results, setResults] = useState<FlightResult[]>(persistedState?.results ?? []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-    const [searchNotice, setSearchNotice] = useState("");
-    const [hasSearched, setHasSearched] = useState(false);
+    const [searchNotice, setSearchNotice] = useState(persistedState?.searchNotice ?? "");
+    const [hasSearched, setHasSearched] = useState(persistedState?.hasSearched ?? false);
     const [activeField, setActiveField] = useState<ActiveAirportField>(null);
     const [pricingFlightId, setPricingFlightId] = useState<string | null>(null);
-    const [pricingErrors, setPricingErrors] = useState<Record<string, string>>({});
-    const [searchMode, setSearchMode] = useState<SearchMode>("lowfare");
+    const [pricingErrors, setPricingErrors] = useState<Record<string, string>>(persistedState?.pricingErrors ?? {});
+    const [searchMode, setSearchMode] = useState<SearchMode>(persistedState?.searchMode ?? "lowfare");
     const [filters, setFilters] = useState<FilterState>({
-        maxPrice: 50000,
-        stopCounts: [],
-        sortBy: "recommended",
-        departureWindow: "any",
-        airlines: [],
+        maxPrice: persistedState?.filters.maxPrice ?? 50000,
+        stopCounts: persistedState?.filters.stopCounts ?? [],
+        sortBy: persistedState?.filters.sortBy ?? "recommended",
+        departureWindow: persistedState?.filters.departureWindow ?? "any",
+        airlines: persistedState?.filters.airlines ?? [],
     });
 
     const [form, setForm] = useState({
-        from: "",
-        to: "",
-        departDate: "",
-        returnDate: "",
-        adults: 1,
-        child: 0,
-        infant: 0,
-        cabin: "Economy",
+        from: persistedState?.form.from ?? "",
+        to: persistedState?.form.to ?? "",
+        departDate: persistedState?.form.departDate ?? "",
+        returnDate: persistedState?.form.returnDate ?? "",
+        adults: persistedState?.form.adults ?? 1,
+        child: persistedState?.form.child ?? 0,
+        infant: persistedState?.form.infant ?? 0,
+        cabin: persistedState?.form.cabin ?? "Economy",
     });
-    const [multiCitySegments, setMultiCitySegments] = useState([
-        { from: "", to: "", departDate: "" },
-        { from: "", to: "", departDate: "" },
+    const [multiCitySegments, setMultiCitySegments] = useState(
+        persistedState?.multiCitySegments ?? [
+            { from: "", to: "", departDate: "" },
+            { from: "", to: "", departDate: "" },
+        ]
+    );
+
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        sessionStorage.setItem(
+            FLIGHT_SEARCH_STATE_KEY,
+            JSON.stringify({
+                tripType,
+                results,
+                searchNotice,
+                hasSearched,
+                pricingErrors,
+                searchMode,
+                filters,
+                form,
+                multiCitySegments,
+            } satisfies PersistedFlightSearchState)
+        );
+    }, [
+        filters,
+        form,
+        hasSearched,
+        multiCitySegments,
+        pricingErrors,
+        results,
+        searchMode,
+        searchNotice,
+        tripType,
     ]);
 
     const swapAirports = () => {
@@ -390,17 +467,24 @@ export default function FlightSearch() {
     };
 
     const airlineOptions = useMemo(() => {
-        const seen = new Map<string, { code: string; name: string }>();
+        const seen = new Map<string, { code: string; name: string; count: number }>();
 
         for (const flight of results) {
             const code = flight.carrier?.trim().toUpperCase();
-            if (!code || seen.has(code)) {
+            if (!code) {
+                continue;
+            }
+
+            const current = seen.get(code);
+            if (current) {
+                current.count += 1;
                 continue;
             }
 
             seen.set(code, {
                 code,
                 name: getAirlineDisplayName(flight.carrier, flight.flightNumber),
+                count: 1,
             });
         }
 
@@ -923,7 +1007,7 @@ export default function FlightSearch() {
                                                         <Check size={13} />
                                                     </span>
                                                     <span className="min-w-0 text-sm text-[var(--ink)]">
-                                                        {airline.name}
+                                                        {airline.name} ({airline.count})
                                                     </span>
                                                 </label>
                                             );
