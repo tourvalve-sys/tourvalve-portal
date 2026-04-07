@@ -575,6 +575,7 @@ public class FlightsController : ControllerBase
         var segment = XElement.Parse(rawSegmentXml);
         segment.Name = XName.Get("AirSegment", "http://www.travelport.com/schema/air_v51_0");
         var providerCode = segment.Attribute("ProviderCode")?.Value;
+        var classOfService = segment.Attribute("ClassOfService")?.Value;
 
         var flightDetailsRefs = segment.Elements().Where(x => x.Name.LocalName == "FlightDetailsRef").ToList();
         if (flightDetailsRefs.Count > 0 && !string.IsNullOrWhiteSpace(contextXml))
@@ -615,6 +616,17 @@ public class FlightsController : ControllerBase
                             !string.IsNullOrWhiteSpace(x.Attribute("ProviderCode")?.Value))
                         ?.Attribute("ProviderCode")?.Value;
             }
+
+            if (string.IsNullOrWhiteSpace(classOfService))
+            {
+                classOfService = ResolveStandaloneClassOfService(segment)
+                    ?? contextDoc.Descendants()
+                        .FirstOrDefault(x =>
+                            x.Name.LocalName == "AirSegment" &&
+                            x.Attribute("Key")?.Value == segment.Attribute("Key")?.Value)
+                        ?.Attribute("ClassOfService")?.Value
+                    ?? string.Empty;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(providerCode))
@@ -624,12 +636,36 @@ public class FlightsController : ControllerBase
                 ?.Attribute("ProviderCode")?.Value;
         }
 
+        if (string.IsNullOrWhiteSpace(classOfService))
+        {
+            classOfService = ResolveStandaloneClassOfService(segment) ?? string.Empty;
+        }
+
         if (!string.IsNullOrWhiteSpace(providerCode))
         {
             segment.SetAttributeValue("ProviderCode", providerCode);
         }
 
+        if (!string.IsNullOrWhiteSpace(classOfService))
+        {
+            segment.SetAttributeValue("ClassOfService", classOfService);
+        }
+
         return segment.ToString(SaveOptions.DisableFormatting);
+    }
+
+    private static string? ResolveStandaloneClassOfService(XElement segment)
+    {
+        return segment.Attribute("ClassOfService")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo" && !string.IsNullOrWhiteSpace(x.Attribute("BookingCode")?.Value))
+                ?.Attribute("BookingCode")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo" && !string.IsNullOrWhiteSpace(x.Attribute("CabinClass")?.Value))
+                ?.Attribute("CabinClass")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "AirAvailInfo" && !string.IsNullOrWhiteSpace(x.Attribute("ClassOfService")?.Value))
+                ?.Attribute("ClassOfService")?.Value;
     }
 
     private string BuildSeatMapXml(FlightSeatMapRequest req)

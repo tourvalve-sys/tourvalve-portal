@@ -104,37 +104,40 @@ public static class TravelportFlightParser
 
             foreach (var segment in segments)
             {
+                var enrichedSegment = EnrichStandaloneSegment(doc, segment);
+                var classOfService = ResolveStandaloneClassOfService(enrichedSegment);
+
                 results.Add(new FlightDto
                 {
-                    Id = segment.Attribute("Key")?.Value ?? $"segment-{index++}",
-                    Carrier = segment.Attribute("Carrier")?.Value ?? string.Empty,
-                    FlightNumber = segment.Attribute("FlightNumber")?.Value ?? string.Empty,
-                    From = segment.Attribute("Origin")?.Value ?? string.Empty,
-                    To = segment.Attribute("Destination")?.Value ?? string.Empty,
-                    Departure = segment.Attribute("DepartureTime")?.Value ?? string.Empty,
-                    Arrival = segment.Attribute("ArrivalTime")?.Value ?? string.Empty,
+                    Id = enrichedSegment.Attribute("Key")?.Value ?? $"segment-{index++}",
+                    Carrier = enrichedSegment.Attribute("Carrier")?.Value ?? string.Empty,
+                    FlightNumber = enrichedSegment.Attribute("FlightNumber")?.Value ?? string.Empty,
+                    From = enrichedSegment.Attribute("Origin")?.Value ?? string.Empty,
+                    To = enrichedSegment.Attribute("Destination")?.Value ?? string.Empty,
+                    Departure = enrichedSegment.Attribute("DepartureTime")?.Value ?? string.Empty,
+                    Arrival = enrichedSegment.Attribute("ArrivalTime")?.Value ?? string.Empty,
                     Price = 0m,
                     BasePrice = 0m,
                     MarkupAmount = 0m,
                     Currency = currencyType,
-                    CabinClass = "Economy",
+                    CabinClass = string.IsNullOrWhiteSpace(classOfService) ? "Economy" : classOfService,
                     AirPricingSolutionXml = string.Empty,
                     AirPricingContextXml = doc.Root?.ToString(SaveOptions.DisableFormatting) ?? xml,
-                    AirSegmentXml = segment.ToString(SaveOptions.DisableFormatting),
+                    AirSegmentXml = enrichedSegment.ToString(SaveOptions.DisableFormatting),
                     AirSegmentXmls = new List<string>
                     {
-                        segment.ToString(SaveOptions.DisableFormatting)
+                        enrichedSegment.ToString(SaveOptions.DisableFormatting)
                     },
                     ItinerarySegments = new List<FlightSegmentDto>
                     {
                         new()
                         {
-                            Carrier = segment.Attribute("Carrier")?.Value ?? string.Empty,
-                            FlightNumber = segment.Attribute("FlightNumber")?.Value ?? string.Empty,
-                            From = segment.Attribute("Origin")?.Value ?? string.Empty,
-                            To = segment.Attribute("Destination")?.Value ?? string.Empty,
-                            Departure = segment.Attribute("DepartureTime")?.Value ?? string.Empty,
-                            Arrival = segment.Attribute("ArrivalTime")?.Value ?? string.Empty
+                            Carrier = enrichedSegment.Attribute("Carrier")?.Value ?? string.Empty,
+                            FlightNumber = enrichedSegment.Attribute("FlightNumber")?.Value ?? string.Empty,
+                            From = enrichedSegment.Attribute("Origin")?.Value ?? string.Empty,
+                            To = enrichedSegment.Attribute("Destination")?.Value ?? string.Empty,
+                            Departure = enrichedSegment.Attribute("DepartureTime")?.Value ?? string.Empty,
+                            Arrival = enrichedSegment.Attribute("ArrivalTime")?.Value ?? string.Empty
                         }
                     }
                 });
@@ -234,6 +237,89 @@ public static class TravelportFlightParser
             segment.SetAttributeValue("HostTokenRef", hostTokenRef);
 
         return segment;
+    }
+
+    private static XElement EnrichStandaloneSegment(XDocument doc, XElement originalSegment)
+    {
+        var segment = new XElement(originalSegment);
+        var segmentKey = segment.Attribute("Key")?.Value ?? string.Empty;
+
+        var providerCode = segment.Attribute("ProviderCode")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "AirAvailInfo" && !string.IsNullOrWhiteSpace(x.Attribute("ProviderCode")?.Value))
+                ?.Attribute("ProviderCode")?.Value
+            ?? string.Empty;
+
+        var classOfService = ResolveStandaloneClassOfService(segment);
+        var hostTokenRef = segment.Attribute("HostTokenRef")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo" && !string.IsNullOrWhiteSpace(x.Attribute("HostTokenRef")?.Value))
+                ?.Attribute("HostTokenRef")?.Value
+            ?? string.Empty;
+
+        var flightDetailsRefs = segment.Elements().Where(x => x.Name.LocalName == "FlightDetailsRef").ToList();
+        if (flightDetailsRefs.Count > 0)
+        {
+            foreach (var flightDetailsRef in flightDetailsRefs)
+            {
+                var key = flightDetailsRef.Attribute("Key")?.Value;
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    flightDetailsRef.Remove();
+                    continue;
+                }
+
+                var flightDetails = doc.Descendants()
+                    .FirstOrDefault(x =>
+                        x.Name.LocalName == "FlightDetails" &&
+                        string.Equals(x.Attribute("Key")?.Value, key, StringComparison.Ordinal));
+
+                if (flightDetails is null)
+                {
+                    flightDetailsRef.Remove();
+                    continue;
+                }
+
+                flightDetailsRef.ReplaceWith(new XElement(flightDetails));
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(providerCode) && !string.IsNullOrWhiteSpace(segmentKey))
+        {
+            providerCode = doc.Descendants()
+                .FirstOrDefault(x =>
+                    x.Name.LocalName == "AirSegment" &&
+                    x.Attribute("Key")?.Value == segmentKey &&
+                    !string.IsNullOrWhiteSpace(x.Attribute("ProviderCode")?.Value))
+                ?.Attribute("ProviderCode")?.Value
+                ?? string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(providerCode))
+            segment.SetAttributeValue("ProviderCode", providerCode);
+
+        if (!string.IsNullOrWhiteSpace(classOfService))
+            segment.SetAttributeValue("ClassOfService", classOfService);
+
+        if (!string.IsNullOrWhiteSpace(hostTokenRef))
+            segment.SetAttributeValue("HostTokenRef", hostTokenRef);
+
+        return segment;
+    }
+
+    private static string ResolveStandaloneClassOfService(XElement segment)
+    {
+        return segment.Attribute("ClassOfService")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo" && !string.IsNullOrWhiteSpace(x.Attribute("BookingCode")?.Value))
+                ?.Attribute("BookingCode")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo" && !string.IsNullOrWhiteSpace(x.Attribute("CabinClass")?.Value))
+                ?.Attribute("CabinClass")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "AirAvailInfo" && !string.IsNullOrWhiteSpace(x.Attribute("ClassOfService")?.Value))
+                ?.Attribute("ClassOfService")?.Value
+            ?? string.Empty;
     }
 
     private static (string CarryOnAllowance, string CheckedBagAllowance, List<string> OfferTexts) BuildBaggageContext(XElement solution)
