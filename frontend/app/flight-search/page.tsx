@@ -434,6 +434,8 @@ export default function FlightSearch() {
             return 0;
         });
 
+    const isScheduleOnlySearch = searchNotice.toLowerCase().includes("schedule availability exists");
+
     return (
         <div className="relative min-h-screen fade-in">
             <Image
@@ -825,6 +827,7 @@ export default function FlightSearch() {
                         ) : (
                             filteredResults.map((flight, index) => {
                                 const isBookable = Boolean(flight.airPricingSolutionXml && flight.price > 0);
+                                const isScheduleOnlyResult = isScheduleOnlySearch && !isBookable;
                                 const isPricing = pricingFlightId === flight.id;
                                 const {
                                     itinerarySegments,
@@ -896,7 +899,11 @@ export default function FlightSearch() {
 
                                                 <div className="flex flex-wrap gap-2">
                                                     <span className={`status-pill ${isBookable ? "status-success" : ""}`}>
-                                                        {isBookable ? "Ready To Book" : "Needs Pricing"}
+                                                        {isBookable
+                                                            ? "Ready To Book"
+                                                            : isScheduleOnlyResult
+                                                                ? "Schedule Only"
+                                                                : "Needs Pricing"}
                                                     </span>
                                                     <span className="status-pill ghost-button !text-[var(--ink)]">
                                                         {form.cabin}
@@ -916,9 +923,13 @@ export default function FlightSearch() {
                                                     ) : (
                                                         <>
                                                             <div className="text-2xl font-bold text-[var(--accent-strong)]">
-                                                                Fare unavailable
+                                                                {isScheduleOnlyResult ? "Schedule only" : "Fare unavailable"}
                                                             </div>
-                                                            <div className="text-xs text-slate-500">run live pricing to continue</div>
+                                                            <div className="text-xs text-slate-500">
+                                                                {isScheduleOnlyResult
+                                                                    ? "This result shows timetable availability only and is not currently bookable."
+                                                                    : "run live pricing to continue"}
+                                                            </div>
                                                         </>
                                                     )}
                                                     {!isBookable && pricingError && (
@@ -930,10 +941,16 @@ export default function FlightSearch() {
 
                                                 <button
                                                     onClick={() => handleSelect(flight)}
-                                                    disabled={isPricing}
-                                                    className={`rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${isPricing ? "cursor-wait opacity-70" : ""}`}
+                                                    disabled={isPricing || isScheduleOnlyResult}
+                                                    className={`rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${(isPricing || isScheduleOnlyResult) ? "cursor-not-allowed opacity-70" : ""}`}
                                                 >
-                                                    {isPricing ? "Pricing..." : isBookable ? "Select" : "Price Flight"}
+                                                    {isPricing
+                                                        ? "Pricing..."
+                                                        : isBookable
+                                                            ? "Select"
+                                                            : isScheduleOnlyResult
+                                                                ? "Schedule Only"
+                                                                : "Price Flight"}
                                                 </button>
                                             </div>
                                         </div>
