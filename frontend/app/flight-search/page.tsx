@@ -31,6 +31,8 @@ type ActiveAirportField =
     | { mode: "multi"; field: "from" | "to"; index: number }
     | null;
 
+type SearchMode = "lowfare" | "availability";
+
 export default function FlightSearch() {
     const router = useRouter();
     const { setSelectedFlight, setTravelerCounts } = useBooking();
@@ -45,6 +47,7 @@ export default function FlightSearch() {
     const [activeField, setActiveField] = useState<ActiveAirportField>(null);
     const [pricingFlightId, setPricingFlightId] = useState<string | null>(null);
     const [pricingErrors, setPricingErrors] = useState<Record<string, string>>({});
+    const [searchMode, setSearchMode] = useState<SearchMode>("lowfare");
     const [filters, setFilters] = useState<FilterState>({
         maxPrice: 50000,
         nonstopOnly: false,
@@ -147,6 +150,7 @@ export default function FlightSearch() {
 
             const searchResponse = await searchFlights({
                 ...form,
+                searchMode,
                 from: tripType === "multicity" ? multiCitySegments[0]?.from.toUpperCase() ?? "" : form.from.toUpperCase(),
                 to: tripType === "multicity" ? multiCitySegments[0]?.to.toUpperCase() ?? "" : form.to.toUpperCase(),
                 departDate: tripType === "multicity" ? multiCitySegments[0]?.departDate ?? "" : form.departDate,
@@ -434,7 +438,7 @@ export default function FlightSearch() {
             return 0;
         });
 
-    const isScheduleOnlySearch = searchNotice.toLowerCase().includes("schedule availability exists");
+    const isAvailabilitySearch = searchMode === "availability";
 
     return (
         <div className="relative min-h-screen fade-in">
@@ -712,6 +716,47 @@ export default function FlightSearch() {
                         </div>
                     </div>
 
+                    <div className="mb-5 rounded-[1.4rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.7)] px-4 py-4 sm:rounded-[1.6rem]">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                            <div>
+                                <div className="subtle-kicker">Search Source</div>
+                                <div className="mt-1 text-sm leading-6 text-slate-600">
+                                    Choose bookable low fares or explicit air-availability schedules that agents can price manually.
+                                </div>
+                            </div>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                            <button
+                                type="button"
+                                onClick={() => setSearchMode("lowfare")}
+                                className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
+                                    searchMode === "lowfare"
+                                        ? "border-[rgba(176,122,67,0.45)] bg-[rgba(176,122,67,0.14)] shadow-[0_18px_30px_rgba(122,82,45,0.12)]"
+                                        : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
+                                }`}
+                            >
+                                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">Low Fare</div>
+                                <div className="mt-2 text-sm leading-6 text-slate-600">
+                                    Show priced, bookable results first. Best for normal selling flow.
+                                </div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSearchMode("availability")}
+                                className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
+                                    searchMode === "availability"
+                                        ? "border-[rgba(45,120,92,0.28)] bg-[rgba(232,245,237,0.88)] shadow-[0_18px_30px_rgba(45,120,92,0.1)]"
+                                        : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
+                                }`}
+                            >
+                                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Air Availability</div>
+                                <div className="mt-2 text-sm leading-6 text-slate-600">
+                                    Show schedule-based options that agents can price one by one when low fares are missing.
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
                     {error && (
                         <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
                             {error}
@@ -773,6 +818,26 @@ export default function FlightSearch() {
                         </div>
 
                         <div>
+                            <label className="mb-2 block text-sm text-slate-500">Search Source</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchMode("lowfare")}
+                                    className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${searchMode === "lowfare" ? "gold-button" : "ghost-button"}`}
+                                >
+                                    Low Fare
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchMode("availability")}
+                                    className={`min-w-0 rounded-2xl px-3 py-3 text-sm leading-5 transition ${searchMode === "availability" ? "gold-button" : "ghost-button"}`}
+                                >
+                                    Air Availability
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
                             <label className="mb-2 block text-sm text-slate-500">Departure Window</label>
                             <select
                                 className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
@@ -827,7 +892,7 @@ export default function FlightSearch() {
                         ) : (
                             filteredResults.map((flight, index) => {
                                 const isBookable = Boolean(flight.airPricingSolutionXml && flight.price > 0);
-                                const isScheduleOnlyResult = isScheduleOnlySearch && !isBookable;
+                                const isAvailabilityCard = isAvailabilitySearch && !isBookable;
                                 const isPricing = pricingFlightId === flight.id;
                                 const {
                                     itinerarySegments,
@@ -859,7 +924,7 @@ export default function FlightSearch() {
                                         key={flight.id}
                                         className={`premium-panel rounded-[1.55rem] p-4 sm:rounded-[1.9rem] sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
                                     >
-                                        <div className="grid gap-4 sm:gap-5 2xl:grid-cols-[minmax(11rem,12.5rem)_minmax(17rem,1.3fr)_minmax(10rem,0.8fr)_minmax(14rem,0.95fr)] 2xl:items-center">
+                                        <div className="grid gap-5 xl:grid-cols-[minmax(10rem,11.5rem)_minmax(17rem,1.4fr)_minmax(10rem,0.85fr)_minmax(12rem,0.9fr)] xl:items-center">
                                             <div className="flex items-start 2xl:items-center">
                                                 <div className="w-full max-w-[14rem]">
                                                     <AirlineBrand
@@ -900,21 +965,26 @@ export default function FlightSearch() {
                                                 </div>
                                             </div>
 
-                                            <div className="flex flex-wrap gap-2 2xl:flex-col 2xl:items-start">
+                                            <div className="flex flex-wrap gap-2 xl:flex-col xl:items-start">
                                                 <span className={`status-pill ${isBookable ? "status-success" : ""}`}>
                                                     {isBookable
                                                         ? "Ready To Book"
-                                                        : isScheduleOnlyResult
-                                                            ? "Schedule Only"
+                                                        : isAvailabilityCard
+                                                            ? "Air Availability"
                                                             : "Needs Pricing"}
                                                 </span>
                                                 <span className="status-pill ghost-button !text-[var(--ink)]">
                                                     {form.cabin}
                                                 </span>
+                                                {isAvailabilityCard && (
+                                                    <span className="rounded-full border border-[rgba(45,120,92,0.18)] bg-[rgba(232,245,237,0.86)] px-3 py-1 text-[11px] font-medium text-[var(--success)]">
+                                                        Price to confirm fare
+                                                    </span>
+                                                )}
                                             </div>
 
-                                            <div className="flex flex-col gap-3 border-t border-[rgba(89,64,46,0.08)] pt-4 sm:flex-row sm:items-center sm:justify-between 2xl:border-t-0 2xl:pt-0">
-                                                <div className="text-left 2xl:text-right">
+                                            <div className="flex flex-col gap-3 border-t border-[rgba(89,64,46,0.08)] pt-4 sm:flex-row sm:items-center sm:justify-between xl:border-t-0 xl:pt-0">
+                                                <div className="text-left xl:text-right">
                                                     {isBookable ? (
                                                         <>
                                                             <div className="text-[1.8rem] font-bold leading-none text-[var(--success)] sm:text-2xl">
@@ -925,17 +995,17 @@ export default function FlightSearch() {
                                                     ) : (
                                                         <>
                                                             <div className="text-2xl font-bold text-[var(--accent-strong)]">
-                                                                {isScheduleOnlyResult ? "Schedule only" : "Fare unavailable"}
+                                                                {isAvailabilityCard ? "Price needed" : "Fare unavailable"}
                                                             </div>
                                                             <div className="text-xs text-slate-500">
-                                                                {isScheduleOnlyResult
-                                                                    ? "This result shows timetable availability only and is not currently bookable."
+                                                                {isAvailabilityCard
+                                                                    ? "This result comes from air availability and can be priced into a bookable fare."
                                                                     : "run live pricing to continue"}
                                                             </div>
                                                         </>
                                                     )}
                                                     {!isBookable && pricingError && (
-                                                        <div className="mt-2 max-w-[18rem] text-xs leading-5 text-red-600 2xl:ml-auto">
+                                                        <div className="mt-2 max-w-[18rem] text-xs leading-5 text-red-600 xl:ml-auto">
                                                             {pricingError}
                                                         </div>
                                                     )}
@@ -943,15 +1013,15 @@ export default function FlightSearch() {
 
                                                 <button
                                                     onClick={() => handleSelect(flight)}
-                                                    disabled={isPricing || isScheduleOnlyResult}
-                                                    className={`rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${(isPricing || isScheduleOnlyResult) ? "cursor-not-allowed opacity-70" : ""}`}
+                                                    disabled={isPricing || (!isBookable && !flight.airSegmentXml)}
+                                                    className={`rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${(isPricing || (!isBookable && !flight.airSegmentXml)) ? "cursor-not-allowed opacity-70" : ""}`}
                                                 >
                                                     {isPricing
                                                         ? "Pricing..."
                                                         : isBookable
                                                             ? "Select"
-                                                            : isScheduleOnlyResult
-                                                                ? "Schedule Only"
+                                                            : isAvailabilityCard
+                                                                ? "Price & Book"
                                                                 : "Price Flight"}
                                                 </button>
                                             </div>

@@ -28,12 +28,41 @@ public class FlightsController : ControllerBase
     {
         var includeMarkup = !User.IsInRole("ADMIN");
         var isMultiCity = req.Segments.Count >= 2;
+        var searchMode = NormalizeSearchMode(req.SearchMode);
         var validation = ValidateSearch(req);
         if (validation is not null)
             return validation;
 
         var departDate = ParseDate(req.DepartDate);
         DateTime? returnDate = string.IsNullOrWhiteSpace(req.ReturnDate) ? null : ParseDate(req.ReturnDate);
+
+        if (string.Equals(searchMode, FlightSearchRequest.AvailabilityMode, StringComparison.OrdinalIgnoreCase))
+        {
+            if (isMultiCity)
+            {
+                return BadRequest(new
+                {
+                    error = "Air availability mode currently supports one-way and return searches only."
+                });
+            }
+
+            var availabilityDiagnostic = await GetAvailabilityDiagnosticAsync(req, departDate, returnDate);
+            if (availabilityDiagnostic.Exists)
+            {
+                return Ok(new
+                {
+                    flights = availabilityDiagnostic.Flights.Select(flight => _markup.ApplyForRole(flight, includeMarkup)).ToList(),
+                    diagnosticMessage = "Air availability shows timetable options. Use Price Flight on a result to request a live fare before booking."
+                });
+            }
+
+            return Ok(new
+            {
+                flights = new List<FlightDto>(),
+                diagnosticMessage = "No air-availability schedules were returned for this route and date. Try another date, another airport pair, or switch back to Low Fare."
+            });
+        }
+
         var xml = BuildSearchXml(req, departDate, returnDate);
 
         string response;
@@ -58,22 +87,6 @@ public class FlightsController : ControllerBase
                 });
             }
 
-            var canUseAvailabilityDiagnostic = ShouldUseAvailabilityDiagnostic(normalizedCabin);
-            var availabilityDiagnostic = canUseAvailabilityDiagnostic
-                ? await GetAvailabilityDiagnosticAsync(req, departDate, returnDate)
-                : (false, null, new List<FlightDto>());
-
-            if (availabilityDiagnostic.Exists)
-            {
-                return Ok(new
-                {
-                    flights = availabilityDiagnostic.Flights,
-                    diagnosticMessage = string.IsNullOrWhiteSpace(normalizedCabin)
-                        ? "Low fare unavailable, but schedule availability exists."
-                        : $"Low fare unavailable for {normalizedCabin.ToLowerInvariant()} class, but schedule availability exists."
-                });
-            }
-
             var detail = ex.Message;
             if (!string.IsNullOrWhiteSpace(normalizedCabin) &&
                 ex.Message.Contains("No flight records found for this date or market", StringComparison.OrdinalIgnoreCase))
@@ -85,7 +98,7 @@ public class FlightsController : ControllerBase
                 });
             }
 
-            if (!string.IsNullOrWhiteSpace(normalizedCabin) && !canUseAvailabilityDiagnostic)
+            if (!string.IsNullOrWhiteSpace(normalizedCabin))
             {
                 return Ok(new
                 {
@@ -119,22 +132,6 @@ public class FlightsController : ControllerBase
                         ? "Live Travelport multi-city search took too long to return a usable itinerary."
                         : $"Live Travelport multi-city {normalizedCabin?.ToLowerInvariant() ?? "requested"} cabin search took too long to return a usable itinerary.",
                     detail = BuildMultiCityTimeoutMessage(req.Segments.Count)
-                });
-            }
-
-            var canUseAvailabilityDiagnostic = ShouldUseAvailabilityDiagnostic(normalizedCabin);
-            var availabilityDiagnostic = canUseAvailabilityDiagnostic
-                ? await GetAvailabilityDiagnosticAsync(req, departDate, returnDate)
-                : (false, null, new List<FlightDto>());
-
-            if (availabilityDiagnostic.Exists)
-            {
-                return Ok(new
-                {
-                    flights = availabilityDiagnostic.Flights,
-                    diagnosticMessage = string.IsNullOrWhiteSpace(normalizedCabin)
-                        ? "Low fare unavailable, but schedule availability exists."
-                        : $"Low fare unavailable for {normalizedCabin.ToLowerInvariant()} class, but schedule availability exists."
                 });
             }
 
@@ -308,6 +305,12 @@ public class FlightsController : ControllerBase
                 return BadRequest(new { error = "Cabin must be Economy, Business, or First." });
         }
 
+        if (!string.Equals(NormalizeSearchMode(req.SearchMode), FlightSearchRequest.LowFareMode, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(NormalizeSearchMode(req.SearchMode), FlightSearchRequest.AvailabilityMode, StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { error = "Search mode must be LowFare or AirAvailability." });
+        }
+
         EnsureLiveTravelportConfigured();
         return null;
     }
@@ -452,9 +455,19 @@ public class FlightsController : ControllerBase
         };
     }
 
-    private static bool ShouldUseAvailabilityDiagnostic(string? normalizedCabin)
-        => string.IsNullOrWhiteSpace(normalizedCabin) ||
-           string.Equals(normalizedCabin, "Economy", StringComparison.OrdinalIgnoreCase);
+    private static string NormalizeSearchMode(string? searchMode)
+    {
+        if (string.IsNullOrWhiteSpace(searchMode))
+            return FlightSearchRequest.LowFareMode;
+
+        return searchMode.Trim().ToLowerInvariant() switch
+        {
+            "lowfare" => FlightSearchRequest.LowFareMode,
+            "airavailability" => FlightSearchRequest.AvailabilityMode,
+            "availability" => FlightSearchRequest.AvailabilityMode,
+            _ => searchMode.Trim().ToLowerInvariant()
+        };
+    }
 
     private static string BuildCabinNoFareMessage(string normalizedCabin)
         => $"No {normalizedCabin.ToLowerInvariant()}-class fares were returned for this route and date. Try economy, another date, or a different carrier.";

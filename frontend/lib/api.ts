@@ -72,6 +72,7 @@ export type FlightSearchPayload = {
     child: number;
     infant: number;
     cabin?: string;
+    searchMode?: "lowfare" | "availability";
     segments?: Array<{
         from: string;
         to: string;

@@ -8,6 +8,9 @@ namespace TourValve.Application.Flights
 {
     public class FlightSearchRequest
     {
+        public const string LowFareMode = "lowfare";
+        public const string AvailabilityMode = "availability";
+
         public class FlightSearchSegment
         {
             public string From { get; set; } = string.Empty;
@@ -24,6 +27,7 @@ namespace TourValve.Application.Flights
         public int Child { get; set; }
         public int Infant { get; set; }
         public string Cabin { get; set; } = "Economy";
+        public string SearchMode { get; set; } = LowFareMode;
         public List<FlightSearchSegment> Segments { get; set; } = new();
     }
 }
