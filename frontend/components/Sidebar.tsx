@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, Briefcase, LayoutGrid, LogOut, PlaneTakeoff, ScrollText, Users, Wallet } from "lucide-react";
-import { removeToken } from "@/lib/auth";
+import { getUserFromToken, removeToken } from "@/lib/auth";
 
 const menu = [
     { name: "Dashboard", path: "/", icon: LayoutGrid },
@@ -27,6 +27,8 @@ const mobileLabels: Record<string, string> = {
 
 export default function Sidebar() {
     const pathname = usePathname();
+    const currentUser = getUserFromToken();
+    const visibleMenu = menu.filter((item) => item.path !== "/audit-trail" || currentUser?.role === "ADMIN");
 
     const handleLogout = () => {
         removeToken();
@@ -45,7 +47,7 @@ export default function Sidebar() {
                 </div>
 
                 <nav className="mt-6 flex flex-col gap-2 xl:pr-1">
-                    {menu.map((item) => {
+                    {visibleMenu.map((item) => {
                         const Icon = item.icon;
                         const active = pathname === item.path;
 
@@ -101,7 +103,7 @@ export default function Sidebar() {
                 </div>
 
                 <nav className="premium-panel fixed inset-x-3 bottom-3 z-40 flex items-center gap-1.5 overflow-x-auto rounded-[1.45rem] px-2 py-2.5 shadow-[0_20px_45px_rgba(36,26,17,0.22)]">
-                    {menu.map((item) => {
+                    {visibleMenu.map((item) => {
                         const Icon = item.icon;
                         const active = pathname === item.path;
 
