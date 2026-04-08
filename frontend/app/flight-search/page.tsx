@@ -853,7 +853,7 @@ export default function FlightSearch() {
     const showPageLoader = loading || pricingFlightId !== null;
     const loaderLabel = loading ? "Searching Flights" : "Preparing Booking";
     const loaderDetail = loading
-        ? "Checking live Travelport inventory, pricing, and cabin availability for your selected route."
+        ? "Checking live inventory, pricing, and cabin availability for your selected route."
         : "Pricing the selected itinerary and preparing the booking handoff.";
 
     return (
