@@ -926,51 +926,51 @@ export default function BookingPage() {
                 <div className="space-y-4 sm:space-y-6">
                     <div className="space-y-4 sm:space-y-6 lg:sticky lg:top-6">
                         <div className="premium-panel overflow-hidden rounded-[1.6rem] p-4 float-slow sm:rounded-[2rem] sm:p-6">
-                            <div className="rounded-[1.4rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,250,244,0.98),rgba(247,238,224,0.9))] p-4 shadow-[0_18px_42px_rgba(62,43,25,0.08)] sm:rounded-[1.7rem] sm:p-5">
-                                <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-start">
+                            <div className="rounded-[1.55rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,252,247,0.98),rgba(247,238,224,0.92))] p-5 shadow-[0_20px_44px_rgba(62,43,25,0.08)] sm:rounded-[1.85rem] sm:p-6">
+                                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center">
                                     <div className="min-w-0">
                                         <div className="subtle-kicker mb-2">Flight Summary</div>
-                                        <h2 className="text-[1.8rem] font-semibold leading-tight text-[var(--ink)] sm:text-[2.2rem]">
+                                        <h2 className="text-[2rem] font-semibold leading-none text-[var(--ink)] sm:text-[2.7rem]">
                                             {selectedFlight.from} {"->"} {selectedFlight.to}
                                         </h2>
-                                        <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
+                                        <p className="mt-3 max-w-sm text-sm leading-7 text-slate-500">
                                             {itinerarySegments.length > 1
                                                 ? `${itinerarySegments.length} flight legs prepared for confirmation.`
                                                 : "Your selected live itinerary is ready for confirmation."}
                                         </p>
                                     </div>
 
-                                    <div className="rounded-[1.35rem] border border-[rgba(45,120,92,0.14)] bg-white/84 px-4 py-3 text-left shadow-[0_14px_30px_rgba(62,43,25,0.08)] sm:rounded-[1.6rem] sm:text-center">
-                                        <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                                    <div className="rounded-[1.5rem] border border-[rgba(45,120,92,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(247,252,249,0.88))] px-4 py-4 text-left shadow-[0_16px_34px_rgba(62,43,25,0.08)] sm:text-center">
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
                                             Fare Total
                                         </div>
-                                        <div className="mt-2 text-sm font-medium uppercase tracking-[0.16em] text-[var(--success)]">
+                                        <div className="mt-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--success)]">
                                             {selectedFlight.currency}
                                         </div>
-                                        <div className="mt-1 text-[1.75rem] font-semibold leading-none text-[var(--success)] sm:text-[2rem]">
+                                        <div className="mt-1 text-[2.15rem] font-semibold leading-none text-[var(--success)] sm:text-[2.4rem]">
                                             {selectedFlight.price.toFixed(2)}
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="mt-5 flex flex-wrap gap-2">
-                                    <span className="status-pill status-success !px-3 !py-2">
+                                <div className="mt-5 flex flex-wrap gap-2.5">
+                                    <span className="status-pill status-success !px-3.5 !py-2">
                                         Ready to issue
                                     </span>
-                                    <span className="status-pill ghost-button !px-3 !py-2 !text-[var(--ink)]">
+                                    <span className="status-pill ghost-button !px-3.5 !py-2 !text-[var(--ink)]">
                                         {selectedFlight.cabinClass || "Economy"}
                                     </span>
-                                    <span className="status-pill ghost-button !px-3 !py-2 !text-[var(--ink)]">
+                                    <span className="status-pill ghost-button !px-3.5 !py-2 !text-[var(--ink)]">
                                         {itinerarySegments.length === 1 ? "Single leg" : `${itinerarySegments.length} legs`}
                                     </span>
                                 </div>
                             </div>
 
-                            <div className="mt-4 space-y-3 sm:mt-5 sm:space-y-4">
+                            <div className="mt-5 space-y-3.5 sm:space-y-4">
                                 {itinerarySegments.map((segment, index) => (
                                     <div
                                         key={`${segment.carrier}-${segment.flightNumber}-${index}`}
-                                        className="rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,255,255,0.94),rgba(250,246,239,0.88))] p-4 shadow-[0_16px_36px_rgba(66,49,30,0.08)] sm:rounded-[1.6rem]"
+                                        className="rounded-[1.45rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(250,246,239,0.9))] p-4 shadow-[0_16px_36px_rgba(66,49,30,0.08)] sm:rounded-[1.75rem] sm:p-5"
                                     >
                                         <div className="mb-3 flex items-center justify-between gap-3">
                                             <span className="rounded-full bg-[rgba(36,77,67,0.08)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--success)]">
@@ -981,7 +981,7 @@ export default function BookingPage() {
                                             </span>
                                         </div>
 
-                                        <div className="rounded-[1.3rem] border border-white/80 bg-white/88 p-3 shadow-[0_10px_26px_rgba(66,49,30,0.08)]">
+                                        <div className="rounded-[1.35rem] border border-white/80 bg-white/92 p-3.5 shadow-[0_10px_26px_rgba(66,49,30,0.08)]">
                                             <AirlineBrand
                                                 carrier={segment.carrier}
                                                 flightNumber={segment.flightNumber}
@@ -989,23 +989,23 @@ export default function BookingPage() {
                                             />
                                         </div>
 
-                                        <div className="mt-4 rounded-[1.2rem] border border-[rgba(89,64,46,0.06)] bg-[rgba(247,241,231,0.78)] px-4 py-4 sm:rounded-[1.35rem]">
-                                            <div className="flex items-center justify-between gap-4 text-sm font-semibold text-[var(--ink)]">
+                                        <div className="mt-4 rounded-[1.3rem] border border-[rgba(89,64,46,0.06)] bg-[rgba(247,241,231,0.78)] px-4 py-4 sm:rounded-[1.45rem]">
+                                            <div className="grid grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)] items-center gap-3 text-sm font-semibold text-[var(--ink)]">
                                                 <div className="min-w-0">
-                                                    <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
                                                         Depart
                                                     </div>
-                                                    <div className="mt-1 text-base sm:text-lg">{segment.from}</div>
+                                                    <div className="mt-1 text-xl sm:text-[1.45rem]">{segment.from}</div>
                                                 </div>
-                                                <span className="text-slate-300">{"->"}</span>
+                                                <div className="flex justify-center text-slate-300">{"->"}</div>
                                                 <div className="min-w-0 text-right">
-                                                    <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
                                                         Arrive
                                                     </div>
-                                                    <div className="mt-1 text-base sm:text-lg">{segment.to}</div>
+                                                    <div className="mt-1 text-xl sm:text-[1.45rem]">{segment.to}</div>
                                                 </div>
                                             </div>
-                                            <div className="mt-3 rounded-[1rem] bg-white/70 px-3 py-2 text-xs leading-6 text-slate-500">
+                                            <div className="mt-3 rounded-[1rem] bg-white/72 px-3.5 py-2.5 text-xs leading-6 text-slate-500">
                                                 {new Date(segment.departure).toLocaleString()} to{" "}
                                                 {new Date(segment.arrival).toLocaleString()}
                                             </div>
@@ -1014,21 +1014,21 @@ export default function BookingPage() {
                                 ))}
                             </div>
 
-                            <div className="mt-4 rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,255,255,0.9),rgba(249,244,236,0.86))] p-4 shadow-[0_12px_28px_rgba(66,49,30,0.07)] sm:mt-5 sm:rounded-[1.6rem]">
-                                <div className="flex items-end justify-between gap-4 text-sm">
+                            <div className="mt-5 rounded-[1.45rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,255,255,0.92),rgba(249,244,236,0.88))] p-4 shadow-[0_12px_28px_rgba(66,49,30,0.07)] sm:rounded-[1.7rem] sm:p-5">
+                                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                                     <div>
                                         <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
                                             Reservation Total
                                         </div>
-                                        <div className="mt-1 text-xs text-slate-500">
+                                        <div className="mt-1 text-sm text-slate-500">
                                             Final amount to capture from wallet
                                         </div>
                                     </div>
-                                    <div className="text-right">
+                                    <div className="text-left sm:text-right">
                                         <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
                                             Wallet capture
                                         </div>
-                                        <div className="mt-1 text-[1.7rem] font-semibold text-[var(--ink)] sm:text-2xl">
+                                        <div className="mt-1 text-[1.9rem] font-semibold text-[var(--ink)] sm:text-[2.25rem]">
                                             {selectedFlight.currency} {selectedFlight.price.toFixed(2)}
                                         </div>
                                     </div>
@@ -1044,7 +1044,7 @@ export default function BookingPage() {
                             <button
                                 onClick={handleBooking}
                                 disabled={loading}
-                                className="gold-button mt-5 w-full rounded-[1.2rem] py-3.5 font-semibold disabled:opacity-60 sm:mt-6 sm:rounded-2xl"
+                                className="gold-button mt-5 w-full rounded-[1.35rem] py-4 text-base font-semibold disabled:opacity-60 sm:mt-6 sm:rounded-2xl"
                             >
                                 {loading ? "Booking..." : "Confirm Booking"}
                             </button>
