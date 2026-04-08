@@ -24,12 +24,6 @@ namespace TourValve.Application.Bookings.Commands
             CreateBookingCommand request,
             CancellationToken cancellationToken)
         {
-            var wallet = await _context.WalletAccounts
-                .FirstOrDefaultAsync(x => x.AgentId == request.AgentId, cancellationToken);
-
-            if (wallet == null)
-                throw new Exception("Wallet not found.");
-
             var bookingRef = "TV" + DateTime.UtcNow.Ticks;
             var bookingId = Guid.NewGuid();
 
