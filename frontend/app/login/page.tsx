@@ -93,24 +93,26 @@ export default function LoginPage() {
                 className="absolute inset-0"
                 style={{
                     background:
-                        "linear-gradient(120deg, rgba(10, 22, 38, 0.76), rgba(55, 34, 19, 0.54), rgba(251, 247, 240, 0.25))",
+                        "linear-gradient(118deg, rgba(7, 16, 31, 0.46), rgba(33, 24, 17, 0.22), rgba(251, 247, 240, 0.12))",
                 }}
             />
 
             <div className="relative z-20 mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl flex-col items-center justify-center gap-8 lg:min-h-[calc(100vh-5rem)] lg:flex-row lg:gap-12">
-                <div className="w-full max-w-3xl text-white fade-in-delay">
-                    <h1
-                        className="hero-title max-w-3xl !text-white"
-                        style={{ textShadow: "0 10px 30px rgba(0, 0, 0, 0.34)" }}
-                    >
-                        A reservation portal that feels tailored, not templated.
-                    </h1>
-                    <p
-                        className="mt-6 max-w-2xl text-base leading-8 !text-white/82"
-                        style={{ textShadow: "0 6px 20px rgba(0, 0, 0, 0.22)" }}
-                    >
-                        TourValve now connects live air search, reservation handling, wallet settlement, and booking intelligence in one elevated workspace.
-                    </p>
+                <div className="w-full max-w-3xl text-white fade-in-delay lg:pr-6">
+                    <div className="inline-block max-w-2xl rounded-[2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(7,16,31,0.24),rgba(7,16,31,0.08))] px-5 py-6 shadow-[0_28px_60px_rgba(8,15,28,0.16)] backdrop-blur-[2px] sm:px-7 sm:py-7">
+                        <h1
+                            className="font-display max-w-xl text-[clamp(2.4rem,4.7vw,4.5rem)] leading-[0.94] !text-white"
+                            style={{ textShadow: "0 8px 26px rgba(0, 0, 0, 0.22)" }}
+                        >
+                            A reservation portal that feels tailored, not templated.
+                        </h1>
+                        <p
+                            className="mt-5 max-w-xl text-[15px] leading-7 !text-white/78 sm:text-base"
+                            style={{ textShadow: "0 4px 14px rgba(0, 0, 0, 0.18)" }}
+                        >
+                            TourValve now connects live air search, reservation handling, wallet settlement, and booking intelligence in one elevated workspace.
+                        </p>
+                    </div>
                 </div>
 
                 <div className="premium-panel w-full max-w-xl rounded-[2.25rem] p-6 shadow-[0_26px_80px_rgba(15,23,42,0.24)] sm:p-8 md:p-10">
