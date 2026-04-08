@@ -146,7 +146,7 @@ function BookingsPageContent() {
             setError("");
             setRetrievedRecord(await retrieveBookingRecord(selectedBookingId));
         } catch (value: unknown) {
-            setError(value instanceof Error ? value.message : "Failed to retrieve Travelport record");
+            setError(value instanceof Error ? value.message : "Failed to retrieve booking record");
         } finally {
             setServiceAction("");
         }
@@ -515,7 +515,7 @@ function BookingsPageContent() {
                                 <div className="subtle-kicker">Modify</div>
                                 <textarea
                                     className="mt-3 min-h-[100px] w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
-                                    placeholder="Add an operational remark to the Travelport record"
+                                        placeholder="Add an operational remark to the booking record"
                                     value={remark}
                                     onChange={(event) => setRemark(event.target.value)}
                                 />
@@ -548,7 +548,7 @@ function BookingsPageContent() {
                             <div className="soft-panel rounded-[1.5rem] p-4">
                                 <div className="subtle-kicker">Ancillary desk</div>
                                 <div className="mt-2 text-sm leading-7 text-slate-500">
-                                    Quote and charge post-book baggage, meal, and seat requests in a structured order flow. When live airline fulfillment is limited, the request is still logged into Travelport and queued for manual servicing.
+                                    Quote and charge post-book baggage, meal, and seat requests in a structured order flow. When live airline fulfillment is limited, the request is still logged and queued for manual servicing.
                                 </div>
                                 <div className="mt-4 flex flex-wrap gap-3">
                                     <button
@@ -777,7 +777,7 @@ function BookingsPageContent() {
                         </div>
                     ) : (
                         <div className="rounded-[1.5rem] border border-dashed border-[rgba(89,64,46,0.12)] px-5 py-12 text-center text-sm leading-7 text-slate-400">
-                            Select a booking from the register to inspect full detail, retrieve the Travelport record, modify it, or cancel it.
+                            Select a booking from the register to inspect full detail, retrieve the booking record, modify it, or cancel it.
                         </div>
                     )}
                 </aside>

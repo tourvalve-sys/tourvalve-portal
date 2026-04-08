@@ -588,7 +588,7 @@ export default function BookingPage() {
                             <div className="rounded-[1.35rem] border border-[rgba(45,120,92,0.12)] bg-[rgba(238,248,242,0.88)] p-4 md:col-span-2 sm:rounded-[1.5rem]">
                                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--success)]">
                                     <Luggage size={15} />
-                                    Travelport Baggage Snapshot
+                                    Baggage Snapshot
                                 </div>
                                 {baggageHighlights.length > 0 ? (
                                     <div className="flex flex-wrap gap-2">
@@ -603,7 +603,7 @@ export default function BookingPage() {
                                     </div>
                                 ) : (
                                     <p className="text-sm leading-7 text-slate-600">
-                                        Travelport did not return a baggage allowance snapshot for this itinerary yet. Final baggage details can still be confirmed after pricing or during ancillary servicing.
+                                        A baggage allowance snapshot is not available for this itinerary yet. Final baggage details can still be confirmed after pricing or during ancillary servicing.
                                     </p>
                                 )}
                             </div>
@@ -700,7 +700,7 @@ export default function BookingPage() {
                                         Preview live seats by flight leg.
                                     </h3>
                                     <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">
-                                        Load the live Travelport seat layout for each segment, then choose the seat code you want carried as a seat request with the booking.
+                                        Load the live seat layout for each segment, then choose the seat code you want carried as a seat request with the booking.
                                     </p>
                                 </div>
 
@@ -883,7 +883,7 @@ export default function BookingPage() {
                         </div>
 
                         <div className="mt-4 rounded-[1.5rem] bg-[rgba(255,247,236,0.82)] px-4 py-3 text-sm leading-7 text-slate-500">
-                            This is a live Travelport seat-map preview. The chosen seat codes are sent as booking seat requests, while final fulfilment still depends on the airline and fare rules.
+                            This is a live seat-map preview. The chosen seat codes are sent as booking seat requests, while final fulfilment still depends on the airline and fare rules.
                         </div>
                     </div>
                 </div>

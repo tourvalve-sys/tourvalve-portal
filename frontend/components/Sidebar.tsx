@@ -78,7 +78,7 @@ export default function Sidebar() {
                 <div className="soft-panel mt-4 rounded-[1.5rem] p-4 xl:mt-5">
                     <div className="status-pill status-success mb-3">Live System</div>
                     <p className="text-sm leading-6 text-slate-600">
-                        Travelport, wallet controls, and reporting now run inside one connected portal experience.
+                        Flight inventory, wallet controls, and reporting now run inside one connected portal experience.
                     </p>
                     <button
                         onClick={handleLogout}

@@ -601,11 +601,11 @@ function normalizeFriendlyError(message: string): string {
     }
 
     if (/mock mode is disabled/i.test(safeMessage)) {
-        return "Live Travelport mode is required for this action, and mock mode is currently disabled.";
+        return "Live provider mode is required for this action, and mock mode is currently disabled.";
     }
 
     if (/credentials are missing/i.test(safeMessage)) {
-        return "Live Travelport credentials are missing or incomplete for this action.";
+        return "Live provider credentials are missing or incomplete for this action.";
     }
 
     if (/No flight records found for this date or market/i.test(safeMessage)) {

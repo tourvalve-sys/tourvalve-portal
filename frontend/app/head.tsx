@@ -47,7 +47,7 @@ export default function Head() {
             <meta name="description" content={description} />
             <meta
                 name="keywords"
-                content="TourValve, B2B flight booking portal, airline reservations, travel agent booking portal, wallet settlement, Travelport"
+                content="TourValve, B2B flight booking portal, airline reservations, travel agent booking portal, wallet settlement, agent operations"
             />
             <meta name="robots" content="index, follow, max-image-preview:large" />
             <link rel="canonical" href={siteUrl} />
