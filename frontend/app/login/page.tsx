@@ -101,8 +101,8 @@ export default function LoginPage() {
                 <div className="w-full max-w-3xl text-white fade-in-delay lg:pr-6">
                     <div className="inline-block max-w-2xl rounded-[2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(7,16,31,0.24),rgba(7,16,31,0.08))] px-5 py-6 shadow-[0_28px_60px_rgba(8,15,28,0.16)] backdrop-blur-[2px] sm:px-7 sm:py-7">
                         <h1
-                            className="font-display max-w-xl text-[clamp(2.4rem,4.7vw,4.5rem)] leading-[0.94] !text-white"
-                            style={{ textShadow: "0 8px 26px rgba(0, 0, 0, 0.22)" }}
+                            className="font-display max-w-xl text-[clamp(2.1rem,4.2vw,4rem)] font-medium leading-[0.98] !text-white"
+                            style={{ textShadow: "0 6px 18px rgba(0, 0, 0, 0.16)" }}
                         >
                             A reservation portal that feels tailored, not templated.
                         </h1>
