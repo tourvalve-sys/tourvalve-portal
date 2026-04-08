@@ -376,11 +376,14 @@ function AncillariesPageContent() {
     }, [booking, retrievedRecord]);
 
     const activeMeta = categoryMeta[category];
-    const liveOptions = (liveOfferCatalog?.categories?.[category] ?? [])
-        .map(mapLiveOfferToPreset)
-        .filter((offer) => !offer.segmentLabel || offer.segmentLabel.includes(selectedSegment));
-    const activeOptions = liveOptions.length ? liveOptions : ancillaryCatalog[category];
-    const usingLiveOptions = liveOptions.length > 0;
+    const liveCategoryOptions = (liveOfferCatalog?.categories?.[category] ?? []).map(mapLiveOfferToPreset);
+    const liveOptions = liveCategoryOptions.filter((offer) => !offer.segmentLabel || offer.segmentLabel.includes(selectedSegment));
+    const activeOptions = liveOptions.length
+        ? liveOptions
+        : liveCategoryOptions.length
+            ? liveCategoryOptions
+            : ancillaryCatalog[category];
+    const usingLiveOptions = liveCategoryOptions.length > 0;
     const activeSegmentDetails =
         itinerarySegments.find((segment) => segment.key === selectedSegment) ?? itinerarySegments[0] ?? null;
     const latestQueuedOrder = orders[0] ?? null;
@@ -674,7 +677,9 @@ function AncillariesPageContent() {
                                 ? "bg-[rgba(225,246,236,0.9)] text-[var(--success)]"
                                 : "bg-[rgba(255,247,236,0.84)] text-slate-600"
                         }`}>
-                            {liveOfferCatalog?.message ||
+                            {(usingLiveOptions && !liveOptions.length && liveCategoryOptions.length
+                                ? "Live airline-priced options were returned for this booking, so the studio is showing the broader supplier offer list for this category."
+                                : liveOfferCatalog?.message) ||
                                 "Fallback service options are being shown because no live airline-priced ancillary offers were detected yet."}
                         </div>
 
