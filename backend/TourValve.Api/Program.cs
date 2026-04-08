@@ -171,6 +171,7 @@ builder.Services.AddScoped<TravelportAirClient>();
 builder.Services.AddScoped<AirSearchService>();
 builder.Services.AddScoped<AirPriceService>();
 builder.Services.AddScoped<AirBookService>();
+builder.Services.AddScoped<AirAncillaryAvailabilityService>();
 builder.Services.AddScoped<AncillaryOfferService>();
 builder.Services.AddScoped<UniversalRecordService>();
 

@@ -29,6 +29,7 @@ public class BookingsController : ControllerBase
     private readonly IWalletService _wallet;
     private readonly AncillaryMarkupService _ancillaryMarkup;
     private readonly AncillaryOfferService _ancillaryOffers;
+    private readonly AirAncillaryAvailabilityService _liveAncillaryAvailability;
     private static readonly Guid ReservedAdminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private const string ReservedAdminEmail = "admin@tourvalve.com";
 
@@ -41,6 +42,7 @@ public class BookingsController : ControllerBase
         INotificationService notifications,
         AncillaryMarkupService ancillaryMarkup,
         AncillaryOfferService ancillaryOffers,
+        AirAncillaryAvailabilityService liveAncillaryAvailability,
         IOptions<WalletAlertOptions> walletAlertOptions)
     {
         _mediator = mediator;
@@ -51,6 +53,7 @@ public class BookingsController : ControllerBase
         _notifications = notifications;
         _ancillaryMarkup = ancillaryMarkup;
         _ancillaryOffers = ancillaryOffers;
+        _liveAncillaryAvailability = liveAncillaryAvailability;
         _walletAlertOptions = walletAlertOptions.Value;
     }
 
@@ -223,7 +226,36 @@ public class BookingsController : ControllerBase
         try
         {
             var xml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
-            var catalog = _ancillaryOffers.ExtractOfferCatalog(xml);
+            BookingAncillaryOfferCatalog? catalog = null;
+
+            try
+            {
+                catalog = await _liveAncillaryAvailability.RetrieveLiveOffersAsync(booking, xml);
+            }
+            catch
+            {
+                catalog = null;
+            }
+
+            if (catalog is null || !catalog.HasLivePricedOffers)
+            {
+                var parsedCatalog = _ancillaryOffers.ExtractOfferCatalog(xml);
+
+                if (catalog is null)
+                {
+                    catalog = parsedCatalog;
+                }
+                else if (!catalog.HasLivePricedOffers && parsedCatalog.HasLivePricedOffers)
+                {
+                    catalog = parsedCatalog;
+                }
+                else if (!catalog.HasLivePricedOffers)
+                {
+                    catalog.Message = string.IsNullOrWhiteSpace(catalog.Message)
+                        ? parsedCatalog.Message
+                        : catalog.Message;
+                }
+            }
 
             return Ok(catalog);
         }
