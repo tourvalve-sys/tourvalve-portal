@@ -272,6 +272,7 @@ export default function FlightSearch() {
     const [filters, setFilters] = useState<FilterState>(restoredState?.filters ?? createDefaultFilters());
     const searchModeRef = useRef<SearchMode>(restoredState?.searchMode ?? "lowfare");
     const resultsSectionRef = useRef<HTMLDivElement | null>(null);
+    const firstResultCardRef = useRef<HTMLDivElement | null>(null);
     const pendingResultsScrollRef = useRef(false);
 
     const [form, setForm] = useState(restoredState?.form ?? createDefaultForm());
@@ -391,31 +392,6 @@ export default function FlightSearch() {
     );
 
     const isSearchDraftDirty = Boolean(lastSearchedKey && currentSearchKey !== lastSearchedKey);
-
-    useEffect(() => {
-        if (!pendingResultsScrollRef.current || loading || isSearchDraftDirty) {
-            return;
-        }
-
-        pendingResultsScrollRef.current = false;
-
-        if (typeof window === "undefined") {
-            return;
-        }
-
-        window.requestAnimationFrame(() => {
-            const target = resultsSectionRef.current;
-            if (!target) {
-                return;
-            }
-
-            const top = target.getBoundingClientRect().top + window.scrollY - 96;
-            window.scrollTo({
-                top: Math.max(top, 0),
-                behavior: "smooth",
-            });
-        });
-    }, [isSearchDraftDirty, loading]);
 
     const swapAirports = () => {
         if (tripType === "multicity") {
@@ -844,6 +820,33 @@ export default function FlightSearch() {
 
             return 0;
         });
+
+    useEffect(() => {
+        if (!pendingResultsScrollRef.current || loading || isSearchDraftDirty) {
+            return;
+        }
+
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            window.requestAnimationFrame(() => {
+                const target = firstResultCardRef.current ?? resultsSectionRef.current;
+                if (!target) {
+                    return;
+                }
+
+                pendingResultsScrollRef.current = false;
+                target.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                });
+            });
+        }, 140);
+
+        return () => window.clearTimeout(timer);
+    }, [filteredResults.length, isSearchDraftDirty, loading]);
 
     const isAvailabilitySearch = searchMode === "availability";
 
@@ -1340,14 +1343,14 @@ export default function FlightSearch() {
 
                     <div ref={resultsSectionRef} className="space-y-4">
                         {loading ? (
-                            <div className="rounded-[1.75rem] soft-panel p-8 text-slate-500 fade-in">
+                            <div className="rounded-[1.75rem] soft-panel p-8 text-slate-500 fade-in" style={{ scrollMarginTop: "7rem" }}>
                                 <div className="font-semibold text-[var(--ink)]">Searching live flight inventory...</div>
                                 <div className="mt-2 max-w-2xl text-sm leading-7 text-slate-500">
                                     We are checking the latest provider availability, pricing, and cabin options for your selected route. Results will appear here once the search completes.
                                 </div>
                             </div>
                         ) : isSearchDraftDirty ? (
-                            <div className="rounded-[1.75rem] soft-panel p-8 text-slate-500 fade-in">
+                            <div className="rounded-[1.75rem] soft-panel p-8 text-slate-500 fade-in" style={{ scrollMarginTop: "7rem" }}>
                                 <div className="font-medium text-[var(--ink)]">
                                     Search criteria changed. Run a new search to refresh these results.
                                 </div>
@@ -1356,7 +1359,7 @@ export default function FlightSearch() {
                                 </div>
                             </div>
                         ) : filteredResults.length === 0 ? (
-                            <div className="rounded-[1.75rem] soft-panel p-8 text-slate-500 fade-in">
+                            <div className="rounded-[1.75rem] soft-panel p-8 text-slate-500 fade-in" style={{ scrollMarginTop: "7rem" }}>
                                 <div className="font-medium text-[var(--ink)]">
                                     {hasSearched
                                         ? "No live flights matched the current search and filters."
@@ -1410,6 +1413,8 @@ export default function FlightSearch() {
                                 return (
                                     <div
                                         key={flight.id}
+                                        ref={index === 0 ? firstResultCardRef : null}
+                                        style={index === 0 ? { scrollMarginTop: "7rem" } : undefined}
                                         className={`premium-panel rounded-[1.55rem] p-4 sm:rounded-[1.9rem] sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
                                     >
                                         <div className="grid gap-5 xl:grid-cols-[minmax(10rem,11.5rem)_minmax(17rem,1.45fr)_minmax(10rem,0.82fr)_minmax(13.5rem,1fr)] xl:items-center">
