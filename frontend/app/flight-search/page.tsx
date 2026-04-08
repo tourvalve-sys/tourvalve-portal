@@ -1194,7 +1194,6 @@ export default function FlightSearch() {
                 </div>
 
                 <div
-                    ref={resultsSectionRef}
                     className="mx-auto mt-6 grid max-w-[88rem] grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]"
                 >
                     <div className="h-fit min-w-0 space-y-4 rounded-[1.6rem] soft-panel p-4 fade-in sm:space-y-5 sm:rounded-[1.9rem] sm:p-6 xl:sticky xl:top-28">
@@ -1339,7 +1338,7 @@ export default function FlightSearch() {
                         </div>
                     </div>
 
-                    <div className="space-y-4">
+                    <div ref={resultsSectionRef} className="space-y-4">
                         {loading ? (
                             <div className="rounded-[1.75rem] soft-panel p-8 text-slate-500 fade-in">
                                 <div className="font-semibold text-[var(--ink)]">Searching live flight inventory...</div>
