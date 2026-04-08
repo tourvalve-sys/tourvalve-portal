@@ -18,4 +18,5 @@ export type BookingConfirmationState = {
     arrival: string;
     contactEmail: string;
     createdAt: string;
+    portalSyncPending?: boolean;
 };

@@ -449,11 +449,32 @@ public class BookingsController : ControllerBase
         command.AgentId = requesterAgentId.Value;
         var result = await _mediator.Send(command);
         var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+        try
+        {
+            await _audit.WriteAsync(requesterAgentId, actorEmail, "BOOKING", "CREATE", "Booking", result.BookingId.ToString(), result.BookingReference, "Booking record created.");
+        }
+        catch
+        {
+            // Keep the booking creation response successful even if non-critical audit persistence fails.
+        }
 
-        await _audit.WriteAsync(requesterAgentId, actorEmail, "BOOKING", "CREATE", "Booking", result.BookingId.ToString(), result.BookingReference, "Booking record created.");
-        await _notifications.CreateAsync(requesterAgentId, "AGENT", "BOOKING", "Booking confirmed", $"Booking {result.BookingReference} is now recorded in the portal.", "SUCCESS", "/bookings");
+        try
+        {
+            await _notifications.CreateAsync(requesterAgentId, "AGENT", "BOOKING", "Booking confirmed", $"Booking {result.BookingReference} is now recorded in the portal.", "SUCCESS", "/bookings");
+        }
+        catch
+        {
+            // Notification delivery should not block a confirmed booking from reaching the frontend.
+        }
 
-        await CreateWalletAlertIfNeeded(requesterAgentId.Value);
+        try
+        {
+            await CreateWalletAlertIfNeeded(requesterAgentId.Value);
+        }
+        catch
+        {
+            // Wallet alert generation is best-effort after booking creation.
+        }
 
         return Ok(result);
     }

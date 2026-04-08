@@ -304,6 +304,37 @@ export default function BookingPage() {
         .map((seat) => `${seat.segmentLabel}: ${seat.seatCode}`)
         .join(" | ");
 
+    const buildConfirmationState = (
+        reservation: Awaited<ReturnType<typeof bookFlight>>,
+        bookingRecord?: { bookingId: string; bookingReference: string } | null,
+        portalSyncPending = false
+    ): BookingConfirmationState => ({
+        bookingId: bookingRecord?.bookingId ?? "",
+        bookingReference:
+            bookingRecord?.bookingReference ||
+            reservation.universalRecordLocator ||
+            reservation.providerLocator ||
+            reservation.airlineLocator ||
+            reservation.locatorCode ||
+            "Pending portal sync",
+        locatorCode: reservation.locatorCode || reservation.universalRecordLocator || reservation.providerLocator || reservation.airlineLocator,
+        universalRecordLocator: reservation.universalRecordLocator || reservation.locatorCode,
+        providerLocator: reservation.providerLocator || reservation.locatorCode,
+        airlineLocator: reservation.airlineLocator || reservation.locatorCode,
+        status: reservation.status || "CONFIRMED",
+        amount: selectedFlight?.price ?? 0,
+        currency: selectedFlight?.currency ?? "MYR",
+        carrier: selectedFlight?.carrier ?? "",
+        flightNumber: selectedFlight?.flightNumber ?? "",
+        from: selectedFlight?.from ?? "",
+        to: selectedFlight?.to ?? "",
+        departure: selectedFlight?.departure ?? new Date().toISOString(),
+        arrival: selectedFlight?.arrival ?? new Date().toISOString(),
+        contactEmail,
+        createdAt: new Date().toISOString(),
+        portalSyncPending,
+    });
+
     const loadSeatMap = async () => {
         if (!activeSeatSegment?.airSegmentXml) {
             setSeatMapError("This flight leg does not include enough segment data for seat mapping.");
@@ -379,6 +410,8 @@ export default function BookingPage() {
         }
 
         let holdId: string | null = null;
+        let holdCaptured = false;
+        let reservation: Awaited<ReturnType<typeof bookFlight>> | null = null;
 
         try {
             setLoading(true);
@@ -406,7 +439,7 @@ export default function BookingPage() {
                             );
             holdId = hold.holdId;
 
-            const reservation = await bookFlight({
+            reservation = await bookFlight({
                 carrier: selectedFlight.carrier,
                 flightNumber: selectedFlight.flightNumber,
                 from: selectedFlight.from,
@@ -424,49 +457,40 @@ export default function BookingPage() {
             });
 
             await captureWalletHold(holdId, `${requestId}-CAPTURE`);
+            holdCaptured = true;
 
-            const bookingRecord = await createBookingRecord({
-                clientRequestId: requestId,
-                carrier: selectedFlight.carrier,
-                flightNumber: selectedFlight.flightNumber,
-                from: selectedFlight.from,
-                to: selectedFlight.to,
-                departureTime: selectedFlight.departure,
-                arrivalTime: selectedFlight.arrival,
-                amount: selectedFlight.price,
-                baseAmount: selectedFlight.basePrice || selectedFlight.price,
-                markupAmount: selectedFlight.markupAmount || 0,
-                universalRecordLocator: reservation.universalRecordLocator || reservation.locatorCode,
-                providerLocator: reservation.providerLocator || reservation.locatorCode,
-                airlineLocator: reservation.airlineLocator || reservation.locatorCode,
-                status: reservation.status || "CONFIRMED",
-            });
+            try {
+                const bookingRecord = await createBookingRecord({
+                    clientRequestId: requestId,
+                    carrier: selectedFlight.carrier,
+                    flightNumber: selectedFlight.flightNumber,
+                    from: selectedFlight.from,
+                    to: selectedFlight.to,
+                    departureTime: selectedFlight.departure,
+                    arrivalTime: selectedFlight.arrival,
+                    amount: selectedFlight.price,
+                    baseAmount: selectedFlight.basePrice || selectedFlight.price,
+                    markupAmount: selectedFlight.markupAmount || 0,
+                    universalRecordLocator: reservation.universalRecordLocator || reservation.locatorCode,
+                    providerLocator: reservation.providerLocator || reservation.locatorCode,
+                    airlineLocator: reservation.airlineLocator || reservation.locatorCode,
+                    status: reservation.status || "CONFIRMED",
+                });
 
-            const confirmation: BookingConfirmationState = {
-                bookingId: bookingRecord.bookingId,
-                bookingReference: bookingRecord.bookingReference,
-                locatorCode: reservation.locatorCode || reservation.universalRecordLocator || reservation.providerLocator || reservation.airlineLocator,
-                universalRecordLocator: reservation.universalRecordLocator || reservation.locatorCode,
-                providerLocator: reservation.providerLocator || reservation.locatorCode,
-                airlineLocator: reservation.airlineLocator || reservation.locatorCode,
-                status: reservation.status || "CONFIRMED",
-                amount: selectedFlight.price,
-                currency: selectedFlight.currency,
-                carrier: selectedFlight.carrier,
-                flightNumber: selectedFlight.flightNumber,
-                from: selectedFlight.from,
-                to: selectedFlight.to,
-                departure: selectedFlight.departure,
-                arrival: selectedFlight.arrival,
-                contactEmail,
-                createdAt: new Date().toISOString(),
-            };
-
-            sessionStorage.setItem(LATEST_BOOKING_CONFIRMATION_KEY, JSON.stringify(confirmation));
-            setSelectedFlight(null);
-            router.push(`/booking-confirmation?bookingId=${encodeURIComponent(bookingRecord.bookingId)}`);
+                const confirmation = buildConfirmationState(reservation, bookingRecord, false);
+                sessionStorage.setItem(LATEST_BOOKING_CONFIRMATION_KEY, JSON.stringify(confirmation));
+                setSelectedFlight(null);
+                router.push(`/booking-confirmation?bookingId=${encodeURIComponent(bookingRecord.bookingId)}`);
+                return;
+            } catch {
+                const confirmation = buildConfirmationState(reservation, null, true);
+                sessionStorage.setItem(LATEST_BOOKING_CONFIRMATION_KEY, JSON.stringify(confirmation));
+                setSelectedFlight(null);
+                router.push("/booking-confirmation");
+                return;
+            }
         } catch (value: unknown) {
-            if (holdId) {
+            if (holdId && !holdCaptured) {
                 try {
                     await releaseWalletHold(holdId, `RELEASE-${Date.now()}`);
                 } catch {

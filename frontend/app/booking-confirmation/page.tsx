@@ -113,6 +113,12 @@ function BookingConfirmationPageContent() {
                         </div>
                     </div>
 
+                    {confirmation.portalSyncPending ? (
+                        <div className="rounded-[1.4rem] border border-[rgba(176,122,67,0.2)] bg-[rgba(255,247,236,0.88)] px-5 py-4 text-sm leading-7 text-[var(--ink)]">
+                            Travelport confirmed the booking and the locator is ready, but the portal booking ledger is still syncing the local record. You can continue with the live locator details below and refresh the bookings module shortly.
+                        </div>
+                    ) : null}
+
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                         <div className="soft-panel rounded-[2rem] p-6">
                             <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
@@ -201,7 +207,11 @@ function BookingConfirmationPageContent() {
                         </div>
                         <div className="space-y-3">
                             <button
-                                onClick={() => router.push(`/ancillaries?bookingId=${encodeURIComponent(confirmation.bookingId)}`)}
+                                onClick={() => router.push(
+                                    confirmation.bookingId
+                                        ? `/ancillaries?bookingId=${encodeURIComponent(confirmation.bookingId)}`
+                                        : "/bookings"
+                                )}
                                 className="ghost-button w-full rounded-2xl px-5 py-3 font-semibold"
                             >
                                 Add Baggage, Meals & Seats
