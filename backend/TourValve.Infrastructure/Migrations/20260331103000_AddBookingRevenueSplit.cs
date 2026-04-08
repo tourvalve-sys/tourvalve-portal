@@ -1,9 +1,13 @@
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using TourValve.Infrastructure.Data;
 
 #nullable disable
 
 namespace TourValve.Infrastructure.Migrations
 {
+    [DbContext(typeof(TourValveDbContext))]
+    [Migration("20260331103000_AddBookingRevenueSplit")]
     public partial class AddBookingRevenueSplit : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

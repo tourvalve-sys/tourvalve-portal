@@ -1,10 +1,14 @@
 using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using TourValve.Infrastructure.Data;
 
 #nullable disable
 
 namespace TourValve.Infrastructure.Migrations
 {
+    [DbContext(typeof(TourValveDbContext))]
+    [Migration("20260331112000_AddAdminWithdrawalRequests")]
     public partial class AddAdminWithdrawalRequests : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
