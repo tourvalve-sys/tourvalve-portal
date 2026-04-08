@@ -378,7 +378,7 @@ function AncillariesPageContent() {
     const activeMeta = categoryMeta[category];
     const liveOptions = (liveOfferCatalog?.categories?.[category] ?? [])
         .map(mapLiveOfferToPreset)
-        .filter((offer) => !offer.segmentLabel || offer.segmentLabel === selectedSegment);
+        .filter((offer) => !offer.segmentLabel || offer.segmentLabel.includes(selectedSegment));
     const activeOptions = liveOptions.length ? liveOptions : ancillaryCatalog[category];
     const usingLiveOptions = liveOptions.length > 0;
     const activeSegmentDetails =

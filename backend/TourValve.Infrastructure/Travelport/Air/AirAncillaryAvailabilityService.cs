@@ -23,7 +23,7 @@ public sealed class AirAncillaryAvailabilityService
             requestXml,
             "http://www.travelport.com/schema/air_v51_0/AirMerchandisingOfferAvailabilityReq");
 
-        return ParseOfferAvailabilityResponse(responseXml);
+        return ParseOfferAvailabilityResponse(responseXml, universalRecordXml);
     }
 
     private string BuildOfferAvailabilityRequest(Booking booking, string universalRecordXml)
@@ -117,7 +117,7 @@ public sealed class AirAncillaryAvailabilityService
 </air:AirMerchandisingOfferAvailabilityReq>".Trim();
     }
 
-    private static BookingAncillaryOfferCatalog ParseOfferAvailabilityResponse(string xml)
+    private static BookingAncillaryOfferCatalog ParseOfferAvailabilityResponse(string xml, string universalRecordXml)
     {
         var catalog = new BookingAncillaryOfferCatalog
         {
@@ -126,9 +126,10 @@ public sealed class AirAncillaryAvailabilityService
         };
 
         var doc = XDocument.Parse(xml);
+        var segmentLabelMap = BuildSegmentLabelMap(universalRecordXml);
         var services = doc.Descendants()
             .Where(x => x.Name.LocalName == "OptionalService")
-            .Select(MapOptionalService)
+            .Select(x => MapOptionalService(x, segmentLabelMap))
             .Where(x => x is not null)
             .Cast<BookingAncillaryOfferDto>()
             .GroupBy(x => $"{x.Type}|{x.Code}|{x.SegmentLabel}|{x.BaseAmount}|{x.Currency}", StringComparer.OrdinalIgnoreCase)
@@ -170,7 +171,7 @@ public sealed class AirAncillaryAvailabilityService
         return catalog;
     }
 
-    private static BookingAncillaryOfferDto? MapOptionalService(XElement element)
+    private static BookingAncillaryOfferDto? MapOptionalService(XElement element, IReadOnlyDictionary<string, string> segmentLabelMap)
     {
         var type = NormalizeType(element.Attribute("Type")?.Value);
         if (type is null)
@@ -191,6 +192,10 @@ public sealed class AirAncillaryAvailabilityService
             .Where(x => x.Name.LocalName == "ServiceData")
             .Select(x => x.Attribute("AirSegmentRef")?.Value?.Trim())
             .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var segmentLabels = segmentRefs
+            .Select(segmentRef => segmentLabelMap.TryGetValue(segmentRef!, out var label) ? label : segmentRef!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -217,7 +222,7 @@ public sealed class AirAncillaryAvailabilityService
             Currency = currency,
             IsLive = true,
             Source = "AMOA",
-            SegmentLabel = segmentRefs.Count > 0 ? string.Join(", ", segmentRefs) : string.Empty,
+            SegmentLabel = segmentLabels.Count > 0 ? string.Join(", ", segmentLabels) : string.Empty,
             SupplierText = string.Join(" | ", supplierText),
             Highlight = "Live",
             Bullets = BuildBullets(type, element),
@@ -225,6 +230,32 @@ public sealed class AirAncillaryAvailabilityService
             Rules = BuildRules(element),
             RawReference = element.Attribute("Key")?.Value?.Trim() ?? string.Empty
         };
+    }
+
+    private static IReadOnlyDictionary<string, string> BuildSegmentLabelMap(string universalRecordXml)
+    {
+        if (string.IsNullOrWhiteSpace(universalRecordXml))
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var doc = XDocument.Parse(universalRecordXml);
+            var segments = doc.Descendants()
+                .Where(x => x.Name.LocalName == "AirSegment")
+                .Select((x, index) => new
+                {
+                    Key = x.Attribute("Key")?.Value?.Trim(),
+                    Label = $"Sector {index + 1} - {(x.Attribute("Origin")?.Value ?? string.Empty)} -> {(x.Attribute("Destination")?.Value ?? string.Empty)}"
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+                .ToDictionary(x => x.Key!, x => x.Label, StringComparer.OrdinalIgnoreCase);
+
+            return segments;
+        }
+        catch
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     private static string? NormalizeType(string? rawType)
