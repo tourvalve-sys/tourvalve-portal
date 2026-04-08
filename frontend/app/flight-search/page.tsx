@@ -271,6 +271,8 @@ export default function FlightSearch() {
     const [searchMode, setSearchMode] = useState<SearchMode>(restoredState?.searchMode ?? "lowfare");
     const [filters, setFilters] = useState<FilterState>(restoredState?.filters ?? createDefaultFilters());
     const searchModeRef = useRef<SearchMode>(restoredState?.searchMode ?? "lowfare");
+    const resultsSectionRef = useRef<HTMLDivElement | null>(null);
+    const pendingResultsScrollRef = useRef(false);
 
     const [form, setForm] = useState(restoredState?.form ?? createDefaultForm());
     const [multiCitySegments, setMultiCitySegments] = useState(
@@ -390,6 +392,31 @@ export default function FlightSearch() {
 
     const isSearchDraftDirty = Boolean(lastSearchedKey && currentSearchKey !== lastSearchedKey);
 
+    useEffect(() => {
+        if (!pendingResultsScrollRef.current || loading || isSearchDraftDirty) {
+            return;
+        }
+
+        pendingResultsScrollRef.current = false;
+
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        window.requestAnimationFrame(() => {
+            const target = resultsSectionRef.current;
+            if (!target) {
+                return;
+            }
+
+            const top = target.getBoundingClientRect().top + window.scrollY - 96;
+            window.scrollTo({
+                top: Math.max(top, 0),
+                behavior: "smooth",
+            });
+        });
+    }, [isSearchDraftDirty, loading]);
+
     const swapAirports = () => {
         if (tripType === "multicity") {
             return;
@@ -482,6 +509,7 @@ export default function FlightSearch() {
             setHasSearched(true);
             setLastSearchedKey(requestSearchKey);
             setActiveField(null);
+            pendingResultsScrollRef.current = true;
 
             const searchResponse = await searchFlights({
                 ...form,
@@ -1165,7 +1193,10 @@ export default function FlightSearch() {
                     </button>
                 </div>
 
-                <div className="mx-auto mt-6 grid max-w-[88rem] grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]">
+                <div
+                    ref={resultsSectionRef}
+                    className="mx-auto mt-6 grid max-w-[88rem] grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]"
+                >
                     <div className="h-fit min-w-0 space-y-4 rounded-[1.6rem] soft-panel p-4 fade-in sm:space-y-5 sm:rounded-[1.9rem] sm:p-6 xl:sticky xl:top-28">
                         <div className="flex items-center gap-2">
                             <SlidersHorizontal size={16} className="text-[var(--accent-strong)]" />
