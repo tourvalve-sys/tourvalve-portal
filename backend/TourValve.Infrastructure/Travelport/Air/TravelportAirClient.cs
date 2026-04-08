@@ -54,12 +54,19 @@ public class TravelportAirClient
         if (!string.IsNullOrWhiteSpace(soapAction))
             req.Headers.Add("SOAPAction", soapAction);
 
-        var basicToken = Convert.ToBase64String(
-            Encoding.ASCII.GetBytes($"{authUser}:{password}")
-        );
+        // Travelport rejects requests that carry both WS-Security and HTTP Basic
+        // credentials at the same time. Most requests we send are wrapped with a
+        // WSSE UsernameToken, so only fall back to HTTP Basic when the payload
+        // does not already contain WS-Security.
+        if (!payload.Contains("UsernameToken", StringComparison.OrdinalIgnoreCase))
+        {
+            var basicToken = Convert.ToBase64String(
+                Encoding.ASCII.GetBytes($"{authUser}:{password}")
+            );
 
-        req.Headers.Authorization =
-            new AuthenticationHeaderValue("Basic", basicToken);
+            req.Headers.Authorization =
+                new AuthenticationHeaderValue("Basic", basicToken);
+        }
 
         var resp = await _http.SendAsync(req);
         var body = await resp.Content.ReadAsStringAsync();
