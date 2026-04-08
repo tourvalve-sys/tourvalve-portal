@@ -48,6 +48,28 @@ public sealed class AirBookingController : ControllerBase
         if (request.Passengers.Count == 0)
             return BadRequest(new { error = "At least one passenger is required." });
 
+        foreach (var passenger in request.Passengers)
+        {
+            if (string.IsNullOrWhiteSpace(passenger.FirstName) ||
+                string.IsNullOrWhiteSpace(passenger.LastName) ||
+                string.IsNullOrWhiteSpace(passenger.PassportNumber) ||
+                string.IsNullOrWhiteSpace(passenger.DateOfBirth) ||
+                string.IsNullOrWhiteSpace(passenger.PassportExpiryDate))
+            {
+                return BadRequest(new { error = "Complete first name, last name, date of birth, passport number, and passport expiry date for every passenger before booking." });
+            }
+
+            if (!DateTime.TryParse(passenger.PassportExpiryDate, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var passportExpiryDate))
+            {
+                return BadRequest(new { error = "Each passenger must have a valid passport expiry date before booking." });
+            }
+
+            if (passportExpiryDate.Date < DateTime.UtcNow.Date)
+            {
+                return BadRequest(new { error = "Expired passports are not valid for booking. Update the passenger passport expiry date and try again." });
+            }
+        }
+
         if (_config.MockMode)
             return BadRequest(new { error = "Travelport mock mode is disabled for this project. Set Travelport.MockMode to false for live booking." });
 

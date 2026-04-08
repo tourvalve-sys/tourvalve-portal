@@ -33,6 +33,7 @@ type PassengerForm = {
     firstName: string;
     lastName: string;
     passportNumber: string;
+    passportExpiryDate: string;
     dateOfBirth: string;
     gender: string;
     travelerType: string;
@@ -71,6 +72,7 @@ function createPassenger(type: string): PassengerForm {
         firstName: "",
         lastName: "",
         passportNumber: "",
+        passportExpiryDate: "",
         dateOfBirth: "",
         gender: "M",
         travelerType: type,
@@ -290,6 +292,8 @@ export default function BookingPage() {
     const getErrorMessage = (value: unknown) =>
         value instanceof Error ? value.message : "Booking failed";
 
+    const todayDate = new Date().toISOString().split("T")[0];
+
     const travelerLabel = (type: string) => {
         if (type === "CNN") return "Child";
         if (type === "INF") return "Infant";
@@ -363,8 +367,14 @@ export default function BookingPage() {
             return;
         }
 
-        if (passengers.some((passenger) => !passenger.firstName || !passenger.lastName || !passenger.passportNumber || !passenger.dateOfBirth)) {
+        if (passengers.some((passenger) => !passenger.firstName || !passenger.lastName || !passenger.passportNumber || !passenger.passportExpiryDate || !passenger.dateOfBirth)) {
             setError("Complete all passenger details before booking.");
+            return;
+        }
+
+        const expiredPassengerIndex = passengers.findIndex((passenger) => passenger.passportExpiryDate < todayDate);
+        if (expiredPassengerIndex >= 0) {
+            setError(`Passport expiry date for ${travelerLabel(passengers[expiredPassengerIndex].travelerType)} ${expiredPassengerIndex + 1} must be today or later before booking.`);
             return;
         }
 
@@ -522,38 +532,63 @@ export default function BookingPage() {
                                     {travelerLabel(passenger.travelerType)} {index + 1}
                                 </div>
                                 <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
-                                    <input
-                                        placeholder="First Name"
-                                        className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
-                                        value={passenger.firstName}
-                                        onChange={(event) => updatePassenger(index, "firstName", event.target.value)}
-                                    />
-                                    <input
-                                        placeholder="Last Name"
-                                        className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
-                                        value={passenger.lastName}
-                                        onChange={(event) => updatePassenger(index, "lastName", event.target.value)}
-                                    />
-                                    <input
-                                        placeholder="Passport Number"
-                                        className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
-                                        value={passenger.passportNumber}
-                                        onChange={(event) => updatePassenger(index, "passportNumber", event.target.value)}
-                                    />
-                                    <input
-                                        type="date"
-                                        className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
-                                        value={passenger.dateOfBirth}
-                                        onChange={(event) => updatePassenger(index, "dateOfBirth", event.target.value)}
-                                    />
-                                    <select
-                                        className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
-                                        value={passenger.gender}
-                                        onChange={(event) => updatePassenger(index, "gender", event.target.value)}
-                                    >
-                                        <option value="M">Male</option>
-                                        <option value="F">Female</option>
-                                    </select>
+                                    <div>
+                                        <label className="mb-2 block text-sm text-slate-500">First Name</label>
+                                        <input
+                                            placeholder="First Name"
+                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            value={passenger.firstName}
+                                            onChange={(event) => updatePassenger(index, "firstName", event.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm text-slate-500">Last Name</label>
+                                        <input
+                                            placeholder="Last Name"
+                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            value={passenger.lastName}
+                                            onChange={(event) => updatePassenger(index, "lastName", event.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm text-slate-500">Passport Number</label>
+                                        <input
+                                            placeholder="Passport Number"
+                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            value={passenger.passportNumber}
+                                            onChange={(event) => updatePassenger(index, "passportNumber", event.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm text-slate-500">Passport Expiry Date</label>
+                                        <input
+                                            type="date"
+                                            min={todayDate}
+                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            value={passenger.passportExpiryDate}
+                                            onChange={(event) => updatePassenger(index, "passportExpiryDate", event.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm text-slate-500">Date of Birth</label>
+                                        <input
+                                            type="date"
+                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            value={passenger.dateOfBirth}
+                                            onChange={(event) => updatePassenger(index, "dateOfBirth", event.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm text-slate-500">Gender</label>
+                                        <select
+                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            value={passenger.gender}
+                                            onChange={(event) => updatePassenger(index, "gender", event.target.value)}
+                                        >
+                                            <option value="M">Male</option>
+                                            <option value="F">Female</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         ))}

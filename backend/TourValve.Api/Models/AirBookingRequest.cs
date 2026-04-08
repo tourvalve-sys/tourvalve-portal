@@ -42,4 +42,5 @@ public sealed class AirBookingPassengerRequest
     public string Gender { get; set; } = "M";
     public string DateOfBirth { get; set; } = string.Empty;
     public string PassportNumber { get; set; } = string.Empty;
+    public string PassportExpiryDate { get; set; } = string.Empty;
 }

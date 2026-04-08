@@ -107,6 +107,7 @@ export type AirBookingPassengerPayload = {
     gender: string;
     dateOfBirth: string;
     passportNumber: string;
+    passportExpiryDate: string;
 };
 
 export type AirBookingServicePreferencesPayload = {
