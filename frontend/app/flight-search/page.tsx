@@ -1307,7 +1307,7 @@ export default function FlightSearch() {
                             <div className="rounded-[1.4rem] border border-[rgba(89,64,46,0.12)] bg-white/80 p-3">
                                 {airlineOptions.length === 0 ? (
                                     <div className="text-sm leading-6 text-slate-500">
-                                        Run a Travelport search to list the returned airlines here.
+                                        Run a search to list the returned airlines here.
                                     </div>
                                 ) : (
                                     <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
