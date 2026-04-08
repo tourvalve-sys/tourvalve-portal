@@ -21,6 +21,7 @@ import {
     type FlightSeatMapResponse,
 } from "@/lib/api";
 import AirlineBrand from "@/components/AirlineBrand";
+import PageLoader from "@/components/PageLoader";
 import {
     LATEST_BOOKING_CONFIRMATION_KEY,
     type BookingConfirmationState,
@@ -471,11 +472,10 @@ export default function BookingPage() {
 
     if (!isHydrated) {
         return (
-            <div className="premium-panel rounded-[2rem] p-8 shadow fade-in">
-                <div className="subtle-kicker mb-3">Reservation Desk</div>
-                <h1 className="hero-title mb-4 text-4xl">Preparing your booking desk.</h1>
-                <p className="text-slate-600">Loading the selected itinerary and traveler session.</p>
-            </div>
+            <PageLoader
+                label="Preparing Booking"
+                detail="Loading the selected itinerary and traveler session."
+            />
         );
     }
 
@@ -497,6 +497,12 @@ export default function BookingPage() {
 
     return (
         <div className="min-h-screen px-2 py-3 sm:px-4 md:p-6 fade-in">
+            {loading ? (
+                <PageLoader
+                    label="Confirming Booking"
+                    detail="Securing wallet hold, sending the live booking request, and preparing your confirmation."
+                />
+            ) : null}
             <div className="mb-6 sm:mb-8">
                 <div className="subtle-kicker mb-2 sm:mb-3">Reservation Atelier</div>
                 <h1 className="hero-title mb-2 sm:mb-3">Complete your booking.</h1>

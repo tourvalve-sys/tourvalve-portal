@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { priceFlight, searchFlights, type FlightResult } from "@/lib/api";
 import { findAirportMatches, type AirportOption } from "@/lib/airports";
 import AirlineBrand, { getAirlineDisplayName } from "@/components/AirlineBrand";
+import PageLoader from "@/components/PageLoader";
 import { useBooking } from "../context/BookingContext";
 
 type FilterState = {
@@ -849,9 +850,20 @@ export default function FlightSearch() {
     }, [filteredResults.length, isSearchDraftDirty, loading]);
 
     const isAvailabilitySearch = searchMode === "availability";
+    const showPageLoader = loading || pricingFlightId !== null;
+    const loaderLabel = loading ? "Searching Flights" : "Preparing Booking";
+    const loaderDetail = loading
+        ? "Checking live Travelport inventory, pricing, and cabin availability for your selected route."
+        : "Pricing the selected itinerary and preparing the booking handoff.";
 
     return (
         <div className="relative min-h-screen fade-in">
+            {showPageLoader ? (
+                <PageLoader
+                    label={loaderLabel}
+                    detail={loaderDetail}
+                />
+            ) : null}
             <Image
                 src="/images/flight-bg.jpg"
                 alt="bg"
