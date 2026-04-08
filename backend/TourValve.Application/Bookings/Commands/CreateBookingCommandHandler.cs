@@ -49,9 +49,18 @@ namespace TourValve.Application.Bookings.Commands
             };
 
             _context.Bookings.Add(booking);
-            await CreditAdminMarkupAsync(request.MarkupAmount, bookingRef, cancellationToken);
-
             await _context.SaveChangesAsync(cancellationToken);
+
+            // The booking ledger must be persisted even if downstream markup crediting fails.
+            try
+            {
+                await CreditAdminMarkupAsync(request.MarkupAmount, bookingRef, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch
+            {
+                // Best-effort only. Travelport-confirmed bookings should still appear in the portal ledger.
+            }
 
             return new CreateBookingResponse
             {
