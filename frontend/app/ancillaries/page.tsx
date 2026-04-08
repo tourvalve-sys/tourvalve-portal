@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
     BriefcaseBusiness,
@@ -17,6 +17,7 @@ import AirlineBrand from "@/components/AirlineBrand";
 import {
     createBookingAncillaryOrder,
     getBookingAncillaries,
+    getBookingSeatMap,
     retrieveBookingAncillaryOffers,
     getBookingDetail,
     quoteBookingAncillary,
@@ -25,6 +26,7 @@ import {
     type BookingAncillaryOfferCatalog,
     type BookingAncillaryQuote,
     type BookingDetail,
+    type FlightSeatMapResponse,
     type BookingRetrieveResponse,
 } from "@/lib/api";
 
@@ -252,6 +254,93 @@ function sanitizeTextList(items: string[] | undefined, fallback: string[]) {
     return values.length ? values.slice(0, 6) : fallback;
 }
 
+function isSeatSelectable(seat: {
+    code: string;
+    availability: string;
+    characteristics: string[];
+}) {
+    const availability = seat.availability.trim().toLowerCase();
+    const characteristics = seat.characteristics.map((item) => item.trim().toLowerCase());
+
+    if (!seat.code.trim()) {
+        return false;
+    }
+
+    if (characteristics.some((item) => ["blocked", "occupied", "unavailable", "restrict", "no-seat"].includes(item))) {
+        return false;
+    }
+
+    if (["blocked", "occupied", "unavailable", "no seat", "taken", "held"].includes(availability)) {
+        return false;
+    }
+
+    return true;
+}
+
+function seatTone(
+    seat: {
+        code: string;
+        availability: string;
+        paid: boolean;
+        characteristics: string[];
+    },
+    isSelected: boolean
+) {
+    if (isSelected) {
+        return "border-[rgba(45,120,92,0.44)] bg-[rgba(225,246,236,0.96)] text-[var(--success)] shadow-[0_10px_24px_rgba(40,116,79,0.18)]";
+    }
+
+    if (!isSeatSelectable(seat)) {
+        return "border-[rgba(89,64,46,0.08)] bg-[rgba(225,221,214,0.34)] text-slate-400 opacity-60";
+    }
+
+    if (seat.paid) {
+        return "border-[rgba(176,122,67,0.2)] bg-[rgba(255,245,229,0.92)] text-[var(--accent-strong)]";
+    }
+
+    return "border-[rgba(89,64,46,0.1)] bg-white/90 text-[var(--ink)] hover:-translate-y-0.5 hover:border-[rgba(176,122,67,0.4)] hover:shadow-[0_10px_22px_rgba(66,49,30,0.12)]";
+}
+
+function buildLiveSeatPreset(
+    seat: NonNullable<FlightSeatMapResponse["rows"][number]["seats"][number]>,
+    segmentLabel: string
+): AncillaryPreset {
+    const seatPrice = seat.seatPrice ?? 0;
+    const currency = seat.currency ?? "MYR";
+    const characteristicSummary = seat.characteristics.length
+        ? seat.characteristics.join(", ")
+        : "Standard seat characteristics were not returned.";
+
+    return {
+        code: seat.serviceSubCode || seat.optionalServiceRef || seat.code,
+        title: `Seat ${seat.code}`,
+        subtitle: seat.paid ? "Live seat-map price" : "Live seat-map selection",
+        description: `Live seat selection for ${segmentLabel}.`,
+        baseAmount: seatPrice,
+        currency,
+        highlight: "Live",
+        bullets: [
+            `Seat code: ${seat.code}`,
+            `Availability: ${seat.availability || "Available"}`,
+            seat.paid ? "Supplier returned a paid seat for this position." : "Supplier returned this seat without a separate paid amount.",
+            characteristicSummary,
+        ],
+        comparison: [
+            { label: "Seat", value: seat.code, included: true },
+            { label: "Supplier price", value: `${currency} ${seatPrice.toFixed(2)}`, included: true },
+            { label: "Source", value: "Live seat map", included: true },
+        ],
+        rules: [
+            "This seat comes from the live post-book seat map response.",
+            "Final fulfillment still depends on airline servicing rules and seat availability at issuance time.",
+        ],
+        isLive: true,
+        source: "POST_BOOKING_SEATMAP",
+        supplierText: characteristicSummary,
+        segmentLabel,
+    };
+}
+
 function mapLiveOfferToPreset(offer: NonNullable<BookingAncillaryOfferCatalog["categories"][string]>[number]): AncillaryPreset {
     return {
         code: offer.code,
@@ -295,6 +384,10 @@ function AncillariesPageContent() {
     const [category, setCategory] = useState<AncillaryCategory>("BAGGAGE");
     const [selectedSegment, setSelectedSegment] = useState("");
     const [selectedPreset, setSelectedPreset] = useState<AncillaryPreset | null>(null);
+    const [selectedSeatCode, setSelectedSeatCode] = useState("");
+    const [seatMap, setSeatMap] = useState<FlightSeatMapResponse | null>(null);
+    const [seatMapLoading, setSeatMapLoading] = useState(false);
+    const [seatMapError, setSeatMapError] = useState("");
     const [quote, setQuote] = useState<BookingAncillaryQuote | null>(null);
     const [notes, setNotes] = useState("");
     const [travelerQuantities, setTravelerQuantities] = useState<Record<string, number>>({});
@@ -341,6 +434,9 @@ function AncillariesPageContent() {
 
     useEffect(() => {
         setSelectedPreset(null);
+        setSelectedSeatCode("");
+        setSeatMap(null);
+        setSeatMapError("");
         setQuote(null);
         setSuccess("");
     }, [category, selectedSegment]);
@@ -429,16 +525,57 @@ function AncillariesPageContent() {
             ? sanitizeTextList(liveContext?.mealTexts, [
                   "No exact supplier meal wording was returned for this record yet.",
               ])
-            : sanitizeTextList(
-                  [...(liveContext?.seatTexts ?? []), ...(liveContext?.seatAssignments ?? [])],
-                  ["No exact supplier seat wording was returned for this record yet."]
-              );
+              : sanitizeTextList(
+                    [...(liveContext?.seatTexts ?? []), ...(liveContext?.seatAssignments ?? [])],
+                    ["No exact supplier seat wording was returned for this record yet."]
+                );
     const liveRuleTexts = sanitizeTextList(liveContext?.ruleTexts, [
         "Exact supplier change and cancellation wording was not returned for this record yet.",
     ]);
+    const selectedSeat = useMemo(
+        () =>
+            seatMap?.rows
+                .flatMap((row) => row.seats)
+                .find((seat) => seat.code === selectedSeatCode) ?? null,
+        [seatMap, selectedSeatCode]
+    );
+    const liveSeatPreset = useMemo(
+        () => (selectedSeat ? buildLiveSeatPreset(selectedSeat, selectedSegment) : null),
+        [selectedSeat, selectedSegment]
+    );
     useEffect(() => {
         setTravelerQuantities((current) => normalizeTravelerQuantities(travelers, current, category));
     }, [category, travelers]);
+
+    const loadSeatMap = useCallback(async () => {
+        if (!bookingId) return;
+
+        try {
+            setSeatMapLoading(true);
+            setSeatMapError("");
+
+            const response = await getBookingSeatMap(bookingId, {
+                segmentLabel: selectedSegment,
+                frequentFlyerProgram: "",
+                frequentFlyerNumber: "",
+            });
+
+            setSeatMap(response);
+        } catch (value: unknown) {
+            setSeatMap(null);
+            setSeatMapError(value instanceof Error ? value.message : "Failed to load live seat map");
+        } finally {
+            setSeatMapLoading(false);
+        }
+    }, [bookingId, selectedSegment]);
+
+    useEffect(() => {
+        if (category !== "SEAT" || !bookingId || !selectedSegment) {
+            return;
+        }
+
+        void loadSeatMap();
+    }, [category, bookingId, selectedSegment, loadSeatMap]);
 
     const quoteOption = async (preset: AncillaryPreset) => {
         if (!bookingId) return;
@@ -672,18 +809,139 @@ function AncillariesPageContent() {
                             </div>
                         </div>
 
-                        <div className={`rounded-[1.35rem] px-4 py-4 text-sm leading-7 ${
-                            usingLiveOptions
-                                ? "bg-[rgba(225,246,236,0.9)] text-[var(--success)]"
-                                : "bg-[rgba(255,247,236,0.84)] text-slate-600"
-                        }`}>
+                          <div className={`rounded-[1.35rem] px-4 py-4 text-sm leading-7 ${
+                              usingLiveOptions
+                                  ? "bg-[rgba(225,246,236,0.9)] text-[var(--success)]"
+                                  : "bg-[rgba(255,247,236,0.84)] text-slate-600"
+                          }`}>
                             {(usingLiveOptions && !liveOptions.length && liveCategoryOptions.length
                                 ? "Live airline-priced options were returned for this booking, so the studio is showing the broader supplier offer list for this category."
                                 : liveOfferCatalog?.message) ||
-                                "Fallback service options are being shown because no live airline-priced ancillary offers were detected yet."}
-                        </div>
+                                  "Fallback service options are being shown because no live airline-priced ancillary offers were detected yet."}
+                          </div>
 
-                        <div className="grid gap-4 xl:grid-cols-3">
+                          {category === "SEAT" ? (
+                              <div className="soft-panel rounded-[1.8rem] p-5">
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                      <div>
+                                          <div className="subtle-kicker">Live Seat Map</div>
+                                          <div className="mt-2 text-xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
+                                              Load the booked segment’s real seat layout.
+                                          </div>
+                                      </div>
+                                      <button
+                                          onClick={() => void loadSeatMap()}
+                                          disabled={seatMapLoading}
+                                          className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
+                                      >
+                                          {seatMapLoading ? "Loading live seat map..." : "Refresh Live Seat Map"}
+                                      </button>
+                                  </div>
+
+                                  <div className="mt-4 rounded-[1.25rem] bg-[rgba(255,247,236,0.76)] px-4 py-4 text-sm leading-7 text-slate-600">
+                                      This seat view comes from the booked record’s live seat-map response. It is the right place to inspect real seat rows and returned seat pricing before falling back to manual seat servicing.
+                                  </div>
+
+                                  {seatMapError ? (
+                                      <div className="mt-4 rounded-[1.25rem] bg-[rgba(255,236,236,0.92)] px-4 py-4 text-sm leading-7 text-[var(--danger)]">
+                                          {seatMapError}
+                                      </div>
+                                  ) : null}
+
+                                  {seatMap?.rows.length ? (
+                                      <div className="mt-5 space-y-4">
+                                          <div className="rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/88 p-4">
+                                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                                  <div>
+                                                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                                                          Active live leg
+                                                      </div>
+                                                      <div className="mt-2 text-lg font-semibold text-[var(--ink)]">
+                                                          {seatMap.segmentLabel || selectedSegment}
+                                                      </div>
+                                                      <div className="mt-1 text-sm text-slate-500">
+                                                          {seatMap.from} to {seatMap.to} • {seatMap.carrier} {seatMap.flightNumber}
+                                                      </div>
+                                                  </div>
+                                                  <div className="rounded-full bg-[rgba(225,246,236,0.92)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--success)]">
+                                                      {seatMap.rows.length} live rows
+                                                  </div>
+                                              </div>
+                                          </div>
+
+                                          <div className="space-y-3">
+                                              {seatMap.rows.map((row) => (
+                                                  <div
+                                                      key={row.number}
+                                                      className="rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/92 px-4 py-4"
+                                                  >
+                                                      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                                          Row {row.number}
+                                                      </div>
+                                                      <div className="grid gap-2 sm:grid-cols-4 xl:grid-cols-6">
+                                                          {row.seats.map((seat) => {
+                                                              const selected = selectedSeatCode === seat.code;
+                                                              return (
+                                                                  <button
+                                                                      key={`${row.number}-${seat.code}`}
+                                                                      type="button"
+                                                                      disabled={!isSeatSelectable(seat)}
+                                                                      onClick={() => setSelectedSeatCode(seat.code)}
+                                                                      className={`rounded-[1rem] border px-3 py-3 text-left transition ${seatTone(seat, selected)}`}
+                                                                  >
+                                                                      <div className="text-sm font-semibold">{seat.code}</div>
+                                                                      <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-80">
+                                                                          {seat.availability || "Available"}
+                                                                      </div>
+                                                                      <div className="mt-2 text-xs opacity-80">
+                                                                          {seat.seatPrice != null
+                                                                              ? formatCurrency(seat.seatPrice, seat.currency || "MYR")
+                                                                              : seat.paid
+                                                                                  ? "Paid seat"
+                                                                                  : "No separate seat price"}
+                                                                      </div>
+                                                                  </button>
+                                                              );
+                                                          })}
+                                                      </div>
+                                                  </div>
+                                              ))}
+                                          </div>
+
+                                          {selectedSeat && liveSeatPreset ? (
+                                              <div className="rounded-[1.35rem] border border-[rgba(45,120,92,0.18)] bg-[rgba(225,246,236,0.76)] p-4">
+                                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                                      <div>
+                                                          <div className="text-xs uppercase tracking-[0.18em] text-[var(--success)]">
+                                                              Selected live seat
+                                                          </div>
+                                                          <div className="mt-2 text-lg font-semibold text-[var(--ink)]">
+                                                              {selectedSeat.code}
+                                                          </div>
+                                                          <div className="mt-1 text-sm text-slate-600">
+                                                              {selectedSeat.characteristics.join(", ") || "Seat characteristics were limited in the supplier response."}
+                                                          </div>
+                                                      </div>
+                                                      <button
+                                                          onClick={() => void quoteOption(liveSeatPreset)}
+                                                          disabled={action === `quote-${liveSeatPreset.code}`}
+                                                          className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
+                                                      >
+                                                          {action === `quote-${liveSeatPreset.code}` ? "Previewing..." : "Preview Selected Seat"}
+                                                      </button>
+                                                  </div>
+                                              </div>
+                                          ) : null}
+                                      </div>
+                                  ) : !seatMapLoading ? (
+                                      <div className="mt-4 rounded-[1.25rem] border border-[rgba(89,64,46,0.08)] bg-white/86 px-4 py-5 text-sm leading-7 text-slate-600">
+                                          {seatMap?.message || "No live seat rows were returned for this booked segment yet. You can still use the fallback seat servicing cards below if needed."}
+                                      </div>
+                                  ) : null}
+                              </div>
+                          ) : null}
+
+                          <div className="grid gap-4 xl:grid-cols-3">
                         {activeOptions.map((preset) => {
                             const active = selectedPreset?.code === preset.code;
                             return (

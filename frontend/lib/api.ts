@@ -156,9 +156,24 @@ export type FlightSeatMapResponse = {
             availability: string;
             paid: boolean;
             characteristics: string[];
+            seatPrice?: number | null;
+            currency?: string;
+            taxes?: number | null;
+            optionalServiceRef?: string;
+            serviceSubCode?: string;
+            source?: string;
         }>;
     }>;
     rawResponse: string;
+    segmentLabel?: string;
+    source?: string;
+    isPostBooking?: boolean;
+};
+
+export type BookingSeatMapPayload = {
+    segmentLabel: string;
+    frequentFlyerProgram: string;
+    frequentFlyerNumber: string;
 };
 
 export type AirBookingPayload = {
@@ -786,6 +801,18 @@ export async function getFlightSeatMap(
     payload: FlightSeatMapPayload
 ): Promise<FlightSeatMapResponse> {
     const res = await authFetch(`${API_BASE}/api/flights/seat-map`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+
+    return readJson<FlightSeatMapResponse>(res);
+}
+
+export async function getBookingSeatMap(
+    bookingId: string,
+    payload: BookingSeatMapPayload
+): Promise<FlightSeatMapResponse> {
+    const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/seat-map`, {
         method: "POST",
         body: JSON.stringify(payload),
     });

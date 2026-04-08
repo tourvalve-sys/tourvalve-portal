@@ -30,6 +30,7 @@ public class BookingsController : ControllerBase
     private readonly AncillaryMarkupService _ancillaryMarkup;
     private readonly AncillaryOfferService _ancillaryOffers;
     private readonly AirAncillaryAvailabilityService _liveAncillaryAvailability;
+    private readonly BookingSeatMapService _bookingSeatMaps;
     private static readonly Guid ReservedAdminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private const string ReservedAdminEmail = "admin@tourvalve.com";
 
@@ -40,10 +41,11 @@ public class BookingsController : ControllerBase
         IWalletService wallet,
         IAuditTrailService audit,
         INotificationService notifications,
-        AncillaryMarkupService ancillaryMarkup,
-        AncillaryOfferService ancillaryOffers,
-        AirAncillaryAvailabilityService liveAncillaryAvailability,
-        IOptions<WalletAlertOptions> walletAlertOptions)
+          AncillaryMarkupService ancillaryMarkup,
+          AncillaryOfferService ancillaryOffers,
+          AirAncillaryAvailabilityService liveAncillaryAvailability,
+          BookingSeatMapService bookingSeatMaps,
+          IOptions<WalletAlertOptions> walletAlertOptions)
     {
         _mediator = mediator;
         _db = db;
@@ -54,6 +56,7 @@ public class BookingsController : ControllerBase
         _ancillaryMarkup = ancillaryMarkup;
         _ancillaryOffers = ancillaryOffers;
         _liveAncillaryAvailability = liveAncillaryAvailability;
+        _bookingSeatMaps = bookingSeatMaps;
         _walletAlertOptions = walletAlertOptions.Value;
     }
 
@@ -70,6 +73,7 @@ public class BookingsController : ControllerBase
     public record AncillaryQuoteRequest(string Type, string SegmentLabel, string OptionCode, string Description, decimal BaseAmount, string Currency, string Notes, List<TravelerSelectionRequest>? TravelerSelections);
     public record AncillaryOrderRequest(string Type, string SegmentLabel, string OptionCode, string Description, decimal BaseAmount, string Currency, string Notes, List<TravelerSelectionRequest>? TravelerSelections);
     public record AncillaryStatusRequest(string Status, string Notes, string ProviderReference);
+    public record SeatMapRequest(string SegmentLabel, string FrequentFlyerProgram, string FrequentFlyerNumber);
 
     [HttpGet]
     public async Task<IActionResult> List()
@@ -266,6 +270,35 @@ public class BookingsController : ControllerBase
                 Message = ExtractTravelportMessage(ex),
                 Source = "UNIVERSAL_RECORD_PARSE",
                 FallbackAvailable = true
+            });
+        }
+    }
+
+    [HttpPost("{id:guid}/seat-map")]
+    public async Task<IActionResult> RetrieveSeatMap(Guid id, [FromBody] SeatMapRequest request)
+    {
+        var booking = await GetAuthorizedBookingAsync(id);
+        if (booking == null)
+            return NotFound(new { error = "Booking not found." });
+
+        try
+        {
+            var xml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
+            var result = await _bookingSeatMaps.RetrieveAsync(
+                booking,
+                xml,
+                request.SegmentLabel ?? string.Empty,
+                request.FrequentFlyerProgram ?? string.Empty,
+                request.FrequentFlyerNumber ?? string.Empty);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                error = "Live seat map could not be retrieved for this booking right now.",
+                detail = ExtractTravelportMessage(ex)
             });
         }
     }
