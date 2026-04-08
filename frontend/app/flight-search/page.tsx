@@ -553,6 +553,7 @@ export default function FlightSearch() {
                 airSegmentXml: flight.airSegmentXml,
                 airSegmentXmls: flight.airSegmentXmls,
                 airPricingContextXml: flight.airPricingContextXml,
+                requestedCabin: form.cabin,
                 carrier: flight.carrier,
                 flightNumber: flight.flightNumber,
                 from: flight.from,
