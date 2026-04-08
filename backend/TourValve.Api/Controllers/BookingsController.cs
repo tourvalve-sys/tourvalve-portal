@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using System.Security.Claims;
 using System.Text;
+using TourValve.Application.Bookings.Ancillaries;
 using TourValve.Application.Bookings.Commands;
 using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Services;
@@ -27,6 +28,7 @@ public class BookingsController : ControllerBase
     private readonly WalletAlertOptions _walletAlertOptions;
     private readonly IWalletService _wallet;
     private readonly AncillaryMarkupService _ancillaryMarkup;
+    private readonly AncillaryOfferService _ancillaryOffers;
     private static readonly Guid ReservedAdminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private const string ReservedAdminEmail = "admin@tourvalve.com";
 
@@ -38,6 +40,7 @@ public class BookingsController : ControllerBase
         IAuditTrailService audit,
         INotificationService notifications,
         AncillaryMarkupService ancillaryMarkup,
+        AncillaryOfferService ancillaryOffers,
         IOptions<WalletAlertOptions> walletAlertOptions)
     {
         _mediator = mediator;
@@ -47,6 +50,7 @@ public class BookingsController : ControllerBase
         _audit = audit;
         _notifications = notifications;
         _ancillaryMarkup = ancillaryMarkup;
+        _ancillaryOffers = ancillaryOffers;
         _walletAlertOptions = walletAlertOptions.Value;
     }
 
@@ -207,6 +211,31 @@ public class BookingsController : ControllerBase
             .ToListAsync();
 
         return Ok(items);
+    }
+
+    [HttpPost("{id:guid}/ancillary-offers/retrieve")]
+    public async Task<IActionResult> RetrieveAncillaryOffers(Guid id)
+    {
+        var booking = await GetAuthorizedBookingAsync(id);
+        if (booking == null)
+            return NotFound(new { error = "Booking not found." });
+
+        try
+        {
+            var xml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
+            var catalog = _ancillaryOffers.ExtractOfferCatalog(xml);
+
+            return Ok(catalog);
+        }
+        catch (Exception ex)
+        {
+            return Ok(new BookingAncillaryOfferCatalog
+            {
+                Message = ExtractTravelportMessage(ex),
+                Source = "UNIVERSAL_RECORD_PARSE",
+                FallbackAvailable = true
+            });
+        }
     }
 
     [HttpPost("{id:guid}/ancillaries/quote")]

@@ -304,6 +304,47 @@ export type BookingAncillaryQuote = {
     note: string;
 };
 
+export type BookingAncillaryOfferComparisonItem = {
+    label: string;
+    value: string;
+    included: boolean;
+};
+
+export type BookingAncillaryOffer = {
+    id: string;
+    type: string;
+    code: string;
+    title: string;
+    subtitle: string;
+    description: string;
+    baseAmount: number;
+    currency: string;
+    isLive: boolean;
+    source: string;
+    segmentLabel: string;
+    supplierText: string;
+    highlight: string;
+    bullets: string[];
+    comparison: BookingAncillaryOfferComparisonItem[];
+    rules: string[];
+    rawReference: string;
+};
+
+export type BookingAncillaryOfferCatalog = {
+    retrievedAt: string;
+    hasLivePricedOffers: boolean;
+    fallbackAvailable: boolean;
+    source: string;
+    message: string;
+    diagnostics: {
+        totalLiveOffers: number;
+        baggageOffers: number;
+        mealOffers: number;
+        seatOffers: number;
+    };
+    categories: Record<string, BookingAncillaryOffer[]>;
+};
+
 export type BookingRetrieveResponse = {
     locatorCode: string;
     travelers: Array<{
@@ -894,6 +935,14 @@ export async function sendBookingServiceRequest(bookingId: string, payload: Book
 export async function getBookingAncillaries(bookingId: string): Promise<BookingAncillaryOrder[]> {
     const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/ancillaries`);
     return readJson<BookingAncillaryOrder[]>(res);
+}
+
+export async function retrieveBookingAncillaryOffers(bookingId: string): Promise<BookingAncillaryOfferCatalog> {
+    const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/ancillary-offers/retrieve`, {
+        method: "POST",
+    });
+
+    return readJson<BookingAncillaryOfferCatalog>(res);
 }
 
 export async function quoteBookingAncillary(bookingId: string, payload: BookingAncillaryRequestPayload): Promise<BookingAncillaryQuote> {

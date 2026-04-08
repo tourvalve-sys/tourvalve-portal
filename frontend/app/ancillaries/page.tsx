@@ -17,10 +17,12 @@ import AirlineBrand from "@/components/AirlineBrand";
 import {
     createBookingAncillaryOrder,
     getBookingAncillaries,
+    retrieveBookingAncillaryOffers,
     getBookingDetail,
     quoteBookingAncillary,
     retrieveBookingRecord,
     type BookingAncillaryOrder,
+    type BookingAncillaryOfferCatalog,
     type BookingAncillaryQuote,
     type BookingDetail,
     type BookingRetrieveResponse,
@@ -34,6 +36,7 @@ type AncillaryPreset = {
     subtitle: string;
     description: string;
     baseAmount: number;
+    currency?: string;
     highlight?: string;
     bullets: string[];
     comparison: Array<{
@@ -42,6 +45,10 @@ type AncillaryPreset = {
         included: boolean;
     }>;
     rules: string[];
+    isLive?: boolean;
+    source?: string;
+    supplierText?: string;
+    segmentLabel?: string;
 };
 
 const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
@@ -245,6 +252,33 @@ function sanitizeTextList(items: string[] | undefined, fallback: string[]) {
     return values.length ? values.slice(0, 6) : fallback;
 }
 
+function mapLiveOfferToPreset(offer: NonNullable<BookingAncillaryOfferCatalog["categories"][string]>[number]): AncillaryPreset {
+    return {
+        code: offer.code,
+        title: offer.title,
+        subtitle: offer.subtitle || "Live airline-priced option",
+        description: offer.description,
+        baseAmount: offer.baseAmount,
+        currency: offer.currency,
+        highlight: offer.highlight || "Live",
+        bullets: offer.bullets?.length ? offer.bullets : ["Retrieved from the live booking record."],
+        comparison: offer.comparison?.length
+            ? offer.comparison
+            : [
+                  { label: "Source", value: "Live supplier record", included: true },
+                  { label: "Pricing", value: `${offer.currency} ${offer.baseAmount.toFixed(2)}`, included: true },
+                  { label: "Segment", value: offer.segmentLabel || "Booking-linked", included: true },
+              ],
+        rules: offer.rules?.length
+            ? offer.rules
+            : ["Supplier-priced ancillary detected from the live booking record."],
+        isLive: offer.isLive,
+        source: offer.source,
+        supplierText: offer.supplierText,
+        segmentLabel: offer.segmentLabel,
+    };
+}
+
 function AncillariesPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -252,6 +286,7 @@ function AncillariesPageContent() {
 
     const [booking, setBooking] = useState<BookingDetail | null>(null);
     const [retrievedRecord, setRetrievedRecord] = useState<BookingRetrieveResponse | null>(null);
+    const [liveOfferCatalog, setLiveOfferCatalog] = useState<BookingAncillaryOfferCatalog | null>(null);
     const [orders, setOrders] = useState<BookingAncillaryOrder[]>([]);
     const [loading, setLoading] = useState(true);
     const [action, setAction] = useState("");
@@ -275,11 +310,13 @@ function AncillariesPageContent() {
             getBookingDetail(bookingId),
             getBookingAncillaries(bookingId),
             retrieveBookingRecord(bookingId).catch(() => null),
+            retrieveBookingAncillaryOffers(bookingId).catch(() => null),
         ])
-            .then(([detail, ancillaryOrders, record]) => {
+            .then(([detail, ancillaryOrders, record, offerCatalog]) => {
                 setBooking(detail);
                 setOrders(ancillaryOrders);
                 setRetrievedRecord(record);
+                setLiveOfferCatalog(offerCatalog);
                 setTravelerQuantities(
                     normalizeTravelerQuantities(
                         record?.travelers?.length
@@ -339,7 +376,11 @@ function AncillariesPageContent() {
     }, [booking, retrievedRecord]);
 
     const activeMeta = categoryMeta[category];
-    const activeOptions = ancillaryCatalog[category];
+    const liveOptions = (liveOfferCatalog?.categories?.[category] ?? [])
+        .map(mapLiveOfferToPreset)
+        .filter((offer) => !offer.segmentLabel || offer.segmentLabel === selectedSegment);
+    const activeOptions = liveOptions.length ? liveOptions : ancillaryCatalog[category];
+    const usingLiveOptions = liveOptions.length > 0;
     const activeSegmentDetails =
         itinerarySegments.find((segment) => segment.key === selectedSegment) ?? itinerarySegments[0] ?? null;
     const latestQueuedOrder = orders[0] ?? null;
@@ -414,7 +455,7 @@ function AncillariesPageContent() {
                 optionCode: preset.code,
                 description: preset.title,
                 baseAmount: preset.baseAmount,
-                currency: "MYR",
+                currency: preset.currency ?? "MYR",
                 notes,
                 travelerSelections: selectedTravelerSelections,
             });
@@ -444,7 +485,7 @@ function AncillariesPageContent() {
                 optionCode: selectedPreset.code,
                 description: selectedPreset.title,
                 baseAmount: selectedPreset.baseAmount,
-                currency: "MYR",
+                currency: selectedPreset.currency ?? "MYR",
                 notes,
                 travelerSelections: selectedTravelerSelections,
             });
@@ -523,7 +564,9 @@ function AncillariesPageContent() {
                         </div>
                         <div className="inline-flex items-center gap-2 rounded-full bg-[rgba(255,247,236,0.86)] px-4 py-2 text-sm font-semibold text-[var(--accent-strong)]">
                             <Sparkles size={16} />
-                            Premium ancillary workspace
+                            {liveOfferCatalog?.hasLivePricedOffers
+                                ? `${liveOfferCatalog.diagnostics.totalLiveOffers} live airline-priced options detected`
+                                : "Fallback ancillary workspace active"}
                         </div>
                     </div>
                 </div>
@@ -622,8 +665,17 @@ function AncillariesPageContent() {
                                 </h3>
                             </div>
                             <div className="hidden rounded-full bg-[rgba(255,247,236,0.84)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)] xl:inline-flex">
-                                {activeOptions.length} curated options
+                                {activeOptions.length} {usingLiveOptions ? "live priced options" : "fallback options"}
                             </div>
+                        </div>
+
+                        <div className={`rounded-[1.35rem] px-4 py-4 text-sm leading-7 ${
+                            usingLiveOptions
+                                ? "bg-[rgba(225,246,236,0.9)] text-[var(--success)]"
+                                : "bg-[rgba(255,247,236,0.84)] text-slate-600"
+                        }`}>
+                            {liveOfferCatalog?.message ||
+                                "Fallback service options are being shown because no live airline-priced ancillary offers were detected yet."}
                         </div>
 
                         <div className="grid gap-4 xl:grid-cols-3">
@@ -650,6 +702,12 @@ function AncillariesPageContent() {
 
                                     <p className="mt-4 text-sm leading-7 text-slate-500">{preset.description}</p>
 
+                                    {preset.isLive && preset.supplierText ? (
+                                        <div className="mt-4 rounded-[1.1rem] bg-[rgba(225,246,236,0.72)] px-3 py-3 text-xs leading-6 text-[var(--success)]">
+                                            {preset.supplierText}
+                                        </div>
+                                    ) : null}
+
                                     <div className="mt-4 space-y-2 text-sm text-slate-600">
                                         {preset.bullets.map((bullet) => (
                                             <div key={bullet} className="flex items-start gap-2">
@@ -660,11 +718,17 @@ function AncillariesPageContent() {
                                     </div>
 
                                     <div className="mt-5 rounded-[1.35rem] bg-[rgba(255,247,236,0.88)] px-4 py-4">
-                                        <div className="text-xs uppercase tracking-[0.18em] text-[var(--accent-strong)]">Base servicing amount</div>
-                                        <div className="mt-2 text-3xl font-semibold text-[var(--ink)]">
-                                            {formatCurrency(preset.baseAmount, "MYR")}
+                                        <div className="text-xs uppercase tracking-[0.18em] text-[var(--accent-strong)]">
+                                            {preset.isLive ? "Supplier base amount" : "Base servicing amount"}
                                         </div>
-                                        <div className="mt-1 text-xs text-slate-500">Portal quote will add configured ancillary markup before charge.</div>
+                                        <div className="mt-2 text-3xl font-semibold text-[var(--ink)]">
+                                            {formatCurrency(preset.baseAmount, preset.currency ?? "MYR")}
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                            {preset.isLive
+                                                ? "Portal quote will preserve the supplier amount and add configured ancillary markup before charge."
+                                                : "Portal quote will add configured ancillary markup before charge."}
+                                        </div>
                                     </div>
 
                                     <div className="mt-5 rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/88 p-4">
