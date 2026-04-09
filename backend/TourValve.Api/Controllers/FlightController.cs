@@ -938,24 +938,45 @@ public class FlightsController : ControllerBase
             !string.IsNullOrWhiteSpace(req.AirPricingContextXml)
                 ? req.AirPricingContextXml
                 : req.AirPricingSolutionXml);
+        var traveler = new XElement(
+            XName.Get("SearchTraveler", "http://www.travelport.com/schema/air_v51_0"),
+            new XAttribute("Code", "ADT"),
+            new XAttribute("Key", "TV-TRV-1"),
+            new XElement(
+                XName.Get("Name", "http://www.travelport.com/schema/common_v51_0"),
+                new XAttribute("First", "TourValve"),
+                new XAttribute("Last", "Traveler")));
 
-        return $@"
-<air:SeatMapReq
-    xmlns:air=""http://www.travelport.com/schema/air_v51_0""
-    xmlns:com=""http://www.travelport.com/schema/common_v51_0""
-    AuthorizedBy=""{Escape(authorizedBy)}""
-    TargetBranch=""{Escape(_travelportConfig.TargetBranch)}""
-    TraceId=""TV-SEAT-{DateTime.UtcNow:yyyyMMddHHmmss}""
-    ReturnSeatPricing=""true""
-    ReturnBrandingInfo=""true"">
-  <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
-  <air:SearchTraveler Code=""ADT"">
-    <com:Name First=""TourValve"" Last=""Traveler"" />
-    {loyaltyXml}
-  </air:SearchTraveler>
-  {segment.ToString(SaveOptions.DisableFormatting)}
-  {hostTokensXml}
-</air:SeatMapReq>".Trim();
+        if (!string.IsNullOrWhiteSpace(loyaltyXml))
+        {
+            traveler.Add(XElement.Parse(loyaltyXml));
+        }
+
+        var request = new XElement(
+            XName.Get("SeatMapReq", "http://www.travelport.com/schema/air_v51_0"),
+            new XAttribute(XNamespace.Xmlns + "air", "http://www.travelport.com/schema/air_v51_0"),
+            new XAttribute(XNamespace.Xmlns + "com", "http://www.travelport.com/schema/common_v51_0"),
+            new XAttribute("AuthorizedBy", authorizedBy),
+            new XAttribute("TargetBranch", _travelportConfig.TargetBranch),
+            new XAttribute("TraceId", $"TV-SEAT-{DateTime.UtcNow:yyyyMMddHHmmss}"),
+            new XAttribute("ReturnSeatPricing", "true"),
+            new XAttribute("ReturnBrandingInfo", "true"),
+            new XElement(
+                XName.Get("BillingPointOfSaleInfo", "http://www.travelport.com/schema/common_v51_0"),
+                new XAttribute("OriginApplication", "UAPI")),
+            segment,
+            traveler);
+
+        if (!string.IsNullOrWhiteSpace(hostTokensXml))
+        {
+            var hostTokens = XElement.Parse($"<root>{hostTokensXml}</root>");
+            foreach (var token in hostTokens.Elements())
+            {
+                request.Add(token);
+            }
+        }
+
+        return request.ToString(SaveOptions.DisableFormatting);
     }
 
     private static void EnsureSeatMapSegmentAttributes(XElement segment)
