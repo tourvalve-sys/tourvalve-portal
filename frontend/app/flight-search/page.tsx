@@ -111,6 +111,29 @@ type PrebookSeatSelection = {
     seatCode: string;
 };
 
+const prebookMealOptions = [
+    {
+        code: "Standard",
+        label: "Standard meal",
+        detail: "Keep the normal inflight meal setup for this itinerary.",
+    },
+    {
+        code: "Vegetarian",
+        label: "Vegetarian meal",
+        detail: "Carry a vegetarian preference into booking before ticketing.",
+    },
+    {
+        code: "Halal",
+        label: "Halal meal",
+        detail: "Carry a halal meal preference into booking for later SSR handling.",
+    },
+    {
+        code: "Special",
+        label: "Special meal",
+        detail: "Use when the traveler needs a custom meal note after booking.",
+    },
+] as const;
+
 function buildPrebookSegmentLabel(segment: {
     carrier: string;
     flightNumber: string;
@@ -333,6 +356,7 @@ export default function FlightSearch() {
     const [prebookActiveSegmentIndex, setPrebookActiveSegmentIndex] = useState(0);
     const [prebookSelectedSeats, setPrebookSelectedSeats] = useState<PrebookSeatSelection[]>([]);
     const [prebookBaggageChoice, setPrebookBaggageChoice] = useState("");
+    const [prebookMealChoice, setPrebookMealChoice] = useState("Standard");
     const searchModeRef = useRef<SearchMode>(restoredState?.searchMode ?? "lowfare");
     const resultsSectionRef = useRef<HTMLDivElement | null>(null);
     const firstResultCardRef = useRef<HTMLDivElement | null>(null);
@@ -547,6 +571,7 @@ export default function FlightSearch() {
         setPrebookActiveSegmentIndex(0);
         setPrebookSelectedSeats([]);
         setPrebookBaggageChoice("");
+        setPrebookMealChoice("Standard");
     };
 
     const openPrebookStudio = (flight: FlightResult) => {
@@ -559,6 +584,9 @@ export default function FlightSearch() {
             flight.prebookSelections?.baggagePreference?.trim() ||
             getBaggageHighlights(flight)[0] ||
             "Standard cabin only"
+        );
+        setPrebookMealChoice(
+            flight.prebookSelections?.mealPreference?.trim() || "Standard"
         );
     };
 
@@ -622,6 +650,7 @@ export default function FlightSearch() {
             ...flight,
             prebookSelections: {
                 baggagePreference: prebookBaggageChoice || "Standard cabin only",
+                mealPreference: prebookMealChoice || "Standard",
                 selectedSeats: prebookSelectedSeats,
             },
         });
@@ -1829,6 +1858,33 @@ export default function FlightSearch() {
                                     </div>
                                 </div>
 
+                                <div className="mt-5 rounded-[1.35rem] bg-white/88 p-4 shadow-[0_14px_30px_rgba(26,56,117,0.08)]">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
+                                        <Sparkles size={16} className="text-[var(--accent-strong)]" />
+                                        Meal preference
+                                    </div>
+                                    <div className="mt-3 space-y-2">
+                                        {prebookMealOptions.map((option) => {
+                                            const active = prebookMealChoice === option.code;
+                                            return (
+                                                <button
+                                                    key={option.code}
+                                                    type="button"
+                                                    onClick={() => setPrebookMealChoice(option.code)}
+                                                    className={`w-full rounded-[1.1rem] border px-3 py-3 text-left transition ${
+                                                        active
+                                                            ? "border-[rgba(23,68,152,0.2)] bg-[rgba(223,235,255,0.92)] text-[#174498] shadow-[0_10px_22px_rgba(26,56,117,0.12)]"
+                                                            : "border-[rgba(89,64,46,0.08)] bg-white text-slate-600 hover:border-[rgba(176,122,67,0.2)]"
+                                                    }`}
+                                                >
+                                                    <div className="text-sm font-semibold">{option.label}</div>
+                                                    <div className="mt-1 text-xs text-slate-500">{option.detail}</div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
                                 <div className="mt-5 rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(26,82,184,0.98),rgba(107,152,230,0.92))] p-4 text-white shadow-[0_18px_40px_rgba(20,74,170,0.18)]">
                                     <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-white/90">
                                         <Sparkles size={16} />
@@ -2012,6 +2068,10 @@ export default function FlightSearch() {
                                                         <div className="mt-1 font-semibold text-[var(--ink)]">{prebookBaggageChoice || "Standard cabin only"}</div>
                                                     </div>
                                                     <div className="rounded-[1.1rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">
+                                                        <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Meal</div>
+                                                        <div className="mt-1 font-semibold text-[var(--ink)]">{prebookMealChoice || "Standard"}</div>
+                                                    </div>
+                                                    <div className="rounded-[1.1rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">
                                                         <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Seat request</div>
                                                         <div className="mt-1 font-semibold text-[var(--ink)]">
                                                             {prebookSelectedSeats.find((seat) => seat.segmentLabel === (prebookActiveSegment?.label ?? ""))?.seatCode || "No seat chosen"}
@@ -2042,6 +2102,12 @@ export default function FlightSearch() {
                                         <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Included baggage</div>
                                         <div className="mt-1 text-sm font-semibold text-[var(--ink)]">
                                             {getBaggageHighlights(prebookFlight)[0] || "Allowance confirmed after pricing"}
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 rounded-[1.2rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">
+                                        <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Meal preference</div>
+                                        <div className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                                            {prebookMealChoice || "Standard"}
                                         </div>
                                     </div>
                                     <div className="mt-4 rounded-[1.2rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">

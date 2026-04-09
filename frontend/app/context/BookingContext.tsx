@@ -107,6 +107,10 @@ function normalizeFlightResult(value: unknown): FlightResult | null {
             typeof flight.prebookSelections.baggagePreference === "string"
                 ? {
                     baggagePreference: flight.prebookSelections.baggagePreference,
+                    mealPreference:
+                        typeof flight.prebookSelections.mealPreference === "string"
+                            ? flight.prebookSelections.mealPreference
+                            : "Standard",
                     selectedSeats: Array.isArray(flight.prebookSelections.selectedSeats)
                         ? flight.prebookSelections.selectedSeats.filter(
                             (

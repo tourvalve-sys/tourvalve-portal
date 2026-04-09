@@ -274,6 +274,9 @@ export default function BookingPage() {
             baggagePreference:
                 selectedFlight.prebookSelections?.baggagePreference?.trim() ||
                 current.baggagePreference,
+            mealPreference:
+                selectedFlight.prebookSelections?.mealPreference?.trim() ||
+                current.mealPreference,
             selectedSeats:
                 selectedFlight.prebookSelections?.selectedSeats?.length
                     ? selectedFlight.prebookSelections.selectedSeats

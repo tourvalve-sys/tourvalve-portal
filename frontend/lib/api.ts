@@ -63,6 +63,7 @@ export type FlightResult = {
     }>;
     prebookSelections?: {
         baggagePreference: string;
+        mealPreference: string;
         selectedSeats: Array<{
             segmentLabel: string;
             seatCode: string;
