@@ -445,8 +445,8 @@ function AncillariesPageContent() {
     }, [category, selectedSegment]);
 
     const itinerarySegments = useMemo(() => {
-        if (retrievedRecord?.segments.length) {
-            return retrievedRecord.segments.map((segment, index) => ({
+        const storedSegments = booking?.itinerarySegments?.length
+            ? booking.itinerarySegments.map((segment, index) => ({
                 key: buildSegmentLabel(segment, index),
                 title: buildSegmentLabel(segment, index),
                 timing: `${new Date(segment.departure).toLocaleString()} to ${new Date(segment.arrival).toLocaleString()}`,
@@ -454,23 +454,35 @@ function AncillariesPageContent() {
                 flightNumber: segment.flightNumber,
                 from: segment.from,
                 to: segment.to,
-            }));
+            }))
+            : [];
+
+        const retrievedSegments = retrievedRecord?.segments.length
+            ? retrievedRecord.segments.map((segment, index) => ({
+                key: buildSegmentLabel(segment, index),
+                title: buildSegmentLabel(segment, index),
+                timing: `${new Date(segment.departure).toLocaleString()} to ${new Date(segment.arrival).toLocaleString()}`,
+                carrier: segment.carrier,
+                flightNumber: segment.flightNumber,
+                from: segment.from,
+                to: segment.to,
+            }))
+            : [];
+
+        if (storedSegments.length > retrievedSegments.length) {
+            return storedSegments;
+        }
+
+        if (retrievedSegments.length) {
+            return retrievedSegments;
         }
 
         if (!booking) {
             return [];
         }
 
-        if (booking.itinerarySegments?.length) {
-            return booking.itinerarySegments.map((segment, index) => ({
-                key: buildSegmentLabel(segment, index),
-                title: buildSegmentLabel(segment, index),
-                timing: `${new Date(segment.departure).toLocaleString()} to ${new Date(segment.arrival).toLocaleString()}`,
-                carrier: segment.carrier,
-                flightNumber: segment.flightNumber,
-                from: segment.from,
-                to: segment.to,
-            }));
+        if (storedSegments.length) {
+            return storedSegments;
         }
 
         return [
@@ -485,6 +497,16 @@ function AncillariesPageContent() {
             },
         ];
     }, [booking, retrievedRecord]);
+
+    useEffect(() => {
+        if (!itinerarySegments.length) {
+            return;
+        }
+
+        if (!selectedSegment || !itinerarySegments.some((segment) => segment.key === selectedSegment)) {
+            setSelectedSegment(itinerarySegments[0].key);
+        }
+    }, [itinerarySegments, selectedSegment]);
 
     const activeMeta = categoryMeta[category];
     const liveCategoryOptions = (liveOfferCatalog?.categories?.[category] ?? []).map(mapLiveOfferToPreset);

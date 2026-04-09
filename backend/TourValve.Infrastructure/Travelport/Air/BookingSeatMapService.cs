@@ -58,7 +58,7 @@ public sealed class BookingSeatMapService
                 x.Elements().FirstOrDefault(e => e.Name.LocalName == "BookingTravelerName")?.Attribute("Last")?.Value ?? $"{index + 1}"))
             .ToList();
 
-        var segments = ExtractSegmentContexts(doc, booking, providerCode);
+        var segments = ExtractSegmentContexts(doc, booking, providerCode, segmentLabel);
 
         var selectedSegment = segments.FirstOrDefault(x =>
                                  string.Equals(x.Label, segmentLabel, StringComparison.OrdinalIgnoreCase))
@@ -191,7 +191,11 @@ public sealed class BookingSeatMapService
         return segment;
     }
 
-    private static List<BookingSegmentContext> ExtractSegmentContexts(XDocument doc, Booking booking, string providerCode)
+    private static List<BookingSegmentContext> ExtractSegmentContexts(
+        XDocument doc,
+        Booking booking,
+        string providerCode,
+        string requestedSegmentLabel)
     {
         var directSegments = doc.Descendants()
             .Where(x => x.Name.LocalName == "AirSegment")
@@ -201,11 +205,6 @@ public sealed class BookingSeatMapService
                 index))
             .ToList();
 
-        if (directSegments.Count > 0)
-        {
-            return directSegments;
-        }
-
         var inferredSegments = doc.Descendants()
             .Where(LooksLikeSegmentNode)
             .Select((x, index) => new BookingSegmentContext(
@@ -214,21 +213,42 @@ public sealed class BookingSeatMapService
                 index))
             .ToList();
 
+        var storedSegments = ReadStoredItinerarySegments(booking)
+            .Select((segment, index) =>
+            {
+                var fallback = CreateFallbackSegmentElement(segment, providerCode, booking.Id, index);
+                return new BookingSegmentContext(fallback, BuildSegmentLabel(segment, index), index);
+            })
+            .ToList();
+
+        if (storedSegments.Count > 0)
+        {
+            if (MatchesRequestedLabel(storedSegments, requestedSegmentLabel) &&
+                !MatchesRequestedLabel(directSegments, requestedSegmentLabel) &&
+                !MatchesRequestedLabel(inferredSegments, requestedSegmentLabel))
+            {
+                return storedSegments;
+            }
+
+            if (storedSegments.Count > directSegments.Count && storedSegments.Count > inferredSegments.Count)
+            {
+                return storedSegments;
+            }
+        }
+
+        if (directSegments.Count > 0)
+        {
+            return directSegments;
+        }
+
         if (inferredSegments.Count > 0)
         {
             return inferredSegments;
         }
 
-        var storedSegments = ReadStoredItinerarySegments(booking);
         if (storedSegments.Count > 0)
         {
-            return storedSegments
-                .Select((segment, index) =>
-                {
-                    var fallback = CreateFallbackSegmentElement(segment, providerCode, booking.Id, index);
-                    return new BookingSegmentContext(fallback, BuildSegmentLabel(segment, index), index);
-                })
-                .ToList();
+            return storedSegments;
         }
 
         var singleFallbackSegment = CreateFallbackSegmentElement(doc, booking, providerCode);
@@ -239,6 +259,21 @@ public sealed class BookingSeatMapService
                 BuildSegmentLabel(singleFallbackSegment, 0),
                 0)
         ];
+    }
+
+    private static bool MatchesRequestedLabel(
+        IReadOnlyCollection<BookingSegmentContext> segments,
+        string requestedSegmentLabel)
+    {
+        if (string.IsNullOrWhiteSpace(requestedSegmentLabel) || segments.Count == 0)
+        {
+            return false;
+        }
+
+        return segments.Any(x =>
+            string.Equals(x.Label, requestedSegmentLabel, StringComparison.OrdinalIgnoreCase) ||
+            x.Label.Contains(requestedSegmentLabel, StringComparison.OrdinalIgnoreCase) ||
+            requestedSegmentLabel.Contains(x.Label, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool LooksLikeSegmentNode(XElement element)
