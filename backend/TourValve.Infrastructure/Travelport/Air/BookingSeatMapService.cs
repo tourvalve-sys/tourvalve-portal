@@ -55,13 +55,7 @@ public sealed class BookingSeatMapService
                 x.Elements().FirstOrDefault(e => e.Name.LocalName == "BookingTravelerName")?.Attribute("Last")?.Value ?? $"{index + 1}"))
             .ToList();
 
-        var segments = doc.Descendants()
-            .Where(x => x.Name.LocalName == "AirSegment")
-            .Select((x, index) => new BookingSegmentContext(
-                x,
-                BuildSegmentLabel(x, index),
-                index))
-            .ToList();
+        var segments = ExtractSegmentContexts(doc, booking, providerCode);
 
         var selectedSegment = segments.FirstOrDefault(x =>
                                  string.Equals(x.Label, segmentLabel, StringComparison.OrdinalIgnoreCase))
@@ -177,6 +171,84 @@ public sealed class BookingSeatMapService
         }
 
         return segment.ToString(SaveOptions.DisableFormatting);
+    }
+
+    private static List<BookingSegmentContext> ExtractSegmentContexts(XDocument doc, Booking booking, string providerCode)
+    {
+        var directSegments = doc.Descendants()
+            .Where(x => x.Name.LocalName == "AirSegment")
+            .Select((x, index) => new BookingSegmentContext(
+                x,
+                BuildSegmentLabel(x, index),
+                index))
+            .ToList();
+
+        if (directSegments.Count > 0)
+        {
+            return directSegments;
+        }
+
+        var inferredSegments = doc.Descendants()
+            .Where(LooksLikeSegmentNode)
+            .Select((x, index) => new BookingSegmentContext(
+                x,
+                BuildSegmentLabel(x, index),
+                index))
+            .ToList();
+
+        if (inferredSegments.Count > 0)
+        {
+            return inferredSegments;
+        }
+
+        var fallbackSegment = CreateFallbackSegmentElement(doc, booking, providerCode);
+        return
+        [
+            new BookingSegmentContext(
+                fallbackSegment,
+                BuildSegmentLabel(fallbackSegment, 0),
+                0)
+        ];
+    }
+
+    private static bool LooksLikeSegmentNode(XElement element)
+    {
+        var localName = element.Name.LocalName;
+        if (!localName.Contains("Segment", StringComparison.OrdinalIgnoreCase) &&
+            !localName.Contains("Flight", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return
+            !string.IsNullOrWhiteSpace(element.Attribute("Carrier")?.Value) &&
+            !string.IsNullOrWhiteSpace(element.Attribute("FlightNumber")?.Value) &&
+            !string.IsNullOrWhiteSpace(element.Attribute("Origin")?.Value) &&
+            !string.IsNullOrWhiteSpace(element.Attribute("Destination")?.Value) &&
+            !string.IsNullOrWhiteSpace(element.Attribute("DepartureTime")?.Value);
+    }
+
+    private static XElement CreateFallbackSegmentElement(XDocument doc, Booking booking, string providerCode)
+    {
+        var classOfService =
+            doc.Descendants().FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Attribute("ClassOfService")?.Value))?.Attribute("ClassOfService")?.Value
+            ?? doc.Descendants().FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Attribute("BookingCode")?.Value))?.Attribute("BookingCode")?.Value
+            ?? doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo" && !string.IsNullOrWhiteSpace(x.Attribute("BookingCode")?.Value))?.Attribute("BookingCode")?.Value
+            ?? "Y";
+
+        return new XElement(
+            XName.Get("AirSegment", "http://www.travelport.com/schema/air_v51_0"),
+            new XAttribute("Key", $"TV-SEG-{booking.Id:N}"),
+            new XAttribute("Group", "0"),
+            new XAttribute("Carrier", booking.Carrier),
+            new XAttribute("FlightNumber", booking.FlightNumber),
+            new XAttribute("Origin", booking.From),
+            new XAttribute("Destination", booking.To),
+            new XAttribute("DepartureTime", booking.DepartureTime.ToString("yyyy-MM-ddTHH:mm:ss")),
+            new XAttribute("ArrivalTime", booking.ArrivalTime.ToString("yyyy-MM-ddTHH:mm:ss")),
+            new XAttribute("ProviderCode", string.IsNullOrWhiteSpace(providerCode) ? "1G" : providerCode),
+            new XAttribute("ClassOfService", classOfService),
+            new XAttribute("ETicketability", "Yes"));
     }
 
     private static BookingSeatMapResult ParseSeatMapResponse(string xml, string requestedSegmentLabel)
