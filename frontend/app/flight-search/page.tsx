@@ -360,6 +360,7 @@ export default function FlightSearch() {
     const searchModeRef = useRef<SearchMode>(restoredState?.searchMode ?? "lowfare");
     const resultsSectionRef = useRef<HTMLDivElement | null>(null);
     const firstResultCardRef = useRef<HTMLDivElement | null>(null);
+    const prebookSeatMapSectionRef = useRef<HTMLDivElement | null>(null);
     const pendingResultsScrollRef = useRef(false);
 
     const [form, setForm] = useState(restoredState?.form ?? createDefaultForm());
@@ -539,6 +540,23 @@ export default function FlightSearch() {
             document.body.style.overflow = "";
         };
     }, [prebookFlightId]);
+
+    useEffect(() => {
+        if (!prebookFlightId || prebookSeatMapLoading) {
+            return;
+        }
+
+        if (!prebookSeatMap && !prebookSeatMapError) {
+            return;
+        }
+
+        window.setTimeout(() => {
+            prebookSeatMapSectionRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+        }, 80);
+    }, [prebookFlightId, prebookSeatMap, prebookSeatMapError, prebookSeatMapLoading]);
 
     const isSearchDraftDirty = Boolean(lastSearchedKey && currentSearchKey !== lastSearchedKey);
 
@@ -1786,8 +1804,8 @@ export default function FlightSearch() {
             </div>
 
             {prebookFlight && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(17,22,31,0.55)] px-4 py-6 backdrop-blur-sm">
-                    <div className="relative max-h-[92vh] w-full max-w-[1280px] overflow-hidden rounded-[2rem] border border-[rgba(255,255,255,0.14)] bg-[linear-gradient(160deg,rgba(244,248,255,0.98),rgba(232,239,250,0.94))] shadow-[0_30px_80px_rgba(16,24,40,0.34)]">
+                <div className="fixed inset-0 z-50 overflow-y-auto bg-[rgba(17,22,31,0.55)] px-4 py-8 backdrop-blur-sm">
+                    <div className="mx-auto w-full max-w-[1280px] rounded-[2rem] border border-[rgba(255,255,255,0.14)] bg-[linear-gradient(160deg,rgba(244,248,255,0.98),rgba(232,239,250,0.94))] shadow-[0_30px_80px_rgba(16,24,40,0.34)]">
                         <div className="flex items-center justify-between gap-4 border-b border-[rgba(32,63,92,0.08)] bg-[linear-gradient(90deg,#1f5fb6,#174498)] px-6 py-5 text-white">
                             <div className="min-w-0">
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
@@ -1817,7 +1835,7 @@ export default function FlightSearch() {
                             </div>
                         </div>
 
-                        <div className="grid max-h-[calc(92vh-92px)] gap-0 overflow-y-auto lg:grid-cols-[280px_1fr_250px]">
+                        <div className="grid gap-0 lg:grid-cols-[280px_1fr_250px]">
                             <aside className="border-r border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(231,239,252,0.88),rgba(238,244,252,0.94))] p-5">
                                 <div className="rounded-[1.35rem] border border-[rgba(23,68,152,0.18)] bg-white/90 p-4 shadow-[0_14px_30px_rgba(26,56,117,0.12)]">
                                     <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Traveler</div>
@@ -1911,7 +1929,10 @@ export default function FlightSearch() {
                                 </div>
                             </aside>
 
-                            <section className="min-w-0 bg-[linear-gradient(180deg,rgba(247,250,255,0.94),rgba(239,244,252,0.96))] p-5">
+                            <section
+                                ref={prebookSeatMapSectionRef}
+                                className="min-w-0 bg-[linear-gradient(180deg,rgba(247,250,255,0.94),rgba(239,244,252,0.96))] p-5"
+                            >
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>
                                         <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Live seat map</div>
