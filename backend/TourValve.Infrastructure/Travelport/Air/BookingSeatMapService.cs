@@ -9,6 +9,8 @@ public sealed class BookingSeatMapService
 {
     private readonly TravelportAirClient _airClient;
     private readonly TravelportConfig _config;
+    private static readonly XNamespace AirNs = "http://www.travelport.com/schema/air_v51_0";
+    private static readonly XNamespace CommonNs = "http://www.travelport.com/schema/common_v51_0";
 
     public BookingSeatMapService(TravelportAirClient airClient, TravelportConfig config)
     {
@@ -73,53 +75,68 @@ public sealed class BookingSeatMapService
             frequentFlyerProgram,
             frequentFlyerNumber);
 
-        return $@"
-<air:SeatMapReq
-    xmlns:air=""http://www.travelport.com/schema/air_v51_0""
-    xmlns:com=""http://www.travelport.com/schema/common_v51_0""
-    AuthorizedBy=""{Escape(_config.Username.Replace("Universal API/", "", StringComparison.OrdinalIgnoreCase))}""
-    TargetBranch=""{Escape(_config.TargetBranch)}""
-    TraceId=""TV-BOOK-SEAT-{DateTime.UtcNow:yyyyMMddHHmmss}""
-    ReturnSeatPricing=""true""
-    ReturnBrandingInfo=""true"">
-  <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
-{travelerXml}
-  {airSegment}
-</air:SeatMapReq>".Trim();
+        var request = new XElement(
+            AirNs + "SeatMapReq",
+            new XAttribute(XNamespace.Xmlns + "air", AirNs),
+            new XAttribute(XNamespace.Xmlns + "com", CommonNs),
+            new XAttribute("AuthorizedBy", _config.Username.Replace("Universal API/", "", StringComparison.OrdinalIgnoreCase)),
+            new XAttribute("TargetBranch", _config.TargetBranch),
+            new XAttribute("TraceId", $"TV-BOOK-SEAT-{DateTime.UtcNow:yyyyMMddHHmmss}"),
+            new XAttribute("ReturnSeatPricing", "true"),
+            new XAttribute("ReturnBrandingInfo", "true"),
+            new XElement(CommonNs + "BillingPointOfSaleInfo", new XAttribute("OriginApplication", "UAPI")),
+            travelerXml,
+            airSegment);
+
+        return request.ToString(SaveOptions.DisableFormatting);
     }
 
-    private static string BuildTravelerXml(
+    private static XElement BuildTravelerXml(
         BookingTravelerContext? traveler,
         string supplierCode,
         string frequentFlyerProgram,
         string frequentFlyerNumber)
     {
-        var loyaltyXml = !string.IsNullOrWhiteSpace(frequentFlyerNumber)
-            ? $@"
-      <com:LoyaltyCard SupplierCode=""{Escape(string.IsNullOrWhiteSpace(frequentFlyerProgram) ? supplierCode : frequentFlyerProgram)}"" CardNumber=""{Escape(frequentFlyerNumber)}"" />"
-            : string.Empty;
+        var loyaltyCard = !string.IsNullOrWhiteSpace(frequentFlyerNumber)
+            ? new XElement(
+                CommonNs + "LoyaltyCard",
+                new XAttribute("SupplierCode", string.IsNullOrWhiteSpace(frequentFlyerProgram) ? supplierCode : frequentFlyerProgram),
+                new XAttribute("CardNumber", frequentFlyerNumber))
+            : null;
 
         if (traveler is null)
         {
-            return $@"
-    <air:SearchTraveler Code=""ADT"" Key=""TRV-1"">
-      <com:Name First=""TourValve"" Last=""Traveler"" />{loyaltyXml}
-    </air:SearchTraveler>";
+            return new XElement(
+                AirNs + "SearchTraveler",
+                new XAttribute("Code", "ADT"),
+                new XAttribute("Key", "TRV-1"),
+                new XElement(CommonNs + "Name",
+                    new XAttribute("First", "TourValve"),
+                    new XAttribute("Last", "Traveler")),
+                loyaltyCard);
         }
 
-        var prefixAttribute = string.IsNullOrWhiteSpace(traveler.Prefix)
-            ? string.Empty
-            : $@" Prefix=""{Escape(traveler.Prefix)}""";
+        var name = new XElement(
+            CommonNs + "Name",
+            new XAttribute("First", traveler.First),
+            new XAttribute("Last", traveler.Last));
 
-        return $@"
-    <air:SearchTraveler Code=""{Escape(traveler.Code)}"" Key=""{Escape(traveler.Key)}"">
-      <com:Name{prefixAttribute} First=""{Escape(traveler.First)}"" Last=""{Escape(traveler.Last)}"" />{loyaltyXml}
-    </air:SearchTraveler>";
+        if (!string.IsNullOrWhiteSpace(traveler.Prefix))
+        {
+            name.SetAttributeValue("Prefix", traveler.Prefix);
+        }
+
+        return new XElement(
+            AirNs + "SearchTraveler",
+            new XAttribute("Code", traveler.Code),
+            new XAttribute("Key", traveler.Key),
+            name,
+            loyaltyCard);
     }
 
-    private static string BuildSeatMapSegment(XElement original, string providerCode)
+    private static XElement BuildSeatMapSegment(XElement original, string providerCode)
     {
-        var segment = new XElement(XName.Get("AirSegment", "http://www.travelport.com/schema/air_v51_0"));
+        var segment = new XElement(AirNs + "AirSegment");
 
         foreach (var attribute in original.Attributes())
         {
@@ -170,7 +187,7 @@ public sealed class BookingSeatMapService
             throw new InvalidOperationException($"Seat map requires additional booking segment attributes: {string.Join(", ", missing)}");
         }
 
-        return segment.ToString(SaveOptions.DisableFormatting);
+        return segment;
     }
 
     private static List<BookingSegmentContext> ExtractSegmentContexts(XDocument doc, Booking booking, string providerCode)
@@ -427,10 +444,6 @@ public sealed class BookingSeatMapService
     {
         return $"Sector {index + 1} - {segment.Attribute("Origin")?.Value ?? string.Empty} -> {segment.Attribute("Destination")?.Value ?? string.Empty}";
     }
-
-    private static string Escape(string value) =>
-        value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;")
-            .Replace("\"", "&quot;").Replace("'", "&apos;");
 
     private sealed record BookingSegmentContext(XElement Element, string Label, int Index);
     private sealed record BookingTravelerContext(string Key, string Code, string Prefix, string First, string Last);
