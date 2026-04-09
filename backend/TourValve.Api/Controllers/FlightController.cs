@@ -1023,7 +1023,21 @@ public class FlightsController : ControllerBase
         var message = supplierMessages.FirstOrDefault() ?? string.Empty;
 
         var rowNodes = doc.Descendants()
-            .Where(x => x.Name.LocalName == "Row")
+            .Where(x =>
+                x.Name.LocalName == "Row" ||
+                (
+                    !string.Equals(x.Name.LocalName, "Facility", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(x.Attribute("Number")?.Value) &&
+                    x.Descendants().Any(facility =>
+                        facility.Name.LocalName == "Facility" &&
+                        (
+                            string.Equals(facility.Attribute("Type")?.Value, "Seat", StringComparison.OrdinalIgnoreCase) ||
+                            (
+                                !string.IsNullOrWhiteSpace(facility.Attribute("SeatCode")?.Value) &&
+                                !string.Equals(facility.Attribute("Type")?.Value, "Aisle", StringComparison.OrdinalIgnoreCase)
+                            )
+                        ))
+                ))
             .ToList();
         var facilityNodes = doc.Descendants()
             .Where(x => x.Name.LocalName == "Facility")

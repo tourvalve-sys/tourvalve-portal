@@ -2070,10 +2070,10 @@ export default function FlightSearch() {
                                                         })}
                                                     </div>
                                                 ) : (
-                                                    <div className="rounded-[1.3rem] border border-[rgba(89,64,46,0.08)] bg-[rgba(248,250,255,0.86)] px-4 py-5 text-sm leading-7 text-slate-600">
-                                                        {prebookSeatMap?.message || "The airline did not return drawable seat rows for this priced itinerary yet."}
-                                                    </div>
-                                                )}
+                                                     <div className="rounded-[1.3rem] border border-[rgba(89,64,46,0.08)] bg-[rgba(248,250,255,0.86)] px-4 py-5 text-sm leading-7 text-slate-600">
+                                                        {prebookSeatMap?.diagnostics?.parserAssessment || prebookSeatMap?.message || "The airline did not return drawable seat rows for this priced itinerary yet."}
+                                                      </div>
+                                                  )}
                                             </div>
                                         </div>
 

@@ -385,7 +385,15 @@ public sealed class BookingSeatMapService
                 x => x,
                 StringComparer.OrdinalIgnoreCase);
 
-        var rowNodes = doc.Descendants().Where(x => x.Name.LocalName == "Row").ToList();
+        var rowNodes = doc.Descendants()
+            .Where(x =>
+                x.Name.LocalName == "Row" ||
+                (
+                    !string.Equals(x.Name.LocalName, "Facility", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(x.Attribute("Number")?.Value) &&
+                    x.Descendants().Any(facility => facility.Name.LocalName == "Facility" && IsSeatFacility(facility))
+                ))
+            .ToList();
         var facilityNodes = doc.Descendants().Where(x => x.Name.LocalName == "Facility").ToList();
         var seatLikeFacilities = facilityNodes
             .Where(IsSeatFacility)
