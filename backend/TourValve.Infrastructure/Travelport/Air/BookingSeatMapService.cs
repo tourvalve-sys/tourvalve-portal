@@ -423,7 +423,7 @@ public sealed class BookingSeatMapService
                 Number = row.Attribute("Number")?.Value ?? string.Empty,
                 Seats = row.Descendants()
                     .Where(x => x.Name.LocalName == "Facility" && IsSeatFacility(x))
-                    .Select(facility => MapSeat(facility, optionalServices))
+                    .Select(facility => MapSeat(facility, optionalServices, row.Attribute("Number")?.Value ?? string.Empty))
                     .Where(seat => !string.IsNullOrWhiteSpace(seat.Code))
                     .ToList()
             })
@@ -435,8 +435,8 @@ public sealed class BookingSeatMapService
             rows = seatLikeFacilities
                 .Select(facility => new
                 {
-                    Seat = MapSeat(facility, optionalServices),
-                    RowNumber = ExtractSeatRowNumber(facility.Attribute("SeatCode")?.Value)
+                    RowNumber = ExtractSeatRowNumber(facility),
+                    Seat = MapSeat(facility, optionalServices, ExtractSeatRowNumber(facility))
                 })
                 .Where(x => !string.IsNullOrWhiteSpace(x.RowNumber) && !string.IsNullOrWhiteSpace(x.Seat.Code))
                 .GroupBy(x => x.RowNumber, StringComparer.OrdinalIgnoreCase)
@@ -494,14 +494,29 @@ public sealed class BookingSeatMapService
         };
     }
 
-    private static string ExtractSeatRowNumber(string? seatCode)
+    private static string ExtractSeatRowNumber(XElement facility)
     {
-        if (string.IsNullOrWhiteSpace(seatCode))
-            return string.Empty;
+        var candidates = new[]
+        {
+            facility.Attribute("SeatCode")?.Value,
+            facility.Attribute("Location")?.Value,
+            facility.Attribute("SeatLocation")?.Value,
+            facility.Attribute("Row")?.Value,
+            facility.Attribute("RowNumber")?.Value
+        };
 
-        var normalized = seatCode.Replace("-", string.Empty).Trim();
-        var digits = new string(normalized.TakeWhile(char.IsDigit).ToArray());
-        return digits;
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            var normalized = candidate.Replace("-", string.Empty).Trim();
+            var digits = new string(normalized.TakeWhile(char.IsDigit).ToArray());
+            if (!string.IsNullOrWhiteSpace(digits))
+                return digits;
+        }
+
+        return string.Empty;
     }
 
     private static int ParseSeatRowSortValue(string? rowNumber)
@@ -520,7 +535,8 @@ public sealed class BookingSeatMapService
 
     private static BookingSeatMapSeat MapSeat(
         XElement facility,
-        IReadOnlyDictionary<string, XElement> optionalServices)
+        IReadOnlyDictionary<string, XElement> optionalServices,
+        string rowNumberHint)
     {
         var characteristics = facility.Elements()
             .Where(x => x.Name.LocalName == "Characteristic")
@@ -546,10 +562,11 @@ public sealed class BookingSeatMapService
         TryParseCurrencyAmount(seatPriceText, out var seatPrice, out var currency);
         var taxesText = optionalService?.Attribute("TotalTaxes")?.Value?.Trim();
         TryParseCurrencyAmount(taxesText, out var taxes, out _);
+        var seatCode = ResolveSeatCode(facility, rowNumberHint);
 
         return new BookingSeatMapSeat
         {
-            Code = (facility.Attribute("SeatCode")?.Value ?? string.Empty).Replace("-", string.Empty),
+            Code = seatCode,
             Availability = facility.Attribute("Availability")?.Value ?? string.Empty,
             Paid = bool.TryParse(facility.Attribute("Paid")?.Value, out var paid) && paid,
             Characteristics = characteristics,
@@ -587,6 +604,27 @@ public sealed class BookingSeatMapService
 
         amount = parsed;
         return true;
+    }
+
+    private static string ResolveSeatCode(XElement facility, string rowNumberHint)
+    {
+        var explicitSeatCode = (facility.Attribute("SeatCode")?.Value ?? string.Empty).Replace("-", string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(explicitSeatCode))
+            return explicitSeatCode;
+
+        var location = (facility.Attribute("Location")?.Value ?? facility.Attribute("SeatLocation")?.Value ?? string.Empty)
+            .Replace("-", string.Empty)
+            .Trim();
+        if (!string.IsNullOrWhiteSpace(location))
+            return location;
+
+        var column = (facility.Attribute("Column")?.Value ?? facility.Attribute("SeatColumn")?.Value ?? string.Empty)
+            .Replace("-", string.Empty)
+            .Trim();
+        if (!string.IsNullOrWhiteSpace(rowNumberHint) && !string.IsNullOrWhiteSpace(column))
+            return $"{rowNumberHint}{column}";
+
+        return string.Empty;
     }
 
     private static string BuildSegmentLabel(XElement segment, int index)

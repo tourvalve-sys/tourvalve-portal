@@ -1082,7 +1082,7 @@ public class FlightsController : ControllerBase
                                 !string.Equals(facility.Attribute("Type")?.Value, "Aisle", StringComparison.OrdinalIgnoreCase)
                             )
                         ))
-                    .Select(MapSeatFacility)
+                    .Select(facility => MapSeatFacility(facility, row.Attribute("Number")?.Value ?? string.Empty))
                     .Where(seat => !string.IsNullOrWhiteSpace(seat.code))
                     .ToList()
             })
@@ -1094,8 +1094,8 @@ public class FlightsController : ControllerBase
             rows = seatLikeFacilities
                 .Select(facility => new
                 {
-                    seat = MapSeatFacility(facility),
-                    rowNumber = ExtractSeatRowNumber(facility.Attribute("SeatCode")?.Value)
+                    rowNumber = ExtractSeatRowNumber(facility),
+                    seat = MapSeatFacility(facility, ExtractSeatRowNumber(facility))
                 })
                 .Where(x => !string.IsNullOrWhiteSpace(x.rowNumber))
                 .GroupBy(x => x.rowNumber, StringComparer.OrdinalIgnoreCase)
@@ -1150,10 +1150,11 @@ public class FlightsController : ControllerBase
         };
     }
 
-    private static (string code, string availability, bool paid, List<string> characteristics) MapSeatFacility(XElement facility)
+    private static (string code, string availability, bool paid, List<string> characteristics) MapSeatFacility(XElement facility, string rowNumberHint)
     {
+        var seatCode = ResolveSeatCode(facility, rowNumberHint);
         return (
-            (facility.Attribute("SeatCode")?.Value ?? string.Empty).Replace("-", ""),
+            seatCode,
             facility.Attribute("Availability")?.Value ?? string.Empty,
             bool.TryParse(facility.Attribute("Paid")?.Value, out var paid) && paid,
             facility.Elements()
@@ -1163,14 +1164,29 @@ public class FlightsController : ControllerBase
                 .ToList());
     }
 
-    private static string ExtractSeatRowNumber(string? seatCode)
+    private static string ExtractSeatRowNumber(XElement facility)
     {
-        if (string.IsNullOrWhiteSpace(seatCode))
-            return string.Empty;
+        var candidates = new[]
+        {
+            facility.Attribute("SeatCode")?.Value,
+            facility.Attribute("Location")?.Value,
+            facility.Attribute("SeatLocation")?.Value,
+            facility.Attribute("Row")?.Value,
+            facility.Attribute("RowNumber")?.Value
+        };
 
-        var normalized = seatCode.Replace("-", string.Empty).Trim();
-        var digits = new string(normalized.TakeWhile(char.IsDigit).ToArray());
-        return digits;
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            var normalized = candidate.Replace("-", string.Empty).Trim();
+            var digits = new string(normalized.TakeWhile(char.IsDigit).ToArray());
+            if (!string.IsNullOrWhiteSpace(digits))
+                return digits;
+        }
+
+        return string.Empty;
     }
 
     private static int ParseSeatRowSortValue(string? rowNumber)
@@ -1185,6 +1201,27 @@ public class FlightsController : ControllerBase
 
         var normalized = seatCode.Replace("-", string.Empty).Trim();
         return new string(normalized.SkipWhile(char.IsDigit).ToArray());
+    }
+
+    private static string ResolveSeatCode(XElement facility, string rowNumberHint)
+    {
+        var explicitSeatCode = (facility.Attribute("SeatCode")?.Value ?? string.Empty).Replace("-", "").Trim();
+        if (!string.IsNullOrWhiteSpace(explicitSeatCode))
+            return explicitSeatCode;
+
+        var location = (facility.Attribute("Location")?.Value ?? facility.Attribute("SeatLocation")?.Value ?? string.Empty)
+            .Replace("-", "")
+            .Trim();
+        if (!string.IsNullOrWhiteSpace(location))
+            return location;
+
+        var column = (facility.Attribute("Column")?.Value ?? facility.Attribute("SeatColumn")?.Value ?? string.Empty)
+            .Replace("-", "")
+            .Trim();
+        if (!string.IsNullOrWhiteSpace(rowNumberHint) && !string.IsNullOrWhiteSpace(column))
+            return $"{rowNumberHint}{column}";
+
+        return string.Empty;
     }
 
     private static string ExtractHostTokensXml(string airPricingSolutionXml)
