@@ -55,39 +55,35 @@ function normalizeFlightResult(value: unknown): FlightResult | null {
     }
 
     const flight = value as Partial<FlightResult>;
-    if (
-        typeof flight.id !== "string" ||
-        typeof flight.carrier !== "string" ||
-        typeof flight.flightNumber !== "string" ||
-        typeof flight.from !== "string" ||
-        typeof flight.to !== "string" ||
-        typeof flight.departure !== "string" ||
-        typeof flight.arrival !== "string"
-    ) {
+    const coerceString = (input: unknown) => (typeof input === "string" ? input : "");
+    const coerceNumber = (input: unknown) =>
+        typeof input === "number" && Number.isFinite(input) ? input : 0;
+
+    if (!coerceString(flight.id)) {
         return null;
     }
 
     return {
-        id: flight.id,
-        carrier: flight.carrier,
-        flightNumber: flight.flightNumber,
-        from: flight.from,
-        to: flight.to,
-        departure: flight.departure,
-        arrival: flight.arrival,
-        price: typeof flight.price === "number" ? flight.price : 0,
-        basePrice: typeof flight.basePrice === "number" ? flight.basePrice : 0,
-        markupAmount: typeof flight.markupAmount === "number" ? flight.markupAmount : 0,
-        currency: typeof flight.currency === "string" ? flight.currency : "MYR",
-        cabinClass: typeof flight.cabinClass === "string" ? flight.cabinClass : "Economy",
-        carryOnAllowance: typeof flight.carryOnAllowance === "string" ? flight.carryOnAllowance : "",
-        checkedBaggageAllowance: typeof flight.checkedBaggageAllowance === "string" ? flight.checkedBaggageAllowance : "",
+        id: coerceString(flight.id),
+        carrier: coerceString(flight.carrier),
+        flightNumber: coerceString(flight.flightNumber),
+        from: coerceString(flight.from),
+        to: coerceString(flight.to),
+        departure: coerceString(flight.departure),
+        arrival: coerceString(flight.arrival),
+        price: coerceNumber(flight.price),
+        basePrice: coerceNumber(flight.basePrice),
+        markupAmount: coerceNumber(flight.markupAmount),
+        currency: coerceString(flight.currency) || "MYR",
+        cabinClass: coerceString(flight.cabinClass) || "Economy",
+        carryOnAllowance: coerceString(flight.carryOnAllowance),
+        checkedBaggageAllowance: coerceString(flight.checkedBaggageAllowance),
         baggageOfferTexts: Array.isArray(flight.baggageOfferTexts)
             ? flight.baggageOfferTexts.filter((item): item is string => typeof item === "string")
             : [],
-        airPricingSolutionXml: typeof flight.airPricingSolutionXml === "string" ? flight.airPricingSolutionXml : "",
-        airPricingContextXml: typeof flight.airPricingContextXml === "string" ? flight.airPricingContextXml : "",
-        airSegmentXml: typeof flight.airSegmentXml === "string" ? flight.airSegmentXml : "",
+        airPricingSolutionXml: coerceString(flight.airPricingSolutionXml),
+        airPricingContextXml: coerceString(flight.airPricingContextXml),
+        airSegmentXml: coerceString(flight.airSegmentXml),
         airSegmentXmls: Array.isArray(flight.airSegmentXmls)
             ? flight.airSegmentXmls.filter((item): item is string => typeof item === "string")
             : [],
@@ -109,12 +105,14 @@ function normalizeFlightResult(value: unknown): FlightResult | null {
 }
 
 function createPersistedFlightSnapshot(flight: FlightResult): FlightResult {
+    const normalized = normalizeFlightResult(flight) ?? flight;
+
     return {
-        ...flight,
-        airPricingContextXml: flight.airPricingContextXml.length > 120000 ? "" : flight.airPricingContextXml,
-        airPricingSolutionXml: flight.airPricingSolutionXml.length > 120000 ? "" : flight.airPricingSolutionXml,
-        airSegmentXml: flight.airSegmentXml.length > 40000 ? "" : flight.airSegmentXml,
-        airSegmentXmls: flight.airSegmentXmls.map((segmentXml) =>
+        ...normalized,
+        airPricingContextXml: normalized.airPricingContextXml.length > 120000 ? "" : normalized.airPricingContextXml,
+        airPricingSolutionXml: normalized.airPricingSolutionXml.length > 120000 ? "" : normalized.airPricingSolutionXml,
+        airSegmentXml: normalized.airSegmentXml.length > 40000 ? "" : normalized.airSegmentXml,
+        airSegmentXmls: normalized.airSegmentXmls.map((segmentXml) =>
             segmentXml.length > 40000 ? "" : segmentXml
         ),
     };
@@ -141,15 +139,16 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
     });
 
     const setSelectedFlight = (flight: FlightResult | null) => {
-        setSelectedFlightState(flight);
+        const normalizedFlight = flight ? normalizeFlightResult(flight) : null;
+        setSelectedFlightState(normalizedFlight);
 
         if (typeof window === "undefined") {
             return;
         }
 
         try {
-            if (flight) {
-                sessionStorage.setItem("selectedFlight", JSON.stringify(createPersistedFlightSnapshot(flight)));
+            if (normalizedFlight) {
+                sessionStorage.setItem("selectedFlight", JSON.stringify(createPersistedFlightSnapshot(normalizedFlight)));
             } else {
                 sessionStorage.removeItem("selectedFlight");
             }
