@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TourValve Maintenance</title>
+  <style>
+    :root {
+      --ink: #14213d;
+      --accent: #9a6a3a;
+      --accent-strong: #6d4320;
+      --border: rgba(89, 64, 46, 0.14);
+      --card: rgba(255, 251, 245, 0.9);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
+      color: #334155;
+      background:
+        radial-gradient(circle at top left, rgba(154, 106, 58, 0.18), transparent 28%),
+        radial-gradient(circle at 85% 15%, rgba(20, 33, 61, 0.12), transparent 24%),
+        linear-gradient(180deg, #fbf7f0 0%, #f2ecdf 45%, #efe6d7 100%);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .shell {
+      width: min(1120px, 100%);
+      display: grid;
+      gap: 24px;
+      grid-template-columns: minmax(0, 1.2fr) 360px;
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 32px;
+      background: linear-gradient(180deg, rgba(255, 252, 247, 0.96), rgba(252, 247, 239, 0.84));
+      box-shadow: 0 24px 60px rgba(53, 35, 19, 0.14);
+      backdrop-filter: blur(18px);
+      overflow: hidden;
+    }
+
+    .hero {
+      padding: 40px;
+      background-image:
+        linear-gradient(rgba(89, 64, 46, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(89, 64, 46, 0.04) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    .kicker {
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      font-size: 12px;
+      font-weight: 700;
+      color: rgba(20, 33, 61, 0.58);
+    }
+
+    h1 {
+      margin: 18px 0 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      font-size: clamp(44px, 6vw, 76px);
+      line-height: 0.95;
+      letter-spacing: -0.03em;
+      color: var(--ink);
+    }
+
+    p {
+      margin: 20px 0 0;
+      font-size: 17px;
+      line-height: 1.9;
+      max-width: 760px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 26px;
+      border-radius: 999px;
+      padding: 12px 18px;
+      background: rgba(166, 61, 64, 0.08);
+      color: #a63d40;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .pill::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .cards {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 30px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: var(--card);
+      padding: 20px;
+      box-shadow: 0 16px 35px rgba(53, 35, 19, 0.08);
+    }
+
+    .card h2 {
+      margin: 12px 0 0;
+      font-size: 20px;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .card p {
+      margin-top: 10px;
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .side {
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .status-box,
+    .notes {
+      border: 1px solid var(--border);
+      border-radius: 26px;
+      background: rgba(255,255,255,0.82);
+      padding: 22px;
+    }
+
+    .status-box strong {
+      display: block;
+      margin-top: 10px;
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      font-size: 40px;
+      line-height: 1;
+      color: var(--ink);
+    }
+
+    .notes ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .notes li {
+      margin: 10px 0;
+      line-height: 1.75;
+    }
+
+    @media (max-width: 980px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .cards {
+        grid-template-columns: 1fr;
+      }
+
+      .hero,
+      .side {
+        padding: 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="panel hero">
+      <div class="kicker">System Notice</div>
+      <h1>TourValve is under maintenance.</h1>
+      <p>
+        We are carrying out a scheduled software update to keep the portal stable, secure,
+        and ready for the next booking cycle. Service will return as soon as the update is completed.
+      </p>
+      <div class="pill">Temporarily unavailable</div>
+
+      <div class="cards">
+        <article class="card">
+          <div class="kicker">Affected</div>
+          <h2>Search &amp; booking</h2>
+          <p>Flight shopping, booking handoff, and ancillary flows may be unavailable during the update.</p>
+        </article>
+        <article class="card">
+          <div class="kicker">Expected</div>
+          <h2>Short interruption</h2>
+          <p>The portal should return automatically once services and network routing are restored.</p>
+        </article>
+        <article class="card">
+          <div class="kicker">Action</div>
+          <h2>Please check back soon</h2>
+          <p>Refresh the page after maintenance ends or contact your TourValve administrator for updates.</p>
+        </article>
+      </div>
+    </section>
+
+    <aside class="panel side">
+      <section class="status-box">
+        <div class="kicker">Maintenance Window</div>
+        <strong>Offline briefly</strong>
+        <p>This page is meant to be served during planned maintenance so users see a clean service message instead of a generic server error.</p>
+      </section>
+
+      <section class="notes">
+        <div class="kicker">Notes</div>
+        <ul>
+          <li>Frontend and backend services may restart as part of the update.</li>
+          <li>Existing sessions can expire and users may need to sign in again afterwards.</li>
+          <li>Search and booking should resume once system services and network checks pass.</li>
+        </ul>
+      </section>
+    </aside>
+  </main>
+</body>
+</html>

@@ -17,7 +17,8 @@ export default function RootLayout({
     const isAuthPage =
         pathname === "/login" ||
         pathname === "/register" ||
-        pathname === "/forgot-password";
+        pathname === "/forgot-password" ||
+        pathname === "/maintenance";
 
     return (
         <html lang="en">
