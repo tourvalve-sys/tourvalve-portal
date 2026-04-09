@@ -101,6 +101,25 @@ function normalizeFlightResult(value: unknown): FlightResult | null {
                         typeof segment.arrival === "string"
                 )
             : [],
+        prebookSelections:
+            flight.prebookSelections &&
+            typeof flight.prebookSelections === "object" &&
+            typeof flight.prebookSelections.baggagePreference === "string"
+                ? {
+                    baggagePreference: flight.prebookSelections.baggagePreference,
+                    selectedSeats: Array.isArray(flight.prebookSelections.selectedSeats)
+                        ? flight.prebookSelections.selectedSeats.filter(
+                            (
+                                seat
+                            ): seat is NonNullable<FlightResult["prebookSelections"]>["selectedSeats"][number] =>
+                                Boolean(seat) &&
+                                typeof seat === "object" &&
+                                typeof seat.segmentLabel === "string" &&
+                                typeof seat.seatCode === "string"
+                        )
+                        : [],
+                }
+                : undefined,
     };
 }
 

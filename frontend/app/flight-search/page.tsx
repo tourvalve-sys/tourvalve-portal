@@ -1,19 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
     ArrowLeftRight,
     Baby,
     Check,
+    Luggage,
     MapPin,
     Search,
     SlidersHorizontal,
+    Sparkles,
     UserRound,
     UsersRound,
+    X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { priceFlight, searchFlights, type FlightResult } from "@/lib/api";
+import { getFlightSeatMap, priceFlight, searchFlights, type FlightResult, type FlightSeatMapResponse } from "@/lib/api";
 import { findAirportMatches, type AirportOption } from "@/lib/airports";
 import AirlineBrand, { getAirlineDisplayName } from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
@@ -102,6 +105,58 @@ const createDefaultFlightSearchUiState = (): FlightSearchUiState => ({
     form: createDefaultForm(),
     multiCitySegments: createDefaultMultiCitySegments(),
 });
+
+type PrebookSeatSelection = {
+    segmentLabel: string;
+    seatCode: string;
+};
+
+function buildPrebookSegmentLabel(segment: {
+    carrier: string;
+    flightNumber: string;
+    from: string;
+    to: string;
+}) {
+    const flightLabel = [segment.carrier, segment.flightNumber].filter(Boolean).join(" ").trim();
+    return `${segment.from} -> ${segment.to}${flightLabel ? ` (${flightLabel})` : ""}`;
+}
+
+function isPreviewSeatSelectable(seat: {
+    code: string;
+    availability: string;
+    characteristics: string[];
+}) {
+    const availability = seat.availability.trim().toLowerCase();
+    const characteristics = seat.characteristics.map((item) => item.trim().toLowerCase());
+
+    if (!seat.code.trim()) {
+        return false;
+    }
+
+    if (characteristics.some((item) => ["blocked", "occupied", "unavailable", "restrict", "no-seat"].includes(item))) {
+        return false;
+    }
+
+    return !["blocked", "occupied", "unavailable", "no seat", "taken", "held"].includes(availability);
+}
+
+function splitSeatRow<T>(seats: T[]) {
+    const midpoint = Math.ceil(seats.length / 2);
+    return {
+        left: seats.slice(0, midpoint),
+        right: seats.slice(midpoint),
+    };
+}
+
+function getBaggageHighlights(flight: FlightResult) {
+    const highlights = [
+        flight.carryOnAllowance?.trim(),
+        flight.checkedBaggageAllowance?.trim(),
+        ...(flight.baggageOfferTexts ?? []).map((item) => item.trim()),
+    ].filter(Boolean) as string[];
+
+    return Array.from(new Set(highlights)).slice(0, 4);
+}
 
 function buildSearchSignature(args: {
     tripType: "oneway" | "return" | "multicity";
@@ -271,6 +326,13 @@ export default function FlightSearch() {
     const [pricingErrors, setPricingErrors] = useState<Record<string, string>>(restoredState?.pricingErrors ?? {});
     const [searchMode, setSearchMode] = useState<SearchMode>(restoredState?.searchMode ?? "lowfare");
     const [filters, setFilters] = useState<FilterState>(restoredState?.filters ?? createDefaultFilters());
+    const [prebookFlightId, setPrebookFlightId] = useState<string | null>(null);
+    const [prebookSeatMap, setPrebookSeatMap] = useState<FlightSeatMapResponse | null>(null);
+    const [prebookSeatMapLoading, setPrebookSeatMapLoading] = useState(false);
+    const [prebookSeatMapError, setPrebookSeatMapError] = useState("");
+    const [prebookActiveSegmentIndex, setPrebookActiveSegmentIndex] = useState(0);
+    const [prebookSelectedSeats, setPrebookSelectedSeats] = useState<PrebookSeatSelection[]>([]);
+    const [prebookBaggageChoice, setPrebookBaggageChoice] = useState("");
     const searchModeRef = useRef<SearchMode>(restoredState?.searchMode ?? "lowfare");
     const resultsSectionRef = useRef<HTMLDivElement | null>(null);
     const firstResultCardRef = useRef<HTMLDivElement | null>(null);
@@ -392,6 +454,68 @@ export default function FlightSearch() {
         [form, multiCitySegments, searchMode, tripType]
     );
 
+    const prebookFlight = useMemo(
+        () => results.find((flight) => flight.id === prebookFlightId) ?? null,
+        [prebookFlightId, results]
+    );
+
+    const prebookSegments = useMemo(() => {
+        if (!prebookFlight) {
+            return [];
+        }
+
+        const itinerarySegments = prebookFlight.itinerarySegments?.length
+            ? prebookFlight.itinerarySegments
+            : [{
+                carrier: prebookFlight.carrier,
+                flightNumber: prebookFlight.flightNumber,
+                from: prebookFlight.from,
+                to: prebookFlight.to,
+                departure: prebookFlight.departure,
+                arrival: prebookFlight.arrival,
+            }];
+
+        const segmentXmls = prebookFlight.airSegmentXmls?.length
+            ? prebookFlight.airSegmentXmls
+            : prebookFlight.airSegmentXml
+                ? [prebookFlight.airSegmentXml]
+                : [];
+
+        return itinerarySegments.map((segment, index) => ({
+            ...segment,
+            airSegmentXml: segmentXmls[index] ?? segmentXmls[0] ?? "",
+            label: buildPrebookSegmentLabel(segment),
+        }));
+    }, [prebookFlight]);
+
+    const prebookActiveSegment = prebookSegments[prebookActiveSegmentIndex] ?? null;
+    const prebookBaggageOptions = useMemo(
+        () => (prebookFlight ? getBaggageHighlights(prebookFlight) : []),
+        [prebookFlight]
+    );
+
+    useEffect(() => {
+        if (prebookActiveSegmentIndex >= prebookSegments.length) {
+            setPrebookActiveSegmentIndex(0);
+        }
+    }, [prebookActiveSegmentIndex, prebookSegments.length]);
+
+    useEffect(() => {
+        setPrebookSeatMap(null);
+        setPrebookSeatMapError("");
+    }, [prebookActiveSegmentIndex, prebookFlightId]);
+
+    useEffect(() => {
+        if (!prebookFlightId) {
+            return;
+        }
+
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = "";
+        };
+    }, [prebookFlightId]);
+
     const isSearchDraftDirty = Boolean(lastSearchedKey && currentSearchKey !== lastSearchedKey);
 
     const swapAirports = () => {
@@ -414,6 +538,95 @@ export default function FlightSearch() {
         setSearchMode(mode);
         setSearchNotice("");
         setError("");
+    };
+
+    const closePrebookStudio = () => {
+        setPrebookFlightId(null);
+        setPrebookSeatMap(null);
+        setPrebookSeatMapError("");
+        setPrebookActiveSegmentIndex(0);
+        setPrebookSelectedSeats([]);
+        setPrebookBaggageChoice("");
+    };
+
+    const openPrebookStudio = (flight: FlightResult) => {
+        setPrebookFlightId(flight.id);
+        setPrebookSeatMap(null);
+        setPrebookSeatMapError("");
+        setPrebookActiveSegmentIndex(0);
+        setPrebookSelectedSeats(flight.prebookSelections?.selectedSeats ?? []);
+        setPrebookBaggageChoice(
+            flight.prebookSelections?.baggagePreference?.trim() ||
+            getBaggageHighlights(flight)[0] ||
+            "Standard cabin only"
+        );
+    };
+
+    const choosePrebookSeat = (seatCode: string) => {
+        if (!prebookActiveSegment) {
+            return;
+        }
+
+        setPrebookSelectedSeats((current) => [
+            ...current.filter((seat) => seat.segmentLabel !== prebookActiveSegment.label),
+            {
+                segmentLabel: prebookActiveSegment.label,
+                seatCode,
+            },
+        ]);
+    };
+
+    const loadPrebookSeatMap = useCallback(async () => {
+        if (!prebookFlight || !prebookActiveSegment?.airSegmentXml) {
+            setPrebookSeatMapError("This flight leg does not include enough live segment data for seat mapping.");
+            return;
+        }
+
+        try {
+            setPrebookSeatMapLoading(true);
+            setPrebookSeatMapError("");
+
+            const response = await getFlightSeatMap({
+                airSegmentXml: prebookActiveSegment.airSegmentXml,
+                airPricingSolutionXml: prebookFlight.airPricingSolutionXml,
+                airPricingContextXml: prebookFlight.airPricingContextXml,
+                frequentFlyerProgram: "",
+                frequentFlyerNumber: "",
+            });
+
+            setPrebookSeatMap(response);
+        } catch (value: unknown) {
+            setPrebookSeatMap(null);
+            setPrebookSeatMapError(getErrorMessage(value));
+        } finally {
+            setPrebookSeatMapLoading(false);
+        }
+    }, [prebookActiveSegment, prebookFlight]);
+
+    useEffect(() => {
+        if (!prebookFlight || !prebookActiveSegment?.airSegmentXml) {
+            return;
+        }
+
+        void loadPrebookSeatMap();
+    }, [loadPrebookSeatMap, prebookActiveSegment?.airSegmentXml, prebookFlight]);
+
+    const continueToBookingWithSelections = (flight: FlightResult) => {
+        setTravelerCounts({
+            adults: form.adults,
+            child: form.child,
+            infant: form.infant,
+        });
+
+        setSelectedFlight({
+            ...flight,
+            prebookSelections: {
+                baggagePreference: prebookBaggageChoice || "Standard cabin only",
+                selectedSeats: prebookSelectedSeats,
+            },
+        });
+        closePrebookStudio();
+        router.push("/booking");
     };
 
     const handleSearch = async () => {
@@ -687,16 +900,6 @@ export default function FlightSearch() {
         .filter((segment) => segment.from || segment.to)
         .map((segment) => [segment.from || "Origin", segment.to || "Destination"].join(" -> "))
         .join("   |   ");
-
-    const getBaggageHighlights = (flight: FlightResult) => {
-        const highlights = [
-            flight.carryOnAllowance?.trim(),
-            flight.checkedBaggageAllowance?.trim(),
-            ...(flight.baggageOfferTexts ?? []).map((item) => item.trim()),
-        ].filter(Boolean) as string[];
-
-        return Array.from(new Set(highlights)).slice(0, 3);
-    };
 
     const getJourneySummary = (flight: FlightResult) => {
         const itinerarySegments = flight.itinerarySegments?.length
@@ -1518,19 +1721,30 @@ export default function FlightSearch() {
                                                     )}
                                                 </div>
 
-                                                <button
-                                                    onClick={() => handleSelect(flight)}
-                                                    disabled={isPricing || (!isBookable && !flight.airSegmentXml)}
-                                                    className={`rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${isAvailabilityCard ? "min-w-[5.75rem] self-start xl:self-center" : ""} ${(isPricing || (!isBookable && !flight.airSegmentXml)) ? "cursor-not-allowed opacity-70" : ""}`}
-                                                >
-                                                    {isPricing
-                                                        ? "Pricing..."
-                                                        : isBookable
-                                                            ? "Select"
-                                                            : isAvailabilityCard
-                                                                ? "Price & Book"
-                                                                : "Price Flight"}
-                                                </button>
+                                                <div className="flex flex-col gap-2 sm:flex-row">
+                                                    {isBookable && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openPrebookStudio(flight)}
+                                                            className="ghost-button rounded-2xl px-4 py-3 text-sm font-semibold"
+                                                        >
+                                                            Seat & Baggage
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleSelect(flight)}
+                                                        disabled={isPricing || (!isBookable && !flight.airSegmentXml)}
+                                                        className={`rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${isAvailabilityCard ? "min-w-[5.75rem] self-start xl:self-center" : ""} ${(isPricing || (!isBookable && !flight.airSegmentXml)) ? "cursor-not-allowed opacity-70" : ""}`}
+                                                    >
+                                                        {isPricing
+                                                            ? "Pricing..."
+                                                            : isBookable
+                                                                ? "Select"
+                                                                : isAvailabilityCard
+                                                                    ? "Price & Book"
+                                                                    : "Price Flight"}
+                                                    </button>
+                                                </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1541,6 +1755,314 @@ export default function FlightSearch() {
                     </div>
                 </div>
             </div>
+
+            {prebookFlight && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(17,22,31,0.55)] px-4 py-6 backdrop-blur-sm">
+                    <div className="relative max-h-[92vh] w-full max-w-[1280px] overflow-hidden rounded-[2rem] border border-[rgba(255,255,255,0.14)] bg-[linear-gradient(160deg,rgba(244,248,255,0.98),rgba(232,239,250,0.94))] shadow-[0_30px_80px_rgba(16,24,40,0.34)]">
+                        <div className="flex items-center justify-between gap-4 border-b border-[rgba(32,63,92,0.08)] bg-[linear-gradient(90deg,#1f5fb6,#174498)] px-6 py-5 text-white">
+                            <div className="min-w-0">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
+                                    Pre-Book Studio
+                                </div>
+                                <h2 className="mt-2 truncate text-2xl font-semibold">
+                                    {prebookFlight.from} {"->"} {prebookFlight.to}
+                                </h2>
+                                <div className="mt-1 text-sm text-white/75">
+                                    Review real seat-map availability and carry supplier baggage text into the booking before checkout.
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="rounded-[1.2rem] bg-white/12 px-4 py-3 text-right">
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-white/60">Live fare</div>
+                                    <div className="mt-1 text-xl font-semibold">
+                                        {prebookFlight.currency} {prebookFlight.price.toFixed(2)}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={closePrebookStudio}
+                                    className="rounded-2xl border border-white/20 bg-white/10 p-3 text-white transition hover:bg-white/18"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="grid max-h-[calc(92vh-92px)] gap-0 overflow-y-auto lg:grid-cols-[280px_1fr_250px]">
+                            <aside className="border-r border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(231,239,252,0.88),rgba(238,244,252,0.94))] p-5">
+                                <div className="rounded-[1.35rem] border border-[rgba(23,68,152,0.18)] bg-white/90 p-4 shadow-[0_14px_30px_rgba(26,56,117,0.12)]">
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Traveler</div>
+                                    <div className="mt-3 flex items-center gap-3">
+                                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#235fd7,#114098)] text-sm font-bold text-white shadow-[0_14px_28px_rgba(21,68,152,0.22)]">
+                                            {form.adults + form.child + form.infant}
+                                        </div>
+                                        <div>
+                                            <div className="text-sm font-semibold text-[var(--ink)]">Active booking party</div>
+                                            <div className="text-xs text-slate-500">Seat selection carries forward into booking.</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-5 rounded-[1.35rem] bg-white/88 p-4 shadow-[0_14px_30px_rgba(26,56,117,0.08)]">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
+                                        <Luggage size={16} className="text-[var(--accent-strong)]" />
+                                        Baggage choices
+                                    </div>
+                                    <div className="mt-3 space-y-2">
+                                        {(prebookBaggageOptions.length ? prebookBaggageOptions : ["Standard cabin only"]).map((option) => {
+                                            const active = prebookBaggageChoice === option;
+                                            return (
+                                                <button
+                                                    key={option}
+                                                    type="button"
+                                                    onClick={() => setPrebookBaggageChoice(option)}
+                                                    className={`w-full rounded-[1.1rem] border px-3 py-3 text-left text-sm transition ${
+                                                        active
+                                                            ? "border-[rgba(45,120,92,0.24)] bg-[rgba(225,246,236,0.96)] text-[var(--success)] shadow-[0_10px_22px_rgba(40,116,79,0.12)]"
+                                                            : "border-[rgba(89,64,46,0.08)] bg-white text-slate-600 hover:border-[rgba(176,122,67,0.2)]"
+                                                    }`}
+                                                >
+                                                    {option}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="mt-5 rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(26,82,184,0.98),rgba(107,152,230,0.92))] p-4 text-white shadow-[0_18px_40px_rgba(20,74,170,0.18)]">
+                                    <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-white/90">
+                                        <Sparkles size={16} />
+                                        Seat Legend
+                                    </div>
+                                    <div className="mt-4 space-y-3 text-sm">
+                                        <div className="flex items-center gap-3">
+                                            <span className="h-8 w-8 rounded-xl border border-white/30 bg-white/18" />
+                                            <span>Available seat</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="h-8 w-8 rounded-xl border border-white/30 bg-[#2ec4c7]" />
+                                            <span>Preferred / highlighted seat</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="h-8 w-8 rounded-xl border border-white/30 bg-[#1ba960]" />
+                                            <span>Your selected seat</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="h-8 w-8 rounded-xl border border-white/20 bg-[rgba(255,255,255,0.26)]" />
+                                            <span>Unavailable seat</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </aside>
+
+                            <section className="min-w-0 bg-[linear-gradient(180deg,rgba(247,250,255,0.94),rgba(239,244,252,0.96))] p-5">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Live seat map</div>
+                                        <h3 className="mt-2 text-2xl font-semibold text-[var(--ink)]">Choose seats before checkout.</h3>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => void loadPrebookSeatMap()}
+                                        disabled={prebookSeatMapLoading || !prebookActiveSegment?.airSegmentXml}
+                                        className="rounded-2xl bg-[linear-gradient(135deg,#c88b3a,#9f6224)] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(130,84,34,0.22)] transition hover:translate-y-[-1px] disabled:opacity-60"
+                                    >
+                                        {prebookSeatMapLoading ? "Loading seat map..." : "Refresh seat map"}
+                                    </button>
+                                </div>
+
+                                {prebookSegments.length > 0 && (
+                                    <div className="mt-4 flex flex-wrap gap-3">
+                                        {prebookSegments.map((segment, index) => {
+                                            const chosenSeat = prebookSelectedSeats.find((seat) => seat.segmentLabel === segment.label);
+                                            return (
+                                                <button
+                                                    key={segment.label}
+                                                    type="button"
+                                                    onClick={() => setPrebookActiveSegmentIndex(index)}
+                                                    className={`rounded-[1.25rem] border px-4 py-3 text-left transition ${
+                                                        index === prebookActiveSegmentIndex
+                                                            ? "border-[rgba(23,68,152,0.16)] bg-[rgba(223,235,255,0.92)] shadow-[0_12px_26px_rgba(26,56,117,0.12)]"
+                                                            : "border-[rgba(89,64,46,0.08)] bg-white/88 hover:bg-white"
+                                                    }`}
+                                                >
+                                                    <div className="text-sm font-semibold text-[var(--ink)]">{segment.label}</div>
+                                                    <div className="mt-1 text-xs text-slate-500">
+                                                        {chosenSeat ? `Seat ${chosenSeat.seatCode} selected` : "No seat selected yet"}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {prebookSeatMapError && (
+                                    <div className="mt-4 rounded-[1.2rem] bg-[rgba(255,236,236,0.92)] px-4 py-4 text-sm text-[var(--danger)]">
+                                        {prebookSeatMapError}
+                                    </div>
+                                )}
+
+                                <div className="mt-5 overflow-hidden rounded-[1.8rem] border border-[rgba(23,68,152,0.08)] bg-white shadow-[0_18px_40px_rgba(33,64,111,0.12)]">
+                                    <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_240px]">
+                                        <div className="relative overflow-hidden bg-[linear-gradient(180deg,rgba(235,242,252,0.9),rgba(246,249,255,0.96))] p-5">
+                                            <div className="mx-auto max-w-[720px] rounded-[1.8rem] border border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,#fefefe,#f6f8fc)] px-4 py-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.5)]">
+                                                <div className="mb-4 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                                    <span>{prebookActiveSegment?.carrier || prebookSeatMap?.carrier || prebookFlight.carrier} {prebookActiveSegment?.flightNumber || prebookSeatMap?.flightNumber || prebookFlight.flightNumber}</span>
+                                                    <span>Front of plane</span>
+                                                </div>
+                                                <div className="mb-4 flex justify-center gap-10 text-sm font-semibold tracking-[0.28em] text-[#264f97]">
+                                                    <span>A B C</span>
+                                                    <span>H J K</span>
+                                                </div>
+
+                                                {prebookSeatMap?.rows?.length ? (
+                                                    <div className="space-y-3">
+                                                        {prebookSeatMap.rows.map((row) => {
+                                                            const { left, right } = splitSeatRow(row.seats);
+                                                            return (
+                                                                <div key={row.number} className="grid grid-cols-[1fr_3rem_1fr] items-center gap-3">
+                                                                    <div className="grid grid-cols-3 gap-2">
+                                                                        {left.map((seat) => {
+                                                                            const selected = prebookSelectedSeats.some((item) => item.segmentLabel === (prebookActiveSegment?.label ?? "") && item.seatCode === seat.code);
+                                                                            return (
+                                                                                <button
+                                                                                    key={`${row.number}-${seat.code}-left`}
+                                                                                    type="button"
+                                                                                    disabled={!isPreviewSeatSelectable(seat)}
+                                                                                    onClick={() => choosePrebookSeat(seat.code)}
+                                                                                    className={`min-h-[72px] rounded-[1rem] border px-2 py-2 text-left text-xs transition ${
+                                                                                        selected
+                                                                                            ? "border-[rgba(30,134,82,0.3)] bg-[#1fb76b] text-white shadow-[0_12px_22px_rgba(31,183,107,0.2)]"
+                                                                                            : !isPreviewSeatSelectable(seat)
+                                                                                                ? "border-[rgba(148,163,184,0.18)] bg-[rgba(226,232,240,0.66)] text-slate-400"
+                                                                                                : seat.paid
+                                                                                                    ? "border-[rgba(38,79,151,0.16)] bg-[#2ec4c7] text-white shadow-[0_10px_22px_rgba(46,196,199,0.18)]"
+                                                                                                    : "border-[rgba(38,79,151,0.12)] bg-[#5a95e5] text-white shadow-[0_12px_24px_rgba(90,149,229,0.18)]"
+                                                                                    }`}
+                                                                                >
+                                                                                    <div className="font-semibold">{seat.code}</div>
+                                                                                    <div className="mt-2 text-[10px] uppercase tracking-[0.14em] opacity-80">
+                                                                                        {isPreviewSeatSelectable(seat) ? (seat.paid ? "Paid" : "Open") : "Blocked"}
+                                                                                    </div>
+                                                                                    {seat.seatPrice ? (
+                                                                                        <div className="mt-1 text-[10px] opacity-90">
+                                                                                            {(seat.currency || prebookFlight.currency)} {seat.seatPrice.toFixed(2)}
+                                                                                        </div>
+                                                                                    ) : null}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                    <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                                                        {row.number}
+                                                                    </div>
+                                                                    <div className="grid grid-cols-3 gap-2">
+                                                                        {right.map((seat) => {
+                                                                            const selected = prebookSelectedSeats.some((item) => item.segmentLabel === (prebookActiveSegment?.label ?? "") && item.seatCode === seat.code);
+                                                                            return (
+                                                                                <button
+                                                                                    key={`${row.number}-${seat.code}-right`}
+                                                                                    type="button"
+                                                                                    disabled={!isPreviewSeatSelectable(seat)}
+                                                                                    onClick={() => choosePrebookSeat(seat.code)}
+                                                                                    className={`min-h-[72px] rounded-[1rem] border px-2 py-2 text-left text-xs transition ${
+                                                                                        selected
+                                                                                            ? "border-[rgba(30,134,82,0.3)] bg-[#1fb76b] text-white shadow-[0_12px_22px_rgba(31,183,107,0.2)]"
+                                                                                            : !isPreviewSeatSelectable(seat)
+                                                                                                ? "border-[rgba(148,163,184,0.18)] bg-[rgba(226,232,240,0.66)] text-slate-400"
+                                                                                                : seat.paid
+                                                                                                    ? "border-[rgba(38,79,151,0.16)] bg-[#2ec4c7] text-white shadow-[0_10px_22px_rgba(46,196,199,0.18)]"
+                                                                                                    : "border-[rgba(38,79,151,0.12)] bg-[#5a95e5] text-white shadow-[0_12px_24px_rgba(90,149,229,0.18)]"
+                                                                                    }`}
+                                                                                >
+                                                                                    <div className="font-semibold">{seat.code}</div>
+                                                                                    <div className="mt-2 text-[10px] uppercase tracking-[0.14em] opacity-80">
+                                                                                        {isPreviewSeatSelectable(seat) ? (seat.paid ? "Paid" : "Open") : "Blocked"}
+                                                                                    </div>
+                                                                                    {seat.seatPrice ? (
+                                                                                        <div className="mt-1 text-[10px] opacity-90">
+                                                                                            {(seat.currency || prebookFlight.currency)} {seat.seatPrice.toFixed(2)}
+                                                                                        </div>
+                                                                                    ) : null}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    <div className="rounded-[1.3rem] border border-[rgba(89,64,46,0.08)] bg-[rgba(248,250,255,0.86)] px-4 py-5 text-sm leading-7 text-slate-600">
+                                                        {prebookSeatMap?.message || "The airline did not return drawable seat rows for this priced itinerary yet."}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <aside className="border-l border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(247,249,255,0.94),rgba(240,244,251,0.98))] p-5">
+                                            <div className="rounded-[1.35rem] bg-white/90 p-4 shadow-[0_14px_30px_rgba(33,64,111,0.08)]">
+                                                <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Selection summary</div>
+                                                <div className="mt-3 text-sm font-semibold text-[var(--ink)]">
+                                                    {prebookActiveSegment?.label || `${prebookFlight.from} -> ${prebookFlight.to}`}
+                                                </div>
+                                                <div className="mt-4 space-y-3 text-sm text-slate-600">
+                                                    <div className="rounded-[1.1rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">
+                                                        <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Baggage</div>
+                                                        <div className="mt-1 font-semibold text-[var(--ink)]">{prebookBaggageChoice || "Standard cabin only"}</div>
+                                                    </div>
+                                                    <div className="rounded-[1.1rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">
+                                                        <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Seat request</div>
+                                                        <div className="mt-1 font-semibold text-[var(--ink)]">
+                                                            {prebookSelectedSeats.find((seat) => seat.segmentLabel === (prebookActiveSegment?.label ?? ""))?.seatCode || "No seat chosen"}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => continueToBookingWithSelections(prebookFlight)}
+                                                    className="mt-5 w-full rounded-2xl bg-[linear-gradient(135deg,#c88b3a,#9f6224)] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(130,84,34,0.22)] transition hover:translate-y-[-1px]"
+                                                >
+                                                    Continue To Booking
+                                                </button>
+                                            </div>
+                                        </aside>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <aside className="border-l border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(244,247,252,0.96),rgba(238,243,250,0.96))] p-5">
+                                <div className="rounded-[1.35rem] bg-white/88 p-4 shadow-[0_14px_30px_rgba(33,64,111,0.08)]">
+                                    <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Live summary</div>
+                                    <div className="mt-3 text-lg font-semibold text-[var(--ink)]">{prebookFlight.from} {"->"} {prebookFlight.to}</div>
+                                    <div className="mt-1 text-sm text-slate-500">
+                                        {new Date(prebookFlight.departure).toLocaleString()} to {new Date(prebookFlight.arrival).toLocaleString()}
+                                    </div>
+                                    <div className="mt-4 rounded-[1.2rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">
+                                        <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Included baggage</div>
+                                        <div className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                                            {getBaggageHighlights(prebookFlight)[0] || "Allowance confirmed after pricing"}
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 rounded-[1.2rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">
+                                        <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Pre-book picks</div>
+                                        <div className="mt-2 space-y-2 text-sm text-slate-600">
+                                            {prebookSelectedSeats.length ? prebookSelectedSeats.map((seat) => (
+                                                <div key={`${seat.segmentLabel}-${seat.seatCode}`} className="flex items-center justify-between gap-3">
+                                                    <span className="min-w-0 truncate">{seat.segmentLabel}</span>
+                                                    <span className="font-semibold text-[var(--ink)]">{seat.seatCode}</span>
+                                                </div>
+                                            )) : (
+                                                <div>No seats chosen yet.</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </aside>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -61,6 +61,13 @@ export type FlightResult = {
         departure: string;
         arrival: string;
     }>;
+    prebookSelections?: {
+        baggagePreference: string;
+        selectedSeats: Array<{
+            segmentLabel: string;
+            seatCode: string;
+        }>;
+    };
 };
 
 export type FlightSearchPayload = {

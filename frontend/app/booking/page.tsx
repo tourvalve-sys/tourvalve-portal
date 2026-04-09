@@ -265,6 +265,23 @@ export default function BookingPage() {
     }, [availablePrograms]);
 
     useEffect(() => {
+        if (!selectedFlight) {
+            return;
+        }
+
+        setServicePreferences((current) => ({
+            ...current,
+            baggagePreference:
+                selectedFlight.prebookSelections?.baggagePreference?.trim() ||
+                current.baggagePreference,
+            selectedSeats:
+                selectedFlight.prebookSelections?.selectedSeats?.length
+                    ? selectedFlight.prebookSelections.selectedSeats
+                    : current.selectedSeats,
+        }));
+    }, [selectedFlight]);
+
+    useEffect(() => {
         if (activeSeatSegmentIndex >= seatMapSegments.length) {
             setActiveSeatSegmentIndex(0);
         }
