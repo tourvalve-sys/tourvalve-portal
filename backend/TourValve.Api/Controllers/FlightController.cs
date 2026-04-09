@@ -1047,21 +1047,35 @@ public class FlightsController : ControllerBase
                                 !string.Equals(facility.Attribute("Type")?.Value, "Aisle", StringComparison.OrdinalIgnoreCase)
                             )
                         ))
-                    .Select(facility => new
-                    {
-                        code = (facility.Attribute("SeatCode")?.Value ?? string.Empty).Replace("-", ""),
-                        availability = facility.Attribute("Availability")?.Value ?? string.Empty,
-                        paid = bool.TryParse(facility.Attribute("Paid")?.Value, out var paid) && paid,
-                        characteristics = facility.Elements()
-                            .Where(x => x.Name.LocalName == "Characteristic")
-                            .Select(x => x.Attribute("Value")?.Value ?? x.Attribute("PADISCode")?.Value ?? string.Empty)
-                            .Where(x => !string.IsNullOrWhiteSpace(x))
-                            .ToList()
-                    })
+                    .Select(MapSeatFacility)
+                    .Where(seat => !string.IsNullOrWhiteSpace(seat.code))
                     .ToList()
             })
             .Where(row => row.seats.Count > 0)
             .ToList();
+
+        if (rows.Count == 0 && seatLikeFacilities.Count > 0)
+        {
+            rows = seatLikeFacilities
+                .Select(facility => new
+                {
+                    seat = MapSeatFacility(facility),
+                    rowNumber = ExtractSeatRowNumber(facility.Attribute("SeatCode")?.Value)
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.rowNumber))
+                .GroupBy(x => x.rowNumber, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => ParseSeatRowSortValue(x.Key))
+                .Select(group => new
+                {
+                    number = group.Key,
+                    seats = group
+                        .Select(x => x.seat)
+                        .OrderBy(x => ExtractSeatColumnSortValue(x.code))
+                        .ToList()
+                })
+                .Where(row => row.seats.Count > 0)
+                .ToList();
+        }
 
         return new
         {
@@ -1093,10 +1107,49 @@ public class FlightsController : ControllerBase
                                 ? "Travelport returned row nodes, but no seat-like facilities were detected inside them."
                                 : rows.Count == 0
                                     ? "Travelport returned seat-map structure, but no selectable seat rows were rendered from it."
-                                    : "Seat-map rows were parsed successfully."
+                                    : rowNodes.Count == 0 && seatLikeFacilities.Count > 0
+                                        ? "Seat-map rows were synthesized from supplier seat facilities."
+                                        : "Seat-map rows were parsed successfully."
             },
             rawResponse = xml
         };
+    }
+
+    private static (string code, string availability, bool paid, List<string> characteristics) MapSeatFacility(XElement facility)
+    {
+        return (
+            (facility.Attribute("SeatCode")?.Value ?? string.Empty).Replace("-", ""),
+            facility.Attribute("Availability")?.Value ?? string.Empty,
+            bool.TryParse(facility.Attribute("Paid")?.Value, out var paid) && paid,
+            facility.Elements()
+                .Where(x => x.Name.LocalName == "Characteristic")
+                .Select(x => x.Attribute("Value")?.Value ?? x.Attribute("PADISCode")?.Value ?? string.Empty)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList());
+    }
+
+    private static string ExtractSeatRowNumber(string? seatCode)
+    {
+        if (string.IsNullOrWhiteSpace(seatCode))
+            return string.Empty;
+
+        var normalized = seatCode.Replace("-", string.Empty).Trim();
+        var digits = new string(normalized.TakeWhile(char.IsDigit).ToArray());
+        return digits;
+    }
+
+    private static int ParseSeatRowSortValue(string? rowNumber)
+    {
+        return int.TryParse(rowNumber, out var parsed) ? parsed : int.MaxValue;
+    }
+
+    private static string ExtractSeatColumnSortValue(string? seatCode)
+    {
+        if (string.IsNullOrWhiteSpace(seatCode))
+            return string.Empty;
+
+        var normalized = seatCode.Replace("-", string.Empty).Trim();
+        return new string(normalized.SkipWhile(char.IsDigit).ToArray());
     }
 
     private static string ExtractHostTokensXml(string airPricingSolutionXml)

@@ -422,6 +422,29 @@ public sealed class BookingSeatMapService
             .Where(row => row.Seats.Count > 0)
             .ToList();
 
+        if (rows.Count == 0 && seatLikeFacilities.Count > 0)
+        {
+            rows = seatLikeFacilities
+                .Select(facility => new
+                {
+                    Seat = MapSeat(facility, optionalServices),
+                    RowNumber = ExtractSeatRowNumber(facility.Attribute("SeatCode")?.Value)
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.RowNumber) && !string.IsNullOrWhiteSpace(x.Seat.Code))
+                .GroupBy(x => x.RowNumber, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => ParseSeatRowSortValue(x.Key))
+                .Select(group => new BookingSeatMapRow
+                {
+                    Number = group.Key,
+                    Seats = group
+                        .Select(x => x.Seat)
+                        .OrderBy(x => ExtractSeatColumnSortValue(x.Code))
+                        .ToList()
+                })
+                .Where(row => row.Seats.Count > 0)
+                .ToList();
+        }
+
         return new BookingSeatMapResult
         {
             SegmentLabel = requestedSegmentLabel,
@@ -455,10 +478,36 @@ public sealed class BookingSeatMapService
                                 ? "Travelport returned rows, but no seat-like facilities were detected inside them."
                                 : rows.Count == 0
                                     ? "Travelport returned seat-map structure, but no selectable seat rows were rendered from it."
-                                    : "Seat-map rows were parsed successfully."
+                                    : rowNodes.Count == 0 && seatLikeFacilities.Count > 0
+                                        ? "Seat-map rows were synthesized from supplier seat facilities."
+                                        : "Seat-map rows were parsed successfully."
             },
             RawResponse = xml
         };
+    }
+
+    private static string ExtractSeatRowNumber(string? seatCode)
+    {
+        if (string.IsNullOrWhiteSpace(seatCode))
+            return string.Empty;
+
+        var normalized = seatCode.Replace("-", string.Empty).Trim();
+        var digits = new string(normalized.TakeWhile(char.IsDigit).ToArray());
+        return digits;
+    }
+
+    private static int ParseSeatRowSortValue(string? rowNumber)
+    {
+        return int.TryParse(rowNumber, out var parsed) ? parsed : int.MaxValue;
+    }
+
+    private static string ExtractSeatColumnSortValue(string? seatCode)
+    {
+        if (string.IsNullOrWhiteSpace(seatCode))
+            return string.Empty;
+
+        var normalized = seatCode.Replace("-", string.Empty).Trim();
+        return new string(normalized.SkipWhile(char.IsDigit).ToArray());
     }
 
     private static BookingSeatMapSeat MapSeat(
