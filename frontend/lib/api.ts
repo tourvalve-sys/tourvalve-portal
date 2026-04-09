@@ -275,6 +275,14 @@ export type BookingRecord = {
     amount: number;
     baseAmount: number;
     markupAmount: number;
+    itinerarySegments?: Array<{
+        carrier: string;
+        flightNumber: string;
+        from: string;
+        to: string;
+        departure: string;
+        arrival: string;
+    }>;
     status: string;
     createdAt: string;
 };
@@ -423,6 +431,14 @@ export type CreateBookingPayload = {
     amount: number;
     baseAmount: number;
     markupAmount: number;
+    itinerarySegments?: Array<{
+        carrier: string;
+        flightNumber: string;
+        from: string;
+        to: string;
+        departure: string;
+        arrival: string;
+    }>;
     universalRecordLocator: string;
     providerLocator: string;
     airlineLocator: string;

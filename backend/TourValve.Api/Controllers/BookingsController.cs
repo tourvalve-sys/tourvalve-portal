@@ -6,8 +6,10 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using TourValve.Application.Bookings.Ancillaries;
 using TourValve.Application.Bookings.Commands;
+using TourValve.Domain;
 using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Services;
 using TourValve.Infrastructure.Travelport.Air;
@@ -109,6 +111,7 @@ public class BookingsController : ControllerBase
                     x.Amount,
                     x.BaseAmount,
                     x.MarkupAmount,
+                    itinerarySegments = DeserializeItinerarySegments(x.ItinerarySegmentsJson),
                     x.Status,
                     x.CreatedAt
                 })
@@ -152,6 +155,7 @@ public class BookingsController : ControllerBase
             booking.Amount,
             booking.BaseAmount,
             booking.MarkupAmount,
+            itinerarySegments = DeserializeItinerarySegments(booking.ItinerarySegmentsJson),
             booking.Status,
             booking.CreatedAt,
             ancillaries = await _db.BookingAncillaryOrders
@@ -844,6 +848,34 @@ public class BookingsController : ControllerBase
             .Sum(x => Math.Max(0, x.Quantity)) ?? 0;
 
         return Math.Max(count, 1);
+    }
+
+    private static List<object> DeserializeItinerarySegments(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return new List<object>();
+
+        try
+        {
+            return (JsonSerializer.Deserialize<List<BookingItinerarySegment>>(json) ?? new List<BookingItinerarySegment>())
+                .Where(segment =>
+                    !string.IsNullOrWhiteSpace(segment.From) &&
+                    !string.IsNullOrWhiteSpace(segment.To))
+                .Select(segment => (object)new
+                {
+                    carrier = segment.Carrier,
+                    flightNumber = segment.FlightNumber,
+                    from = segment.From,
+                    to = segment.To,
+                    departure = segment.Departure,
+                    arrival = segment.Arrival
+                })
+                .ToList();
+        }
+        catch
+        {
+            return new List<object>();
+        }
     }
 
     private static string BuildAncillaryNotes(string? notes, List<TravelerSelectionRequest>? selections)

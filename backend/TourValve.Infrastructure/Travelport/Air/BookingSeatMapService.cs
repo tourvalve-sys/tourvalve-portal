@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Xml.Linq;
 using TourValve.Domain;
 using TourValve.Infrastructure.Travelport.Common;
@@ -218,12 +219,24 @@ public sealed class BookingSeatMapService
             return inferredSegments;
         }
 
-        var fallbackSegment = CreateFallbackSegmentElement(doc, booking, providerCode);
+        var storedSegments = ReadStoredItinerarySegments(booking);
+        if (storedSegments.Count > 0)
+        {
+            return storedSegments
+                .Select((segment, index) =>
+                {
+                    var fallback = CreateFallbackSegmentElement(segment, providerCode, booking.Id, index);
+                    return new BookingSegmentContext(fallback, BuildSegmentLabel(segment, index), index);
+                })
+                .ToList();
+        }
+
+        var singleFallbackSegment = CreateFallbackSegmentElement(doc, booking, providerCode);
         return
         [
             new BookingSegmentContext(
-                fallbackSegment,
-                BuildSegmentLabel(fallbackSegment, 0),
+                singleFallbackSegment,
+                BuildSegmentLabel(singleFallbackSegment, 0),
                 0)
         ];
     }
@@ -243,6 +256,21 @@ public sealed class BookingSeatMapService
             !string.IsNullOrWhiteSpace(element.Attribute("Origin")?.Value) &&
             !string.IsNullOrWhiteSpace(element.Attribute("Destination")?.Value) &&
             !string.IsNullOrWhiteSpace(element.Attribute("DepartureTime")?.Value);
+    }
+
+    private static List<BookingItinerarySegment> ReadStoredItinerarySegments(Booking booking)
+    {
+        if (string.IsNullOrWhiteSpace(booking.ItinerarySegmentsJson))
+            return new List<BookingItinerarySegment>();
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<BookingItinerarySegment>>(booking.ItinerarySegmentsJson) ?? new List<BookingItinerarySegment>();
+        }
+        catch
+        {
+            return new List<BookingItinerarySegment>();
+        }
     }
 
     private static XElement CreateFallbackSegmentElement(XDocument doc, Booking booking, string providerCode)
@@ -266,6 +294,35 @@ public sealed class BookingSeatMapService
             new XAttribute("ProviderCode", string.IsNullOrWhiteSpace(providerCode) ? "1G" : providerCode),
             new XAttribute("ClassOfService", classOfService),
             new XAttribute("ETicketability", "Yes"));
+    }
+
+    private static XElement CreateFallbackSegmentElement(BookingItinerarySegment segment, string providerCode, Guid bookingId, int index)
+    {
+        var departure = DateTime.TryParse(segment.Departure, out var departureTime)
+            ? departureTime.ToString("yyyy-MM-ddTHH:mm:ss")
+            : segment.Departure;
+        var arrival = DateTime.TryParse(segment.Arrival, out var arrivalTime)
+            ? arrivalTime.ToString("yyyy-MM-ddTHH:mm:ss")
+            : segment.Arrival;
+
+        return new XElement(
+            XName.Get("AirSegment", "http://www.travelport.com/schema/air_v51_0"),
+            new XAttribute("Key", $"TV-SEG-{bookingId:N}-{index}"),
+            new XAttribute("Group", "0"),
+            new XAttribute("Carrier", segment.Carrier),
+            new XAttribute("FlightNumber", segment.FlightNumber),
+            new XAttribute("Origin", segment.From),
+            new XAttribute("Destination", segment.To),
+            new XAttribute("DepartureTime", departure),
+            new XAttribute("ArrivalTime", arrival),
+            new XAttribute("ProviderCode", string.IsNullOrWhiteSpace(providerCode) ? "1G" : providerCode),
+            new XAttribute("ClassOfService", "Y"),
+            new XAttribute("ETicketability", "Yes"));
+    }
+
+    private static string BuildSegmentLabel(BookingItinerarySegment segment, int index)
+    {
+        return $"Sector {index + 1} - {segment.From} -> {segment.To}";
     }
 
     private static BookingSeatMapResult ParseSeatMapResponse(string xml, string requestedSegmentLabel)

@@ -1,5 +1,7 @@
-﻿using MediatR;
+using MediatR;
 using System;
+using System.Collections.Generic;
+using TourValve.Domain;
 
 namespace TourValve.Application.Bookings.Commands
 {
@@ -23,6 +25,7 @@ namespace TourValve.Application.Bookings.Commands
         public string ProviderLocator { get; set; } = string.Empty;
         public string AirlineLocator { get; set; } = string.Empty;
         public string Status { get; set; } = "CONFIRMED";
+        public List<BookingItinerarySegment> ItinerarySegments { get; set; } = new();
     }
 
     public class CreateBookingResponse

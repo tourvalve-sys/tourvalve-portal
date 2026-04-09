@@ -3,6 +3,9 @@ using TourValve.Domain;
 using TourValve.Application.Common.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -45,6 +48,14 @@ namespace TourValve.Application.Bookings.Commands
                 Amount = request.Amount,
                 BaseAmount = request.BaseAmount,
                 MarkupAmount = request.MarkupAmount,
+                ItinerarySegmentsJson = JsonSerializer.Serialize(
+                    request.ItinerarySegments?
+                        .Where(segment =>
+                            !string.IsNullOrWhiteSpace(segment.From) &&
+                            !string.IsNullOrWhiteSpace(segment.To) &&
+                            !string.IsNullOrWhiteSpace(segment.Departure) &&
+                            !string.IsNullOrWhiteSpace(segment.Arrival))
+                        .ToList() ?? new List<BookingItinerarySegment>()),
                 Status = string.IsNullOrWhiteSpace(request.Status) ? "CONFIRMED" : request.Status
             };
 

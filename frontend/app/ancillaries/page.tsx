@@ -226,7 +226,10 @@ function statusTone(status: string) {
     return "bg-[rgba(239,236,231,0.92)] text-slate-600";
 }
 
-function buildSegmentLabel(segment: BookingRetrieveResponse["segments"][number], index: number) {
+function buildSegmentLabel(
+    segment: Pick<BookingRetrieveResponse["segments"][number], "from" | "to">,
+    index: number
+) {
     return `Sector ${index + 1} - ${segment.from} -> ${segment.to}`;
 }
 
@@ -456,6 +459,18 @@ function AncillariesPageContent() {
 
         if (!booking) {
             return [];
+        }
+
+        if (booking.itinerarySegments?.length) {
+            return booking.itinerarySegments.map((segment, index) => ({
+                key: buildSegmentLabel(segment, index),
+                title: buildSegmentLabel(segment, index),
+                timing: `${new Date(segment.departure).toLocaleString()} to ${new Date(segment.arrival).toLocaleString()}`,
+                carrier: segment.carrier,
+                flightNumber: segment.flightNumber,
+                from: segment.from,
+                to: segment.to,
+            }));
         }
 
         return [

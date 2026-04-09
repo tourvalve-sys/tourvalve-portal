@@ -469,6 +469,7 @@ export default function BookingPage() {
                     departureTime: selectedFlight.departure,
                     arrivalTime: selectedFlight.arrival,
                     amount: selectedFlight.price,
+                    itinerarySegments,
                     baseAmount: selectedFlight.basePrice || selectedFlight.price,
                     markupAmount: selectedFlight.markupAmount || 0,
                     universalRecordLocator: reservation.universalRecordLocator || reservation.locatorCode,
