@@ -63,6 +63,75 @@ public class UniversalRecordService
 </univ:UniversalRecordModifyReq>",
             "http://www.travelport.com/schema/universal_v51_0/UniversalRecordModifyReq");
 
+    public async Task<string> AddMealSsrAsync(
+        string locatorCode,
+        string mealCode,
+        string? freeText,
+        IReadOnlyCollection<string> travelerRefs,
+        string? carrierCode = null)
+    {
+        if (travelerRefs.Count == 0)
+            throw new InvalidOperationException("At least one traveler reference is required for a meal SSR.");
+
+        var recordXml = await RetrieveAsync(locatorCode);
+        var doc = XDocument.Parse(recordXml);
+
+        var universalRecord = doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "UniversalRecord");
+        var providerReservation = doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "ProviderReservationInfo");
+        var airReservation = doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "AirReservation");
+        var firstSegment = doc.Descendants().FirstOrDefault(x => x.Name.LocalName == "AirSegment");
+
+        var universalLocator = universalRecord?.Attribute("LocatorCode")?.Value?.Trim();
+        var providerCode = providerReservation?.Attribute("ProviderCode")?.Value?.Trim()
+            ?? firstSegment?.Attribute("ProviderCode")?.Value?.Trim();
+        var providerLocatorCode = providerReservation?.Attribute("LocatorCode")?.Value?.Trim();
+        var reservationLocatorCode = airReservation?.Attribute("LocatorCode")?.Value?.Trim();
+        var resolvedCarrier = carrierCode?.Trim();
+
+        if (string.IsNullOrWhiteSpace(universalLocator))
+            throw new InvalidOperationException("Universal record locator could not be resolved for meal SSR.");
+
+        if (string.IsNullOrWhiteSpace(providerCode) || string.IsNullOrWhiteSpace(providerLocatorCode))
+            throw new InvalidOperationException("Provider locator information is missing for meal SSR.");
+
+        if (string.IsNullOrWhiteSpace(reservationLocatorCode))
+            throw new InvalidOperationException("Air reservation locator is missing for meal SSR.");
+
+        if (string.IsNullOrWhiteSpace(resolvedCarrier))
+            resolvedCarrier = firstSegment?.Attribute("Carrier")?.Value?.Trim();
+
+        if (string.IsNullOrWhiteSpace(resolvedCarrier))
+            resolvedCarrier = "YY";
+
+        var ssrType = mealCode.Trim().ToUpperInvariant();
+        var includeFreeText = ssrType == "SPML" && !string.IsNullOrWhiteSpace(freeText);
+
+        var commands = string.Join(Environment.NewLine,
+            travelerRefs.Select((travelerRef, index) =>
+                $@"
+  <univ:UniversalModifyCmd Key=""TVMEAL{index + 1}"">
+    <univ:AirAdd ReservationLocatorCode=""{Escape(reservationLocatorCode)}"" BookingTravelerRef=""{Escape(travelerRef)}"">
+      <com:SSR Type=""{Escape(ssrType)}"" Status=""HK"" Carrier=""{Escape(resolvedCarrier)}""{(includeFreeText ? $@" FreeText=""{Escape(freeText!.Trim())}""" : string.Empty)} />
+    </univ:AirAdd>
+  </univ:UniversalModifyCmd>")
+        );
+
+        return await _air.PostToUniversalServiceAsync(
+            $@"
+<univ:UniversalRecordModifyReq xmlns:univ=""http://www.travelport.com/schema/universal_v51_0""
+                               xmlns:air=""http://www.travelport.com/schema/air_v51_0""
+                               xmlns:com=""http://www.travelport.com/schema/common_v51_0""
+                               TargetBranch=""{Escape(_config.TargetBranch)}""
+                               AuthorizedBy=""TourValve""
+                               TraceId=""TVMEAL1""
+                               Version=""0"">
+  <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
+  <univ:RecordIdentifier ProviderCode=""{Escape(providerCode)}"" ProviderLocatorCode=""{Escape(providerLocatorCode)}"" UniversalLocatorCode=""{Escape(universalLocator)}"" />
+{commands}
+</univ:UniversalRecordModifyReq>",
+            "http://www.travelport.com/schema/universal_v51_0/UniversalRecordModifyReq");
+    }
+
     public static object BuildSummary(string xml)
     {
         var doc = XDocument.Parse(xml);

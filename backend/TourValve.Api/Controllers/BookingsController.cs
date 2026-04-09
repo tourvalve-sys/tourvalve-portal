@@ -318,10 +318,15 @@ public class BookingsController : ControllerBase
             return BadRequest(new { error = "Ancillary type and description are required." });
 
         var normalizedType = request.Type.Trim().ToUpperInvariant();
+        var mealSsrCode = ResolveMealSsrCode(normalizedType, request.OptionCode);
+        if (mealSsrCode == "SPML" && string.IsNullOrWhiteSpace(request.Notes))
+            return BadRequest(new { error = "Special meal requests require a short servicing note." });
+
         var selectionCount = GetRequestedAncillaryUnits(request.TravelerSelections);
         var baseAmount = decimal.Round(Math.Max(request.BaseAmount, 0m) * selectionCount, 2, MidpointRounding.AwayFromZero);
         var markupAmount = _ancillaryMarkup.CalculateMarkupAmount(normalizedType);
         var totalAmount = decimal.Round(baseAmount + markupAmount, 2, MidpointRounding.AwayFromZero);
+        var isLiveMealSsr = !string.IsNullOrWhiteSpace(mealSsrCode);
 
         return Ok(new
         {
@@ -333,7 +338,7 @@ public class BookingsController : ControllerBase
             markupAmount,
             totalAmount,
             currency = string.IsNullOrWhiteSpace(request.Currency) ? "MYR" : request.Currency.Trim().ToUpperInvariant(),
-            fulfillmentMode = "TRAVELPORT_REMARK",
+            fulfillmentMode = isLiveMealSsr ? "TRAVELPORT_SSR" : "TRAVELPORT_REMARK",
             status = "PENDING_PAYMENT",
             note = BuildAncillaryNotes(request.Notes, request.TravelerSelections),
             requestedUnits = selectionCount,
@@ -364,11 +369,16 @@ public class BookingsController : ControllerBase
             return Unauthorized();
 
         var normalizedType = request.Type.Trim().ToUpperInvariant();
+        var mealSsrCode = ResolveMealSsrCode(normalizedType, request.OptionCode);
+        if (mealSsrCode == "SPML" && string.IsNullOrWhiteSpace(request.Notes))
+            return BadRequest(new { error = "Special meal requests require a short servicing note." });
+
         var currency = string.IsNullOrWhiteSpace(request.Currency) ? "MYR" : request.Currency.Trim().ToUpperInvariant();
         var selectionCount = GetRequestedAncillaryUnits(request.TravelerSelections);
         var baseAmount = decimal.Round(Math.Max(request.BaseAmount, 0m) * selectionCount, 2, MidpointRounding.AwayFromZero);
         var markupAmount = _ancillaryMarkup.CalculateMarkupAmount(normalizedType);
         var totalAmount = decimal.Round(baseAmount + markupAmount, 2, MidpointRounding.AwayFromZero);
+        var isLiveMealSsr = !string.IsNullOrWhiteSpace(mealSsrCode);
         var order = new TourValve.Domain.BookingAncillaryOrder
         {
             Id = Guid.NewGuid(),
@@ -383,7 +393,7 @@ public class BookingsController : ControllerBase
             TotalAmount = totalAmount,
             Currency = currency,
             Status = "PENDING_PAYMENT",
-            FulfillmentMode = "TRAVELPORT_REMARK",
+            FulfillmentMode = isLiveMealSsr ? "TRAVELPORT_SSR" : "TRAVELPORT_REMARK",
             Notes = BuildAncillaryNotes(request.Notes, request.TravelerSelections),
             RequestedAt = DateTime.UtcNow
         };
@@ -412,8 +422,27 @@ public class BookingsController : ControllerBase
             order.Status = "PROCESSING";
             await _db.SaveChangesAsync();
 
-            var remark = BuildAncillaryRemark(order);
-            var xml = await _records.AddRemarkAsync(booking.UniversalRecordLocator, remark);
+            string xml;
+            if (isLiveMealSsr)
+            {
+                var travelerRefs = request.TravelerSelections?
+                    .Where(x => x.Quantity > 0 && !string.IsNullOrWhiteSpace(x.TravelerKey))
+                    .Select(x => x.TravelerKey.Trim())
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList() ?? new List<string>();
+
+                xml = await _records.AddMealSsrAsync(
+                    booking.UniversalRecordLocator,
+                    mealSsrCode!,
+                    mealSsrCode == "SPML" ? request.Notes?.Trim() : null,
+                    travelerRefs,
+                    string.IsNullOrWhiteSpace(booking.Carrier) ? null : booking.Carrier);
+            }
+            else
+            {
+                var remark = BuildAncillaryRemark(order);
+                xml = await _records.AddRemarkAsync(booking.UniversalRecordLocator, remark);
+            }
 
             if (holdId.HasValue)
             {
@@ -421,16 +450,25 @@ public class BookingsController : ControllerBase
                 await CreditAdminAncillaryMarkupAsync(markupAmount, order.Id, booking.BookingReference);
             }
 
-            order.Status = "MANUAL_SERVICE_REQUIRED";
+            order.Status = isLiveMealSsr ? "FULFILLED" : "MANUAL_SERVICE_REQUIRED";
             order.ProviderReference = booking.UniversalRecordLocator;
             order.ProcessedAt = DateTime.UtcNow;
+            order.FulfilledAt = isLiveMealSsr ? DateTime.UtcNow : null;
             order.ErrorMessage = string.Empty;
             await _db.SaveChangesAsync();
 
             var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
             await _audit.WriteAsync(requesterAgentId, actorEmail, "ANCILLARY", "ORDER_CREATE", "BookingAncillaryOrder", order.Id.ToString(), booking.BookingReference, $"Created {normalizedType} ancillary order for MYR {totalAmount:0.00}.");
-            await _notifications.CreateAsync(booking.AgentId, "AGENT", "ANCILLARY", "Ancillary request logged", $"Ancillary request for booking {booking.BookingReference} has been charged and queued for servicing.", "INFO", "/bookings");
-            await _notifications.CreateAsync(null, "ADMIN", "ANCILLARY", "Ancillary requires servicing", $"Booking {booking.BookingReference} has a {normalizedType.ToLowerInvariant()} ancillary request awaiting fulfilment.", "INFO", "/bookings");
+            if (isLiveMealSsr)
+            {
+                await _notifications.CreateAsync(booking.AgentId, "AGENT", "ANCILLARY", "Meal request confirmed", $"Meal SSR for booking {booking.BookingReference} was sent successfully to the airline.", "SUCCESS", "/bookings");
+                await _notifications.CreateAsync(null, "ADMIN", "ANCILLARY", "Meal SSR sent live", $"Booking {booking.BookingReference} had a live {mealSsrCode} meal SSR added successfully.", "SUCCESS", "/bookings");
+            }
+            else
+            {
+                await _notifications.CreateAsync(booking.AgentId, "AGENT", "ANCILLARY", "Ancillary request logged", $"Ancillary request for booking {booking.BookingReference} has been charged and queued for servicing.", "INFO", "/bookings");
+                await _notifications.CreateAsync(null, "ADMIN", "ANCILLARY", "Ancillary requires servicing", $"Booking {booking.BookingReference} has a {normalizedType.ToLowerInvariant()} ancillary request awaiting fulfilment.", "INFO", "/bookings");
+            }
 
             return Ok(new
             {
@@ -907,6 +945,20 @@ public class BookingsController : ControllerBase
         var segment = string.IsNullOrWhiteSpace(order.SegmentLabel) ? string.Empty : $" | Segment: {order.SegmentLabel}";
         var notes = string.IsNullOrWhiteSpace(order.Notes) ? string.Empty : $" | Note: {order.Notes}";
         return $"Post-book ancillary request | {core}{segment}{option}{notes}";
+    }
+
+    private static string? ResolveMealSsrCode(string ancillaryType, string? optionCode)
+    {
+        if (!ancillaryType.Equals("MEAL", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return optionCode?.Trim().ToUpperInvariant() switch
+        {
+            "VGML" => "VGML",
+            "MOML" => "MOML",
+            "SPML" => "SPML",
+            _ => null,
+        };
     }
 
     private static string ExtractTravelportMessage(Exception ex)

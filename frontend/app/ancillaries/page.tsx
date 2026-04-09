@@ -101,47 +101,47 @@ const ancillaryCatalog: Record<AncillaryCategory, AncillaryPreset[]> = {
     ],
     MEAL: [
         {
-            code: "MLSTD",
-            title: "Standard meal request",
-            subtitle: "General inflight meal",
-            description: "Structured meal request recorded against the selected sector.",
+            code: "SPML",
+            title: "Special meal request",
+            subtitle: "Custom special meal",
+            description: "Live airline SSR meal request with your short catering note included for servicing.",
             baseAmount: 18,
-            bullets: ["Useful on full-service routes", "Servicing note included", "Good baseline request"],
+            bullets: ["Live SSR request to the airline", "Short special-meal note required", "Best for custom catering cases"],
             comparison: [
-                { label: "Meal type", value: "Standard", included: true },
-                { label: "Dietary flag", value: "No", included: false },
+                { label: "Meal type", value: "Special", included: true },
+                { label: "Dietary flag", value: "Custom", included: true },
                 { label: "Ops note", value: "Included", included: true },
             ],
-            rules: ["Best baseline catering request", "Ideal when carrier supports meal servicing", "Stored clearly in ancillary ledger"],
+            rules: ["Requires a short note describing the special meal", "Sent as a live SSR when supported", "Best for airline-specific catering needs"],
         },
         {
-            code: "MLHAL",
+            code: "MOML",
             title: "Halal meal request",
-            subtitle: "Dietary preference",
-            description: "Operational meal request with halal preference noted for servicing teams.",
+            subtitle: "Muslim meal SSR",
+            description: "Live airline SSR request for a halal or Muslim meal on the selected sector.",
             baseAmount: 22,
             highlight: "Popular",
-            bullets: ["Clear dietary flag", "Segment-specific request", "Captured in ancillary ledger"],
+            bullets: ["Live meal SSR", "Clear dietary flag", "Applied per selected traveler"],
             comparison: [
-                { label: "Meal type", value: "Halal", included: true },
+                { label: "Meal type", value: "Muslim / halal", included: true },
                 { label: "Dietary flag", value: "Yes", included: true },
                 { label: "Ops note", value: "Included", included: true },
             ],
-            rules: ["Best for dietary-sensitive travelers", "Segment-specific meal preference", "Clearer to operations than free-text remarks"],
+            rules: ["Sent to the airline as SSR MOML", "Best for halal meal requests", "No extra free text is required"],
         },
         {
-            code: "MLVEG",
+            code: "VGML",
             title: "Vegetarian meal request",
-            subtitle: "Special meal",
-            description: "Vegetarian catering request prepared for the chosen sector and traveler servicing flow.",
+            subtitle: "Vegetarian SSR",
+            description: "Live airline SSR request for a vegetarian meal on the chosen sector.",
             baseAmount: 22,
-            bullets: ["Special meal handling", "Useful for advance servicing", "Refundable on failed request"],
+            bullets: ["Live meal SSR", "Useful for advance servicing", "Applied per selected traveler"],
             comparison: [
                 { label: "Meal type", value: "Vegetarian", included: true },
                 { label: "Dietary flag", value: "Yes", included: true },
                 { label: "Ops note", value: "Included", included: true },
             ],
-            rules: ["Good fit for advance servicing", "Structured dietary logging", "Operationally easier to trace later"],
+            rules: ["Sent to the airline as SSR VGML", "Good fit for advance servicing", "No extra free text is required"],
         },
     ],
     SEAT: [
@@ -620,6 +620,10 @@ function AncillariesPageContent() {
             setError("Select at least one traveler before previewing an ancillary quote.");
             return;
         }
+        if (category === "MEAL" && preset.code === "SPML" && !notes.trim()) {
+            setError("Add a short special meal note before previewing this request.");
+            return;
+        }
         try {
             setAction(`quote-${preset.code}`);
             setError("");
@@ -651,12 +655,16 @@ function AncillariesPageContent() {
             setError("Select at least one traveler before creating the ancillary request.");
             return;
         }
+        if (category === "MEAL" && selectedPreset.code === "SPML" && !notes.trim()) {
+            setError("Add a short special meal note before sending this SSR request.");
+            return;
+        }
         try {
             setAction("create-order");
             setError("");
             setSuccess("");
 
-            await createBookingAncillaryOrder(bookingId, {
+            const response = await createBookingAncillaryOrder(bookingId, {
                 type: category,
                 segmentLabel: selectedSegment,
                 optionCode: selectedPreset.code,
@@ -669,7 +677,11 @@ function AncillariesPageContent() {
 
             const ancillaryOrders = await getBookingAncillaries(bookingId);
             setOrders(ancillaryOrders);
-            setSuccess("Ancillary request has been charged and queued successfully.");
+            setSuccess(
+                response.status === "FULFILLED"
+                    ? "Meal request was sent live to the airline successfully."
+                    : "Ancillary request has been charged and queued successfully."
+            );
             setQuote(null);
             setSelectedPreset(null);
             setNotes("");
@@ -1280,7 +1292,11 @@ function AncillariesPageContent() {
                         <textarea
                             value={notes}
                             onChange={(event) => setNotes(event.target.value)}
-                            placeholder="Example: prefer aisle if standard seating only, traveler travelling with one checked bag, or meal request linked to dietary preference."
+                            placeholder={
+                                category === "MEAL"
+                                    ? "Example: use only for SPML special meal details. VGML and MOML usually do not need extra text."
+                                    : "Example: prefer aisle if standard seating only, traveler travelling with one checked bag, or meal request linked to dietary preference."
+                            }
                             className="mt-4 min-h-[120px] w-full rounded-[1.45rem] border border-[rgba(89,64,46,0.1)] bg-white/90 px-5 py-4 text-sm outline-none"
                         />
                     </div>
