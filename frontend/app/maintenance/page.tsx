@@ -58,26 +58,6 @@ export default function MaintenancePage() {
                         </p>
                     </div>
 
-                    <div className="mt-6 space-y-3 rounded-[1.6rem] border border-[rgba(89,64,46,0.12)] bg-white/80 p-5">
-                        <div className="flex items-start gap-3">
-                            <div className="mt-1 h-2.5 w-2.5 rounded-full bg-[var(--accent)]" />
-                            <p className="text-sm leading-6 text-slate-600">
-                                Frontend and backend services may restart as part of the update.
-                            </p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                            <div className="mt-1 h-2.5 w-2.5 rounded-full bg-[var(--accent)]" />
-                            <p className="text-sm leading-6 text-slate-600">
-                                Existing sessions can expire and users may need to sign in again afterwards.
-                            </p>
-                        </div>
-                        <div className="flex items-start gap-3">
-                            <div className="mt-1 h-2.5 w-2.5 rounded-full bg-[var(--accent)]" />
-                            <p className="text-sm leading-6 text-slate-600">
-                                Search and booking should resume once system services and network checks pass.
-                            </p>
-                        </div>
-                    </div>
                 </aside>
             </div>
         </section>
