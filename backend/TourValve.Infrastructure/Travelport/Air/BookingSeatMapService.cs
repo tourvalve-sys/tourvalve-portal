@@ -50,6 +50,7 @@ public sealed class BookingSeatMapService
             .Select((x, index) => new BookingTravelerContext(
                 x.Attribute("Key")?.Value ?? $"TRV-{index + 1}",
                 x.Attribute("TravelerType")?.Value ?? "ADT",
+                x.Elements().FirstOrDefault(e => e.Name.LocalName == "BookingTravelerName")?.Attribute("Prefix")?.Value ?? string.Empty,
                 x.Elements().FirstOrDefault(e => e.Name.LocalName == "BookingTravelerName")?.Attribute("First")?.Value ?? "Passenger",
                 x.Elements().FirstOrDefault(e => e.Name.LocalName == "BookingTravelerName")?.Attribute("Last")?.Value ?? $"{index + 1}"))
             .ToList();
@@ -78,14 +79,6 @@ public sealed class BookingSeatMapService
             frequentFlyerProgram,
             frequentFlyerNumber);
 
-        var hostReservationXml = $@"
-    <air:HostReservation
-        ProviderCode=""{Escape(providerCode)}""
-        ProviderLocatorCode=""{Escape(booking.ProviderLocator)}""
-        Carrier=""{Escape(booking.Carrier)}""
-        CarrierLocatorCode=""{Escape(string.IsNullOrWhiteSpace(booking.AirlineLocator) ? booking.ProviderLocator : booking.AirlineLocator)}""
-        UniversalLocatorCode=""{Escape(booking.UniversalRecordLocator)}"" />";
-
         return $@"
 <air:SeatMapReq
     xmlns:air=""http://www.travelport.com/schema/air_v51_0""
@@ -98,7 +91,6 @@ public sealed class BookingSeatMapService
   <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
 {travelerXml}
   {airSegment}
-{hostReservationXml}
 </air:SeatMapReq>".Trim();
     }
 
@@ -116,48 +108,51 @@ public sealed class BookingSeatMapService
         if (traveler is null)
         {
             return $@"
-    <air:SearchTraveler Code=""ADT"">
+    <air:SearchTraveler Code=""ADT"" Key=""TRV-1"">
       <com:Name First=""TourValve"" Last=""Traveler"" />{loyaltyXml}
     </air:SearchTraveler>";
         }
 
+        var prefixAttribute = string.IsNullOrWhiteSpace(traveler.Prefix)
+            ? string.Empty
+            : $@" Prefix=""{Escape(traveler.Prefix)}""";
+
         return $@"
-    <air:SearchTraveler BookingTravelerRef=""{Escape(traveler.Key)}"" Code=""{Escape(traveler.Code)}"">
-      <com:Name First=""{Escape(traveler.First)}"" Last=""{Escape(traveler.Last)}"" />{loyaltyXml}
+    <air:SearchTraveler Code=""{Escape(traveler.Code)}"" Key=""{Escape(traveler.Key)}"">
+      <com:Name{prefixAttribute} First=""{Escape(traveler.First)}"" Last=""{Escape(traveler.Last)}"" />{loyaltyXml}
     </air:SearchTraveler>";
     }
 
     private static string BuildSeatMapSegment(XElement original, string providerCode)
     {
-        var carrier = original.Attribute("Carrier")?.Value ?? string.Empty;
-        var flightNumber = original.Attribute("FlightNumber")?.Value ?? string.Empty;
-        var departureTime = original.Attribute("DepartureTime")?.Value ?? string.Empty;
-        var arrivalTime = original.Attribute("ArrivalTime")?.Value ?? string.Empty;
-        var origin = original.Attribute("Origin")?.Value ?? string.Empty;
-        var destination = original.Attribute("Destination")?.Value ?? string.Empty;
-        var group = original.Attribute("Group")?.Value ?? "0";
-        var key = original.Attribute("Key")?.Value ?? "SEG-1";
-        var classOfService =
-            original.Attribute("ClassOfService")?.Value
-            ?? original.Attribute("BookingCode")?.Value
-            ?? original.Descendants().FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo")?.Attribute("BookingCode")?.Value
-            ?? string.Empty;
+        var segment = new XElement(XName.Get("AirSegment", "http://www.travelport.com/schema/air_v51_0"));
 
-        var segment = new XElement(
-            XName.Get("AirSegment", "http://www.travelport.com/schema/air_v51_0"),
-            new XAttribute("Key", key),
-            new XAttribute("Group", group),
-            new XAttribute("Carrier", carrier),
-            new XAttribute("FlightNumber", flightNumber),
-            new XAttribute("Origin", origin),
-            new XAttribute("Destination", destination),
-            new XAttribute("DepartureTime", departureTime),
-            new XAttribute("ArrivalTime", arrivalTime),
-            new XAttribute("ProviderCode", original.Attribute("ProviderCode")?.Value ?? providerCode));
-
-        if (!string.IsNullOrWhiteSpace(classOfService))
+        foreach (var attribute in original.Attributes())
         {
-            segment.Add(new XAttribute("ClassOfService", classOfService));
+            if (string.IsNullOrWhiteSpace(attribute.Value))
+            {
+                continue;
+            }
+
+            segment.SetAttributeValue(attribute.Name.LocalName, attribute.Value);
+        }
+
+        if (string.IsNullOrWhiteSpace(segment.Attribute("ProviderCode")?.Value))
+        {
+            segment.SetAttributeValue("ProviderCode", providerCode);
+        }
+
+        if (string.IsNullOrWhiteSpace(segment.Attribute("ClassOfService")?.Value))
+        {
+            var classOfService =
+                original.Attribute("ClassOfService")?.Value
+                ?? original.Attribute("BookingCode")?.Value
+                ?? original.Descendants().FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo")?.Attribute("BookingCode")?.Value;
+
+            if (!string.IsNullOrWhiteSpace(classOfService))
+            {
+                segment.SetAttributeValue("ClassOfService", classOfService);
+            }
         }
 
         var missing = new[]
@@ -366,7 +361,7 @@ public sealed class BookingSeatMapService
             .Replace("\"", "&quot;").Replace("'", "&apos;");
 
     private sealed record BookingSegmentContext(XElement Element, string Label, int Index);
-    private sealed record BookingTravelerContext(string Key, string Code, string First, string Last);
+    private sealed record BookingTravelerContext(string Key, string Code, string Prefix, string First, string Last);
 }
 
 public sealed class BookingSeatMapResult
