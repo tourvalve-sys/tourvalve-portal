@@ -85,8 +85,8 @@ public sealed class BookingSeatMapService
             new XAttribute("ReturnSeatPricing", "true"),
             new XAttribute("ReturnBrandingInfo", "true"),
             new XElement(CommonNs + "BillingPointOfSaleInfo", new XAttribute("OriginApplication", "UAPI")),
-            travelerXml,
-            airSegment);
+            airSegment,
+            travelerXml);
 
         return request.ToString(SaveOptions.DisableFormatting);
     }
