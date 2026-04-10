@@ -1217,21 +1217,6 @@ export default function FlightSearch() {
                 </div>
 
                 <div className="mx-auto max-w-[88rem] rounded-[1.7rem] premium-panel classic-grid p-3.5 sm:p-4 md:rounded-[2rem] md:p-8">
-                    <div className="mb-5 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-[1.4rem] border border-[rgba(50,93,147,0.12)] bg-white/72 px-4 py-3">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Live pricing</div>
-                            <div className="mt-1 text-sm font-semibold text-[var(--ink)]">Travelport-backed itinerary pricing</div>
-                        </div>
-                        <div className="rounded-[1.4rem] border border-[rgba(50,93,147,0.12)] bg-white/72 px-4 py-3">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Pre-book extras</div>
-                            <div className="mt-1 text-sm font-semibold text-[var(--ink)]">Seat, baggage, and meal review before checkout</div>
-                        </div>
-                        <div className="rounded-[1.4rem] border border-[rgba(50,93,147,0.12)] bg-white/72 px-4 py-3">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Reliable routing</div>
-                            <div className="mt-1 text-sm font-semibold text-[var(--ink)]">Multi-city live shopping limited to two segments</div>
-                        </div>
-                    </div>
-
                     <div className="mb-5 flex flex-wrap gap-2.5 sm:mb-6 sm:gap-3">
                         <button
                             onClick={() => setTripType("oneway")}
