@@ -40,12 +40,16 @@ export default function Sidebar() {
     return (
         <>
             <aside className="hidden premium-panel mx-4 mt-4 w-auto shrink-0 flex-col rounded-[2rem] p-4 xl:sticky xl:top-4 xl:mx-0 xl:ml-4 xl:mr-0 xl:mt-4 xl:flex xl:w-[280px] xl:self-start">
-                <div className="rounded-[1.75rem] bg-[linear-gradient(160deg,#17304d,#102136)] px-5 py-6 text-white shadow-[0_22px_40px_rgba(16,33,54,0.3)]">
-                    <div className="subtle-kicker text-white/60">Luxury Operations Suite</div>
+                <div className="rounded-[1.75rem] bg-[linear-gradient(160deg,#0f3b72,#0c58b6_52%,#2b8cff)] px-5 py-6 text-white shadow-[0_22px_40px_rgba(12,54,112,0.28)]">
+                    <div className="subtle-kicker text-white/65">Travel Commerce Portal</div>
                     <div className="mt-3 font-display text-3xl">TourValve</div>
                     <p className="mt-3 text-sm leading-6 text-white/70">
-                        A classic control room for air sales, wallet oversight, and reservation performance.
+                        Search, price, book, and service live air content from one connected workspace.
                     </p>
+                    <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/75">
+                        <span className="rounded-full bg-white/14 px-3 py-1">Travelport live</span>
+                        <span className="rounded-full bg-white/14 px-3 py-1">Agent ready</span>
+                    </div>
                 </div>
 
                 <nav className="mt-6 flex flex-col gap-2 xl:pr-1">
@@ -78,9 +82,9 @@ export default function Sidebar() {
                 </nav>
 
                 <div className="soft-panel mt-4 rounded-[1.5rem] p-4 xl:mt-5">
-                    <div className="status-pill status-success mb-3">Live System</div>
+                    <div className="status-pill status-success mb-3">Live Platform</div>
                     <p className="text-sm leading-6 text-slate-600">
-                        Flight inventory, wallet controls, and reporting now run inside one connected portal experience.
+                        Live inventory, pre-book servicing, wallet controls, and reporting are available from this workspace.
                     </p>
                     <button
                         onClick={handleLogout}
@@ -95,11 +99,11 @@ export default function Sidebar() {
                 <div className="mx-3 mt-3 rounded-[1.35rem] bg-[linear-gradient(160deg,#17304d,#102136)] px-4 py-3.5 text-white shadow-[0_18px_34px_rgba(16,33,54,0.24)]">
                     <div className="flex items-end justify-between gap-3">
                         <div>
-                            <div className="subtle-kicker text-white/60">TourValve Mobile Desk</div>
+                            <div className="subtle-kicker text-white/60">Travel Commerce Portal</div>
                             <div className="mt-1 font-display text-[1.65rem] leading-none">TourValve</div>
                         </div>
                         <div className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
-                            Live
+                            Online
                         </div>
                     </div>
                 </div>

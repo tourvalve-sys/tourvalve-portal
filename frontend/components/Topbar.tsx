@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bell, Search, ShieldCheck } from "lucide-react";
+import { Bell, ShieldCheck, Zap } from "lucide-react";
 import { getCurrentUser, getNotifications, markAllNotificationsRead, markNotificationRead, type CurrentUser, type NotificationItem } from "@/lib/api";
 
 const titles: Record<string, string> = {
@@ -14,6 +14,17 @@ const titles: Record<string, string> = {
     "/agents": "Agents",
     "/audit-trail": "Audit Trail",
     "/reports": "Reports",
+};
+
+const subtitles: Record<string, string> = {
+    "/": "Live sales, booking, and service performance",
+    "/flight-search": "Live shopping, pricing, and pre-book ancillaries",
+    "/booking": "Review traveler details before reservation",
+    "/bookings": "Manage reservations and post-book servicing",
+    "/wallet": "Funds, holds, and transaction control",
+    "/agents": "Agent access and approval management",
+    "/audit-trail": "Operational history and accountability",
+    "/reports": "Commercial and servicing performance",
 };
 
 export default function Topbar() {
@@ -40,6 +51,7 @@ export default function Topbar() {
     }, []);
 
     const title = titles[pathname] ?? "TourValve";
+    const subtitle = subtitles[pathname] ?? "Connected travel operations";
     const initial = user?.email?.charAt(0).toUpperCase() ?? "U";
 
     const handleRead = async (notificationId: string) => {
@@ -59,19 +71,20 @@ export default function Topbar() {
     return (
         <div className="soft-panel sticky top-3 z-20 mx-3 mt-3 flex flex-col gap-3 rounded-[1.35rem] px-4 py-3 sm:mx-4 sm:mt-4 sm:rounded-[1.5rem] sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-                <div className="subtle-kicker mb-1.5 hidden sm:block">Operations Lounge</div>
+                <div className="subtle-kicker mb-1.5 hidden sm:block">TourValve Workspace</div>
                 <div className="font-display text-[1.55rem] leading-none text-[var(--ink)] sm:text-[1.85rem] md:text-3xl">{title}</div>
+                <div className="mt-1 hidden text-sm text-slate-500 sm:block">{subtitle}</div>
             </div>
 
             <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:gap-3 lg:w-auto lg:flex-nowrap lg:justify-end">
-                <div className="hidden min-w-[18rem] items-center gap-3 rounded-full border border-[rgba(89,64,46,0.12)] bg-white/70 px-4 py-2 text-sm text-slate-500 xl:flex">
-                    <Search size={15} />
-                    Search bookings, wallets, agents
-                </div>
-
-                <div className="hidden md:flex items-center gap-2 rounded-full bg-[rgba(20,33,61,0.06)] px-3 py-2 text-[11px] font-semibold text-[var(--ink)]">
+                <div className="hidden md:flex items-center gap-2 rounded-full bg-[rgba(16,35,60,0.06)] px-3 py-2 text-[11px] font-semibold text-[var(--ink)]">
                     <ShieldCheck size={15} />
                     Secure Session
+                </div>
+
+                <div className="hidden xl:flex items-center gap-2 rounded-full bg-[rgba(15,110,207,0.08)] px-3 py-2 text-[11px] font-semibold text-[var(--accent-strong)]">
+                    <Zap size={15} />
+                    Travelport-connected
                 </div>
 
                 <div className="relative">
@@ -110,7 +123,7 @@ export default function Topbar() {
                                         className={`w-full rounded-[1.3rem] border px-4 py-3 text-left transition ${
                                             notification.isRead
                                                 ? "border-[rgba(89,64,46,0.08)] bg-white/70"
-                                                : "border-[rgba(154,106,58,0.18)] bg-[rgba(255,247,236,0.95)]"
+                                                : "border-[rgba(15,110,207,0.18)] bg-[rgba(241,248,255,0.98)]"
                                         }`}
                                     >
                                         <div className="flex items-start justify-between gap-3">

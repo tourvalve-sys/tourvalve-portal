@@ -714,7 +714,7 @@ function AncillariesPageContent() {
         return (
             <div className="space-y-6">
                 <section className="soft-panel rounded-[2rem] px-8 py-10">
-                    <div className="subtle-kicker">Add-ons atelier</div>
+                    <div className="subtle-kicker">Ancillary Workspace</div>
                     <h1 className="mt-3 font-[family-name:var(--font-playfair)] text-4xl text-[var(--ink)] sm:text-5xl">
                         No booking selected for ancillaries.
                     </h1>
@@ -737,21 +737,19 @@ function AncillariesPageContent() {
         <div className="space-y-6 fade-in">
             <section className="soft-panel grid gap-6 rounded-[2rem] px-8 py-10 lg:grid-cols-[1.45fr_0.9fr]">
                 <div>
-                    <div className="subtle-kicker">Add-ons atelier</div>
+                    <div className="subtle-kicker">Ancillary Workspace</div>
                     <h1 className="mt-3 font-[family-name:var(--font-playfair)] text-4xl text-[var(--ink)] sm:text-5xl">
-                        Shape the booking with cleaner extras.
+                        Manage booking extras with a clearer workflow.
                     </h1>
                     <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500 sm:text-base">
-                        We retrieved the booking itinerary first, then structured baggage, meal, and seat requests into a
-                        more client-facing ancillary studio. Choose a sector, preview the charge, and push the request into
-                        the servicing queue with a much calmer flow than the old drawer.
+                        Review live booking-linked baggage, meal, and seat requests by sector, preview the charge, and send the request into the servicing queue with cleaner decision points.
                     </p>
                     <div className="mt-6 flex flex-wrap gap-3">
                         <div className="inline-flex items-center gap-2 rounded-full bg-[rgba(228,243,235,0.86)] px-4 py-2 text-sm font-semibold text-[var(--success)]">
                             <PlaneTakeoff size={16} />
                             Live booking retrieved
                         </div>
-                        <div className="inline-flex items-center gap-2 rounded-full bg-[rgba(255,247,236,0.86)] px-4 py-2 text-sm font-semibold text-[var(--accent-strong)]">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-[rgba(241,248,255,0.9)] px-4 py-2 text-sm font-semibold text-[var(--accent-strong)]">
                             <Sparkles size={16} />
                             {liveOfferCatalog?.hasLivePricedOffers
                                 ? `${liveOfferCatalog.diagnostics.totalLiveOffers} live airline-priced options detected`
@@ -771,7 +769,7 @@ function AncillariesPageContent() {
                     <div className="mt-2 text-sm text-slate-500">
                         Booking reference {booking.bookingReference}
                     </div>
-                    <div className="mt-4 rounded-[1.4rem] bg-[rgba(255,247,236,0.84)] p-4">
+                    <div className="mt-4 rounded-[1.4rem] bg-[rgba(241,248,255,0.92)] p-4">
                         <div className="text-xs uppercase tracking-[0.18em] text-[var(--accent-strong)]">Settled ticket amount</div>
                         <div className="mt-2 text-3xl font-semibold text-[var(--ink)]">
                             {formatCurrency(booking.amount, "MYR")}
@@ -787,7 +785,7 @@ function AncillariesPageContent() {
                             <div>
                                 <div className="subtle-kicker">{activeMeta.eyebrow}</div>
                                 <h2 className="mt-2 text-3xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
-                                    Build add-ons sector by sector.
+                                    Review add-ons sector by sector.
                                 </h2>
                                 <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500">
                                     {activeMeta.note}
@@ -806,7 +804,7 @@ function AncillariesPageContent() {
                                         onClick={() => setCategory(item)}
                                         className={`inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold transition ${
                                             active
-                                                ? "bg-[var(--accent-strong)] text-white shadow-[0_14px_28px_rgba(107,69,30,0.22)]"
+                                                ? "bg-[var(--accent-strong)] text-white shadow-[0_14px_28px_rgba(12,78,163,0.22)]"
                                                 : "bg-white/80 text-[var(--ink)] hover:bg-white"
                                         }`}
                                     >
@@ -850,7 +848,7 @@ function AncillariesPageContent() {
                             <div>
                                 <div className="subtle-kicker">Compare add-on options</div>
                                 <h3 className="mt-2 text-2xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
-                                    Choose the add-on level that fits this sector best.
+                                    Choose the add-on that fits this sector best.
                                 </h3>
                             </div>
                             <div className="hidden rounded-full bg-[rgba(255,247,236,0.84)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)] xl:inline-flex">
@@ -861,7 +859,7 @@ function AncillariesPageContent() {
                           <div className={`rounded-[1.35rem] px-4 py-4 text-sm leading-7 ${
                               usingLiveOptions
                                   ? "bg-[rgba(225,246,236,0.9)] text-[var(--success)]"
-                                  : "bg-[rgba(255,247,236,0.84)] text-slate-600"
+                                  : "bg-[rgba(241,248,255,0.92)] text-slate-600"
                           }`}>
                             {(usingLiveOptions && !liveOptions.length && liveCategoryOptions.length
                                 ? "Live airline-priced options were returned for this booking, so the studio is showing the broader supplier offer list for this category."
@@ -883,11 +881,11 @@ function AncillariesPageContent() {
                                           disabled={seatMapLoading}
                                           className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
                                       >
-                                          {seatMapLoading ? "Loading live seat map..." : "Refresh Live Seat Map"}
+                                          {seatMapLoading ? "Loading live seat map..." : "Refresh Seat Map"}
                                       </button>
                                   </div>
 
-                                  <div className="mt-4 rounded-[1.25rem] bg-[rgba(255,247,236,0.76)] px-4 py-4 text-sm leading-7 text-slate-600">
+                                  <div className="mt-4 rounded-[1.25rem] bg-[rgba(241,248,255,0.92)] px-4 py-4 text-sm leading-7 text-slate-600">
                                       This seat view comes from the booked record’s live seat-map response. It is the right place to inspect real seat rows and returned seat pricing before falling back to manual seat servicing.
                                   </div>
 
@@ -997,7 +995,7 @@ function AncillariesPageContent() {
                                 <article
                                     key={preset.code}
                                     className={`premium-panel rounded-[1.8rem] p-5 transition ${
-                                        active ? "ring-2 ring-[rgba(176,122,67,0.24)]" : ""
+                                        active ? "ring-2 ring-[rgba(12,78,163,0.22)]" : ""
                                     }`}
                                 >
                                     <div className="flex items-start justify-between gap-3">
@@ -1335,7 +1333,7 @@ function AncillariesPageContent() {
                         ) : null}
 
                         {selectedPreset ? (
-                            <div className="mt-4 rounded-[1.5rem] bg-[rgba(255,247,236,0.84)] p-4">
+                            <div className="mt-4 rounded-[1.5rem] bg-[rgba(241,248,255,0.92)] p-4">
                                 <div className="text-xs uppercase tracking-[0.18em] text-[var(--accent-strong)]">
                                     Selected request
                                 </div>
@@ -1348,7 +1346,7 @@ function AncillariesPageContent() {
                                 </div>
                             </div>
                         ) : (
-                            <div className="mt-4 rounded-[1.5rem] bg-[rgba(255,247,236,0.74)] p-4 text-sm text-slate-500">
+                            <div className="mt-4 rounded-[1.5rem] bg-[rgba(241,248,255,0.9)] p-4 text-sm text-slate-500">
                                 Select an add-on card to preview the ancillary quote.
                             </div>
                         )}
@@ -1367,7 +1365,7 @@ function AncillariesPageContent() {
                                     <span className="font-semibold text-[var(--ink)]">Total charge</span>
                                     <span className="text-2xl font-semibold text-[var(--accent-strong)]">{formatCurrency(quote.totalAmount, quote.currency)}</span>
                                 </div>
-                                <div className="flex items-center justify-between rounded-[1.2rem] bg-[rgba(255,247,236,0.76)] px-3 py-3">
+                                <div className="flex items-center justify-between rounded-[1.2rem] bg-[rgba(241,248,255,0.92)] px-3 py-3">
                                     <span className="font-semibold text-[var(--ink)]">Projected ancillary total</span>
                                     <span className="text-lg font-semibold text-[var(--ink)]">
                                         {formatCurrency(projectedTotal, quote.currency)}
@@ -1387,7 +1385,7 @@ function AncillariesPageContent() {
                         ) : null}
 
                         {latestQueuedOrder ? (
-                            <div className="mt-4 rounded-[1.35rem] bg-[rgba(255,247,236,0.76)] p-4">
+                            <div className="mt-4 rounded-[1.35rem] bg-[rgba(241,248,255,0.92)] p-4">
                                 <div className="text-xs uppercase tracking-[0.18em] text-[var(--accent-strong)]">
                                     Latest logged request
                                 </div>

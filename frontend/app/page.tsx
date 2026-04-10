@@ -83,17 +83,17 @@ export default function Dashboard() {
                 <div className="subtle-kicker mb-3">Executive Overview</div>
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                     <div className="max-w-3xl">
-                        <h1 className="hero-title">A classic operations floor for modern travel teams.</h1>
+                        <h1 className="hero-title">A sharper booking workspace for live air commerce.</h1>
                         <p className="mt-5 text-base leading-8 text-slate-600">
-                            Track live booking performance, monitor wallet strength, and move from quoting to reservation in a single elegant workspace.
+                            Track live booking performance, monitor wallet strength, and move from shopping to reservation without leaving the portal.
                         </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="status-pill status-success">Live Booking Mode</div>
-                        <div className="hidden items-center gap-2 rounded-full bg-[rgba(255,255,255,0.72)] px-4 py-2 text-sm text-slate-600 shadow-sm md:inline-flex">
+                        <div className="hidden items-center gap-2 rounded-full bg-[rgba(255,255,255,0.78)] px-4 py-2 text-sm text-slate-600 shadow-sm md:inline-flex">
                             <Sparkles size={14} />
-                            Refined sales workspace
+                            Search, price, book
                         </div>
                     </div>
                 </div>
@@ -212,7 +212,7 @@ export default function Dashboard() {
 
                 <div className="soft-panel rounded-[2rem] p-5 sm:p-6">
                     <div className="subtle-kicker mb-2">Quick Actions</div>
-                    <h2 className="font-display text-3xl text-[var(--ink)]">Move fast</h2>
+                    <h2 className="font-display text-3xl text-[var(--ink)]">Move the day forward</h2>
                     <div className="mt-6 space-y-3">
                         <button
                             onClick={() => router.push("/flight-search")}
@@ -269,18 +269,19 @@ export default function Dashboard() {
             <section className="grid gap-5 lg:gap-6 lg:grid-cols-2">
                 <div className="soft-panel rounded-[2rem] p-5 sm:p-6">
                     <div className="subtle-kicker mb-2">Portal Standard</div>
-                    <h2 className="font-display text-3xl text-[var(--ink)]">Built for a higher-end workflow</h2>
+                    <h2 className="font-display text-3xl text-[var(--ink)]">Built for faster, clearer selling</h2>
                     <p className="mt-4 text-sm leading-7 text-slate-500">
-                        The interface now uses a unified premium visual language, softer motion, and cleaner reporting surfaces so agents and admins can work in a calmer, more confident environment.
+                        The portal is tuned for practical airline sales: clearer status, faster navigation, and cleaner handoff from availability to pricing and booking.
                     </p>
                 </div>
 
                 <div className="premium-panel rounded-[2rem] p-5 sm:p-6">
                     <div className="subtle-kicker mb-2">Operational Readiness</div>
-                    <h2 className="font-display text-3xl text-[var(--ink)]">Ready for reservations, treasury, and reporting</h2>
+                    <h2 className="font-display text-3xl text-[var(--ink)]">Ready for reservations, servicing, and reporting</h2>
                     <div className="mt-5 flex flex-wrap gap-3">
                         <span className="status-pill status-success">Air Search</span>
                         <span className="status-pill status-success">Air Book</span>
+                        <span className="status-pill status-success">Seat Map</span>
                         <span className="status-pill status-success">Wallet Control</span>
                         <span className="status-pill status-success">Performance Reports</span>
                     </div>

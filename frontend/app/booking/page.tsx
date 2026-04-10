@@ -537,9 +537,9 @@ export default function BookingPage() {
     if (!selectedFlight) {
         return (
             <div className="premium-panel rounded-[2rem] p-8 shadow fade-in">
-                <div className="subtle-kicker mb-3">Reservation Desk</div>
+                <div className="subtle-kicker mb-3">Booking Workspace</div>
                 <h1 className="hero-title mb-4 text-4xl">No flight selected yet.</h1>
-                <p className="mb-6 text-slate-600">Head back to the search desk and choose a live itinerary before continuing to reservation.</p>
+                <p className="mb-6 text-slate-600">Return to flight search and choose a live itinerary before continuing to booking.</p>
                 <button
                     onClick={() => router.push("/flight-search")}
                     className="gold-button rounded-2xl px-5 py-3 font-semibold"
@@ -559,11 +559,25 @@ export default function BookingPage() {
                 />
             ) : null}
             <div className="mb-6 sm:mb-8">
-                <div className="subtle-kicker mb-2 sm:mb-3">Reservation Atelier</div>
+                <div className="subtle-kicker mb-2 sm:mb-3">Booking Review</div>
                 <h1 className="hero-title mb-2 sm:mb-3">Complete your booking.</h1>
                 <p className="max-w-2xl text-slate-600">
-                    Passenger details, itinerary review, and traveler preferences now sit in one polished reservation flow.
+                    Review passenger details, traveler preferences, and live itinerary context before sending the reservation request.
                 </p>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[1.3rem] border border-[rgba(50,93,147,0.12)] bg-white/72 px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Live itinerary</div>
+                        <div className="mt-1 text-sm font-semibold text-[var(--ink)]">Priced from provider response</div>
+                    </div>
+                    <div className="rounded-[1.3rem] border border-[rgba(50,93,147,0.12)] bg-white/72 px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Seat request</div>
+                        <div className="mt-1 text-sm font-semibold text-[var(--ink)]">Live preview when available</div>
+                    </div>
+                    <div className="rounded-[1.3rem] border border-[rgba(50,93,147,0.12)] bg-white/72 px-4 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Wallet flow</div>
+                        <div className="mt-1 text-sm font-semibold text-[var(--ink)]">Hold, reserve, then confirm</div>
+                    </div>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
@@ -581,7 +595,7 @@ export default function BookingPage() {
                                         <label className="mb-2 block text-sm text-slate-500">First Name</label>
                                         <input
                                             placeholder="First Name"
-                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            className="w-full rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
                                             value={passenger.firstName}
                                             onChange={(event) => updatePassenger(index, "firstName", event.target.value)}
                                         />
@@ -590,7 +604,7 @@ export default function BookingPage() {
                                         <label className="mb-2 block text-sm text-slate-500">Last Name</label>
                                         <input
                                             placeholder="Last Name"
-                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            className="w-full rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
                                             value={passenger.lastName}
                                             onChange={(event) => updatePassenger(index, "lastName", event.target.value)}
                                         />
@@ -599,7 +613,7 @@ export default function BookingPage() {
                                         <label className="mb-2 block text-sm text-slate-500">Passport Number</label>
                                         <input
                                             placeholder="Passport Number"
-                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            className="w-full rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
                                             value={passenger.passportNumber}
                                             onChange={(event) => updatePassenger(index, "passportNumber", event.target.value)}
                                         />
@@ -609,7 +623,7 @@ export default function BookingPage() {
                                         <input
                                             type="date"
                                             min={todayDate}
-                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            className="w-full rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
                                             value={passenger.passportExpiryDate}
                                             onChange={(event) => updatePassenger(index, "passportExpiryDate", event.target.value)}
                                         />
@@ -618,7 +632,7 @@ export default function BookingPage() {
                                         <label className="mb-2 block text-sm text-slate-500">Date of Birth</label>
                                         <input
                                             type="date"
-                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            className="w-full rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
                                             value={passenger.dateOfBirth}
                                             onChange={(event) => updatePassenger(index, "dateOfBirth", event.target.value)}
                                         />
@@ -626,7 +640,7 @@ export default function BookingPage() {
                                     <div>
                                         <label className="mb-2 block text-sm text-slate-500">Gender</label>
                                         <select
-                                            className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                            className="w-full rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
                                             value={passenger.gender}
                                             onChange={(event) => updatePassenger(index, "gender", event.target.value)}
                                         >
@@ -645,13 +659,13 @@ export default function BookingPage() {
                         <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
                             <input
                                 placeholder="Email Address"
-                                className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                className="rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
                                 value={contactEmail}
                                 onChange={(event) => setContactEmail(event.target.value)}
                             />
                             <input
                                 placeholder="Phone Number"
-                                className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                                className="rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
                                 value={contactPhone}
                                 onChange={(event) => setContactPhone(event.target.value)}
                             />
@@ -769,24 +783,24 @@ export default function BookingPage() {
                             </div>
                         </div>
 
-                        <div className="mt-6 rounded-[1.75rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(135deg,rgba(255,250,244,0.96),rgba(247,238,224,0.9))] p-5 shadow-[0_18px_42px_rgba(62,43,25,0.08)]">
+                        <div className="mt-6 rounded-[1.75rem] border border-[rgba(50,93,147,0.1)] bg-[linear-gradient(135deg,rgba(245,249,255,0.98),rgba(234,243,255,0.92))] p-5 shadow-[0_18px_42px_rgba(28,64,118,0.08)]">
                             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start">
                                 <div className="min-w-0">
                                     <div className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
                                         <MapPin size={15} />
-                                        Live Seat Mapping
+                                        Seat Map Preview
                                     </div>
                                     <h3 className="text-2xl font-semibold text-[var(--ink)]">
-                                        Preview live seats by flight leg.
+                                        Review seats by flight leg before booking.
                                     </h3>
                                     <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">
-                                        Load the live seat layout for each segment, then choose the seat code you want carried as a seat request with the booking.
+                                        Load the provider seat layout for each segment, then carry the selected seat code into the booking request when available.
                                     </p>
                                 </div>
 
                                 <div className="flex flex-col gap-3 lg:items-stretch">
                                     <span className="status-pill ghost-button !flex !w-full !justify-center !px-4 !py-2 !text-center !text-[var(--accent-strong)]">
-                                        Seat preview only
+                                        Preview mode
                                     </span>
                                     <button
                                         type="button"
@@ -794,7 +808,7 @@ export default function BookingPage() {
                                         disabled={seatMapLoading || !activeSeatSegment?.airSegmentXml}
                                         className="gold-button w-full rounded-2xl px-5 py-3 text-sm font-semibold disabled:opacity-60"
                                     >
-                                        {seatMapLoading ? "Loading Seat Map..." : "Load Live Seat Map"}
+                                        {seatMapLoading ? "Loading Seat Map..." : "Load Seat Map"}
                                     </button>
                                 </div>
                             </div>
@@ -908,9 +922,9 @@ export default function BookingPage() {
                                     </div>
 
                                     {!seatMap.rows.length && (
-                                        <div className="rounded-[1.4rem] border border-[rgba(176,122,67,0.12)] bg-[linear-gradient(135deg,rgba(255,249,241,0.98),rgba(248,238,224,0.92))] px-5 py-4 text-sm leading-7 text-slate-600">
+                                        <div className="rounded-[1.4rem] border border-[rgba(50,93,147,0.12)] bg-[linear-gradient(135deg,rgba(245,249,255,0.98),rgba(235,243,255,0.94))] px-5 py-4 text-sm leading-7 text-slate-600">
                                             <div className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--accent-strong)]">
-                                                Live seat map unavailable for this fare
+                                                Seat map unavailable for this fare
                                             </div>
                                             <div>
                                                 Your backup seat request will still be sent.
@@ -956,14 +970,14 @@ export default function BookingPage() {
                             )}
 
                             {!seatMap && !seatMapLoading && (
-                                <div className="mt-4 rounded-[1.3rem] bg-[rgba(255,247,236,0.82)] px-4 py-3 text-sm leading-7 text-slate-500">
-                                    Start with the leg tabs above, then load the live seat map to replace the generic seat preference with specific seat requests.
+                                <div className="mt-4 rounded-[1.3rem] bg-[rgba(241,248,255,0.9)] px-4 py-3 text-sm leading-7 text-slate-500">
+                                    Start with the leg tabs above, then load the seat map to replace the generic seat preference with a specific seat request when the airline returns one.
                                 </div>
                             )}
                         </div>
 
-                        <div className="mt-4 rounded-[1.5rem] bg-[rgba(255,247,236,0.82)] px-4 py-3 text-sm leading-7 text-slate-500">
-                            This is a live seat-map preview. The chosen seat codes are sent as booking seat requests, while final fulfilment still depends on the airline and fare rules.
+                        <div className="mt-4 rounded-[1.5rem] bg-[rgba(241,248,255,0.9)] px-4 py-3 text-sm leading-7 text-slate-500">
+                            This is a preview step. Selected seat codes are sent as booking seat requests, while final fulfilment still depends on airline rules and servicing support.
                         </div>
                     </div>
                 </div>
@@ -971,7 +985,7 @@ export default function BookingPage() {
                 <div className="space-y-4 sm:space-y-6">
                     <div className="space-y-4 sm:space-y-6 lg:sticky lg:top-6">
                         <div className="premium-panel overflow-hidden rounded-[1.6rem] p-4 float-slow sm:rounded-[2rem] sm:p-6">
-                            <div className="rounded-[1.55rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,252,247,0.98),rgba(247,238,224,0.92))] p-5 shadow-[0_20px_44px_rgba(62,43,25,0.08)] sm:rounded-[1.85rem] sm:p-6">
+                            <div className="rounded-[1.55rem] border border-[rgba(50,93,147,0.1)] bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(237,245,255,0.94))] p-5 shadow-[0_20px_44px_rgba(28,64,118,0.08)] sm:rounded-[1.85rem] sm:p-6">
                                 <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center">
                                     <div className="min-w-0">
                                         <div className="subtle-kicker mb-2">Flight Summary</div>
@@ -981,7 +995,7 @@ export default function BookingPage() {
                                         <p className="mt-3 max-w-sm text-sm leading-7 text-slate-500">
                                             {itinerarySegments.length > 1
                                                 ? `${itinerarySegments.length} flight legs prepared for confirmation.`
-                                                : "Your selected live itinerary is ready for confirmation."}
+                                                : "Your selected itinerary is ready for confirmation."}
                                         </p>
                                     </div>
 
@@ -1059,7 +1073,7 @@ export default function BookingPage() {
                                 ))}
                             </div>
 
-                            <div className="mt-5 rounded-[1.45rem] border border-[rgba(89,64,46,0.08)] bg-[linear-gradient(145deg,rgba(255,255,255,0.92),rgba(249,244,236,0.88))] p-4 shadow-[0_12px_28px_rgba(66,49,30,0.07)] sm:rounded-[1.7rem] sm:p-5">
+                            <div className="mt-5 rounded-[1.45rem] border border-[rgba(50,93,147,0.1)] bg-[linear-gradient(145deg,rgba(255,255,255,0.94),rgba(239,246,255,0.9))] p-4 shadow-[0_12px_28px_rgba(28,64,118,0.07)] sm:rounded-[1.7rem] sm:p-5">
                                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                                     <div>
                                         <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
