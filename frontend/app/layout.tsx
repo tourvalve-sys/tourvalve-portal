@@ -1,11 +1,94 @@
 "use client";
 
+import Script from "next/script";
 import { BookingProvider } from "./context/BookingContext";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
 import ProtectedSessionShell from "@/components/ProtectedSessionShell";
 import { usePathname } from "next/navigation";
+
+const chunkRecoveryScript = `
+(() => {
+  const reloadKey = "tv_chunk_recovery_path";
+  const staleStateKeys = ["flightSearchState", "selectedFlight", "travelerCounts"];
+
+  const clearStaleState = () => {
+    try {
+      staleStateKeys.forEach((key) => sessionStorage.removeItem(key));
+    } catch {}
+  };
+
+  const alreadyRetried = () => {
+    try {
+      return sessionStorage.getItem(reloadKey) === window.location.pathname;
+    } catch {
+      return false;
+    }
+  };
+
+  const markRetried = () => {
+    try {
+      sessionStorage.setItem(reloadKey, window.location.pathname);
+    } catch {}
+  };
+
+  const clearRetryMark = () => {
+    try {
+      if (sessionStorage.getItem(reloadKey) === window.location.pathname) {
+        sessionStorage.removeItem(reloadKey);
+      }
+    } catch {}
+  };
+
+  const shouldRecoverFromText = (value) =>
+    /ChunkLoadError|Loading chunk [0-9]+ failed|Failed to fetch dynamically imported module|Loading CSS chunk/i.test(value || "");
+
+  const shouldRecoverFromScript = (src) =>
+    typeof src === "string" && src.includes("/_next/static/");
+
+  const reloadPage = () => {
+    if (alreadyRetried()) {
+      return;
+    }
+
+    markRetried();
+    clearStaleState();
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("__tv_refresh", Date.now().toString());
+    window.location.replace(url.toString());
+  };
+
+  window.addEventListener("error", (event) => {
+    const target = event.target;
+
+    if (target instanceof HTMLScriptElement && shouldRecoverFromScript(target.src)) {
+      reloadPage();
+    }
+
+    if (target instanceof HTMLLinkElement && shouldRecoverFromScript(target.href)) {
+      reloadPage();
+    }
+  }, true);
+
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason;
+    const message =
+      typeof reason === "string"
+        ? reason
+        : reason && typeof reason.message === "string"
+          ? reason.message
+          : String(reason || "");
+
+    if (shouldRecoverFromText(message)) {
+      reloadPage();
+    }
+  });
+
+  window.addEventListener("pageshow", clearRetryMark);
+})();
+`;
 
 export default function RootLayout({
     children,
@@ -22,6 +105,13 @@ export default function RootLayout({
 
     return (
         <html lang="en">
+            <head>
+                <Script
+                    id="tv-chunk-recovery"
+                    strategy="beforeInteractive"
+                    dangerouslySetInnerHTML={{ __html: chunkRecoveryScript }}
+                />
+            </head>
             <body>
                 <BookingProvider>
                     {isAuthPage ? (
