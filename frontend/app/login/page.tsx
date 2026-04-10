@@ -27,34 +27,35 @@ export default function LoginPage() {
     }, []);
 
     useEffect(() => {
-        const syncLoginState = () => {
-            const reason = new URLSearchParams(window.location.search).get("reason");
+        if (typeof window === "undefined") {
+            return;
+        }
 
-            if (reason === "inactive") {
-                setSessionNotice("Your session became inactive and you were logged out for security.");
-                setHasAttemptedLogin(false);
-                return;
-            }
+        const reason = new URLSearchParams(window.location.search).get("reason");
 
-            if (reason === "session-ended") {
-                setSessionNotice("Your session has ended. Please sign in again.");
-                setHasAttemptedLogin(false);
-                return;
-            }
+        if (reason === "inactive") {
+            setSessionNotice("Your session became inactive and you were logged out for security.");
+            setHasAttemptedLogin(false);
+            return;
+        }
 
+        if (reason === "session-ended") {
+            setSessionNotice("Your session has ended. Please sign in again.");
+            setHasAttemptedLogin(false);
+            return;
+        }
+
+        if (reason) {
+            setSessionNotice("Please sign in again to continue.");
+            setHasAttemptedLogin(false);
+            return;
+        }
+
+        if (!hasAttemptedLogin) {
             setSessionNotice("");
             setError("");
-            setHasAttemptedLogin(false);
-        };
-
-        window.addEventListener("pageshow", syncLoginState);
-        document.addEventListener("visibilitychange", syncLoginState);
-
-        return () => {
-            window.removeEventListener("pageshow", syncLoginState);
-            document.removeEventListener("visibilitychange", syncLoginState);
-        };
-    }, []);
+        }
+    }, [hasAttemptedLogin]);
 
     const getErrorMessage = (error: unknown) =>
         error instanceof Error ? error.message : "Login failed";
