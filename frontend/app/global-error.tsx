@@ -7,7 +7,6 @@ const STALE_STATE_KEYS = [
     "flightSearchState",
     "selectedFlight",
     "travelerCounts",
-    "token",
     "tv_last_activity",
 ];
 
