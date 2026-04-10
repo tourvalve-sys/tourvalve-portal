@@ -79,6 +79,21 @@ export function isAuthenticated(): boolean {
     return !!token;
 }
 
+function decodeJwtPayload(token: string) {
+    const payload = token.split(".")[1];
+
+    if (!payload) {
+        throw new Error("Missing JWT payload");
+    }
+
+    const normalized = payload
+        .replace(/-/g, "+")
+        .replace(/_/g, "/")
+        .padEnd(Math.ceil(payload.length / 4) * 4, "=");
+
+    return JSON.parse(atob(normalized));
+}
+
 /**
  * Decode JWT payload (basic, no verification)
  */
@@ -87,13 +102,26 @@ export function getUserFromToken() {
     if (!token) return null;
 
     try {
-        const payload = token.split(".")[1];
-        const decoded = JSON.parse(atob(payload));
+        const decoded = decodeJwtPayload(token);
+
+        const id =
+            decoded.nameid ||
+            decoded.sub ||
+            decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] ||
+            "";
+        const email =
+            decoded.email ||
+            decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"] ||
+            "";
+        const role =
+            decoded.role ||
+            decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] ||
+            "";
 
         return {
-            id: decoded.nameid || decoded.sub,
-            email: decoded.email,
-            role: decoded.role,
+            id,
+            email,
+            role,
         };
     } catch {
         console.error("Invalid token");

@@ -1,22 +1,6 @@
-import { authFetch } from "./authFetch";
+import { authFetch, getApiBase, portalFetch } from "./authFetch";
 
-const configuredApiBase =
-    process.env.NEXT_PUBLIC_API_BASE_URL ??
-    process.env.NEXT_PUBLIC_API_BASE ??
-    "";
-
-const configuredSiteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    process.env.SITE_URL ??
-    "";
-
-const API_BASE =
-    configuredApiBase.replace(/\/$/, "") ||
-    (typeof window !== "undefined"
-        ? ""
-        : process.env.NODE_ENV === "development"
-          ? "http://127.0.0.1:5274"
-          : configuredSiteUrl.replace(/\/$/, ""));
+const API_BASE = getApiBase();
 
 export type LoginPayload = {
     email: string;
@@ -742,7 +726,7 @@ function normalizeFriendlyError(message: string): string {
 export async function loginUser(
     payload: LoginPayload
 ): Promise<LoginResponse> {
-    const res = await fetch(`${API_BASE}/api/auth/login`, {
+    const res = await portalFetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -759,7 +743,7 @@ export async function registerUser(payload: {
     phoneNumber: string;
     password: string;
 }) {
-    const res = await fetch(`${API_BASE}/api/auth/register`, {
+    const res = await portalFetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -771,7 +755,7 @@ export async function registerUser(payload: {
 }
 
 export async function forgotPassword(email: string) {
-    const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+    const res = await portalFetch(`${API_BASE}/api/auth/forgot-password`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
