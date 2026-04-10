@@ -15,14 +15,21 @@
 SSH into your VPS and run:
 
 ```bash
-# 1. Clone the repo
+# 1. Clone the repo (skip if already cloned)
 git clone https://github.com/tourvalve-sys/tourvalve-portal.git /var/www/tourvalve-portal
 cd /var/www/tourvalve-portal
 
-# 2. Run the bootstrap script (as root)
+# 2. Make sure you are on the branch that contains ops/setup-server.sh
+#    Until this PR is merged into main, check out the setup branch:
+git fetch origin
+git checkout copilot/check-portal-needs-changes
+
+# 3. Run the bootstrap script (as root)
 sudo REPO_URL=https://github.com/tourvalve-sys/tourvalve-portal.git \
      bash ops/setup-server.sh
 ```
+
+> **Note:** Once this branch is merged into `main` the `git checkout` step above is no longer needed — `ops/setup-server.sh` will be present on `main` and a plain `git pull` will suffice.
 
 This will install Node.js, PM2, .NET SDK, Nginx, configure UFW, create a systemd service for the API, and start everything.
 
