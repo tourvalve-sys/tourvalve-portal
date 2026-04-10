@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BellRing, CheckCircle2, Clock3, KeyRound, Mail, Send, ShieldCheck, UserRoundCheck, Users2, XCircle } from "lucide-react";
 import {
     approvePasswordResetRequest,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/api";
 
 export default function AgentsPage() {
+    const router = useRouter();
     const [user, setUser] = useState<CurrentUser | null>(null);
     const [agents, setAgents] = useState<AgentListItem[]>([]);
     const [requests, setRequests] = useState<AccessRequestsResponse>({
@@ -48,16 +50,19 @@ export default function AgentsPage() {
                 const currentUser = await getCurrentUser();
                 setUser(currentUser);
 
-                if (currentUser.role === "ADMIN") {
-                    await loadAdminData();
+                if (currentUser.role !== "ADMIN") {
+                    router.replace("/");
+                    return;
                 }
+
+                await loadAdminData();
             } catch (value: unknown) {
                 setError(value instanceof Error ? value.message : "Failed to load agents");
             }
         };
 
         void load();
-    }, []);
+    }, [router]);
 
     const runAction = async (key: string, action: () => Promise<{ message: string; temporaryPassword?: string }>) => {
         try {
@@ -74,14 +79,7 @@ export default function AgentsPage() {
     };
 
     if (user && user.role !== "ADMIN") {
-        return (
-            <div className="premium-panel rounded-[2rem] p-8 text-center fade-in">
-                <div className="font-display text-4xl text-[var(--ink)]">Agents</div>
-                <p className="mt-4 text-sm leading-7 text-slate-500">
-                    Only administrators can view the agent directory and approval control panel.
-                </p>
-            </div>
-        );
+        return null;
     }
 
     const pendingRegistrations = requests.registrations.filter((item) => item.status === "PENDING");

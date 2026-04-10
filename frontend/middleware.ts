@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 const authRoutes = new Set(["/login", "/register", "/forgot-password"]);
 const publicRoutes = new Set(["/maintenance"]);
 const publicPrefixes = ["/_next", "/images", "/favicon.ico", "/icon.png", "/apple-icon.png"];
+const adminOnlyPaths = new Set(["/agents", "/audit-trail", "/reports"]);
 
 function buildPublicUrl(request: NextRequest, pathname: string) {
     const url = request.nextUrl.clone();
@@ -53,6 +54,16 @@ export function middleware(request: NextRequest) {
     if (hasSession && isAuthRoute) {
         const homeUrl = buildPublicUrl(request, "/");
         return NextResponse.redirect(homeUrl);
+    }
+
+    // Enforce admin-only access for restricted paths.
+    // The tv_role cookie is written by setToken() after login.
+    if (hasSession && adminOnlyPaths.has(pathname)) {
+        const role = request.cookies.get("tv_role")?.value ?? "";
+        if (role !== "ADMIN") {
+            const homeUrl = buildPublicUrl(request, "/");
+            return NextResponse.redirect(homeUrl);
+        }
     }
 
     return NextResponse.next();
