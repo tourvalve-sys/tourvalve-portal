@@ -20,6 +20,8 @@ export default function FlightSearchError({
             sessionStorage.removeItem(FLIGHT_SEARCH_STATE_KEY);
             sessionStorage.removeItem("selectedFlight");
             sessionStorage.removeItem("travelerCounts");
+            localStorage.removeItem("selectedFlight");
+            localStorage.removeItem("travelerCounts");
         }
 
         reset();

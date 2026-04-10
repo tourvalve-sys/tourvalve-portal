@@ -175,10 +175,66 @@ function getBaggageHighlights(flight: FlightResult) {
     const highlights = [
         flight.carryOnAllowance?.trim(),
         flight.checkedBaggageAllowance?.trim(),
-        ...(flight.baggageOfferTexts ?? []).map((item) => item.trim()),
+        ...(flight.baggageOfferTexts ?? [])
+            .filter((item): item is string => typeof item === "string")
+            .map((item) => item.trim()),
     ].filter(Boolean) as string[];
 
     return Array.from(new Set(highlights)).slice(0, 4);
+}
+
+function sanitizeFlightResult(flight: FlightResult): FlightResult {
+    return {
+        ...flight,
+        price: typeof flight.price === "number" && Number.isFinite(flight.price) ? flight.price : 0,
+        basePrice: typeof flight.basePrice === "number" && Number.isFinite(flight.basePrice) ? flight.basePrice : 0,
+        markupAmount: typeof flight.markupAmount === "number" && Number.isFinite(flight.markupAmount) ? flight.markupAmount : 0,
+        currency: typeof flight.currency === "string" && flight.currency.trim() ? flight.currency : "MYR",
+        cabinClass: typeof flight.cabinClass === "string" && flight.cabinClass.trim() ? flight.cabinClass : "Economy",
+        carryOnAllowance: typeof flight.carryOnAllowance === "string" ? flight.carryOnAllowance : "",
+        checkedBaggageAllowance: typeof flight.checkedBaggageAllowance === "string" ? flight.checkedBaggageAllowance : "",
+        baggageOfferTexts: Array.isArray(flight.baggageOfferTexts)
+            ? flight.baggageOfferTexts.filter((item): item is string => typeof item === "string")
+            : [],
+        airPricingSolutionXml: typeof flight.airPricingSolutionXml === "string" ? flight.airPricingSolutionXml : "",
+        airPricingContextXml: typeof flight.airPricingContextXml === "string" ? flight.airPricingContextXml : "",
+        airSegmentXml: typeof flight.airSegmentXml === "string" ? flight.airSegmentXml : "",
+        airSegmentXmls: Array.isArray(flight.airSegmentXmls)
+            ? flight.airSegmentXmls.filter((item): item is string => typeof item === "string")
+            : [],
+        itinerarySegments: Array.isArray(flight.itinerarySegments)
+            ? flight.itinerarySegments.filter(
+                  (segment): segment is FlightResult["itinerarySegments"][number] =>
+                      Boolean(segment) &&
+                      typeof segment.carrier === "string" &&
+                      typeof segment.flightNumber === "string" &&
+                      typeof segment.from === "string" &&
+                      typeof segment.to === "string" &&
+                      typeof segment.departure === "string" &&
+                      typeof segment.arrival === "string"
+              )
+            : [],
+        prebookSelections:
+            flight.prebookSelections &&
+            typeof flight.prebookSelections === "object" &&
+            typeof flight.prebookSelections.baggagePreference === "string"
+                ? {
+                      baggagePreference: flight.prebookSelections.baggagePreference,
+                      mealPreference:
+                          typeof flight.prebookSelections.mealPreference === "string"
+                              ? flight.prebookSelections.mealPreference
+                              : "Standard",
+                      selectedSeats: Array.isArray(flight.prebookSelections.selectedSeats)
+                          ? flight.prebookSelections.selectedSeats.filter(
+                                (seat): seat is NonNullable<FlightResult["prebookSelections"]>["selectedSeats"][number] =>
+                                    Boolean(seat) &&
+                                    typeof seat.segmentLabel === "string" &&
+                                    typeof seat.seatCode === "string"
+                            )
+                          : [],
+                  }
+                : undefined,
+    };
 }
 
 function buildSearchSignature(args: {
@@ -338,7 +394,9 @@ export default function FlightSearch() {
     const [tripType, setTripType] = useState<"oneway" | "return" | "multicity">(
         restoredState?.tripType ?? "oneway"
     );
-    const [results, setResults] = useState<FlightResult[]>(flightSearchState?.results ?? []);
+    const [results, setResults] = useState<FlightResult[]>(
+        (flightSearchState?.results ?? []).map((flight) => sanitizeFlightResult(flight))
+    );
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [searchNotice, setSearchNotice] = useState(restoredState?.searchNotice ?? "");
@@ -779,7 +837,7 @@ export default function FlightSearch() {
                     : [],
             });
 
-            setResults(searchResponse.flights);
+            setResults(searchResponse.flights.map((flight) => sanitizeFlightResult(flight)));
             setSearchNotice(searchResponse.diagnosticMessage ?? "");
         } catch (value: unknown) {
             setError(getErrorMessage(value));
@@ -841,9 +899,9 @@ export default function FlightSearch() {
             });
 
             setResults((current) =>
-                current.map((item) => (item.id === flight.id ? pricedFlight : item))
+                current.map((item) => (item.id === flight.id ? sanitizeFlightResult(pricedFlight) : item))
             );
-            setSelectedFlight(pricedFlight);
+            setSelectedFlight(sanitizeFlightResult(pricedFlight));
             router.push("/booking");
         } catch (value: unknown) {
             setPricingErrors((current) => ({

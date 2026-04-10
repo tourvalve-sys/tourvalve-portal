@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, Briefcase, LayoutGrid, LogOut, PlaneTakeoff, ScrollText, Users, Wallet } from "lucide-react";
+import { getCurrentUser } from "@/lib/api";
 import { getUserFromToken, removeToken } from "@/lib/auth";
 
 const menu = [
@@ -30,7 +32,21 @@ const mobileLabels: Record<string, string> = {
 export default function Sidebar() {
     const pathname = usePathname();
     const currentUser = getUserFromToken();
-    const isAdmin = currentUser?.role?.toUpperCase() === "ADMIN";
+    const tokenRole = currentUser?.role?.toUpperCase() ?? "";
+    const [resolvedRole, setResolvedRole] = useState(tokenRole);
+
+    useEffect(() => {
+        void getCurrentUser()
+            .then((user) => {
+                const nextRole = user.role?.toUpperCase() ?? tokenRole;
+                setResolvedRole((current: string) => (current === nextRole ? current : nextRole));
+            })
+            .catch(() => {
+                // Keep the token-derived role as the fallback if the API call is unavailable.
+            });
+    }, [tokenRole]);
+
+    const isAdmin = resolvedRole === "ADMIN";
     const visibleMenu = menu.filter((item) => !adminOnlyPaths.has(item.path) || isAdmin);
 
     const handleLogout = () => {
@@ -40,7 +56,7 @@ export default function Sidebar() {
 
     return (
         <>
-            <aside className="hidden premium-panel mx-4 mt-4 w-auto shrink-0 flex-col rounded-[2rem] p-4 xl:sticky xl:top-4 xl:mx-0 xl:ml-4 xl:mr-0 xl:mt-4 xl:flex xl:w-[280px] xl:self-start">
+            <aside className="hidden premium-panel mx-4 mt-4 w-auto shrink-0 flex-col rounded-[2rem] p-4 xl:sticky xl:top-4 xl:mx-0 xl:ml-4 xl:mr-0 xl:mt-4 xl:flex xl:max-h-[calc(100vh-2rem)] xl:w-[280px] xl:self-start">
                 <div className="rounded-[1.75rem] bg-[linear-gradient(160deg,#0f3b72,#0c58b6_52%,#2b8cff)] px-5 py-6 text-white shadow-[0_22px_40px_rgba(12,54,112,0.28)]">
                     <div className="subtle-kicker text-white/65">Travel Commerce Portal</div>
                     <div className="mt-3 font-display text-3xl">TourValve</div>
@@ -53,7 +69,8 @@ export default function Sidebar() {
                     </div>
                 </div>
 
-                <nav className="mt-6 flex flex-col gap-2 xl:pr-1">
+                <nav className="mt-6 flex-1 overflow-y-auto pr-1">
+                    <div className="flex flex-col gap-2">
                     {visibleMenu.map((item) => {
                         const Icon = item.icon;
                         const active = pathname === item.path;
@@ -80,9 +97,10 @@ export default function Sidebar() {
                             </Link>
                         );
                     })}
+                    </div>
                 </nav>
 
-                <div className="soft-panel mt-4 rounded-[1.5rem] p-4 xl:mt-5">
+                <div className="soft-panel mt-4 shrink-0 rounded-[1.5rem] p-4 xl:mt-5">
                     <div className="status-pill status-success mb-3">Live Platform</div>
                     <p className="text-sm leading-6 text-slate-600">
                         Live inventory, pre-book servicing, wallet controls, and reporting are available from this workspace.
