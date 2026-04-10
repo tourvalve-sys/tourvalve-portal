@@ -15,6 +15,8 @@ const menu = [
     { name: "Reports", path: "/reports", icon: BarChart3 },
 ];
 
+const adminOnlyPaths = new Set(["/agents", "/audit-trail", "/reports"]);
+
 const mobileLabels: Record<string, string> = {
     Dashboard: "Home",
     "Flight Search": "Search",
@@ -28,7 +30,7 @@ const mobileLabels: Record<string, string> = {
 export default function Sidebar() {
     const pathname = usePathname();
     const currentUser = getUserFromToken();
-    const visibleMenu = menu.filter((item) => item.path !== "/audit-trail" || currentUser?.role === "ADMIN");
+    const visibleMenu = menu.filter((item) => !adminOnlyPaths.has(item.path) || currentUser?.role === "ADMIN");
 
     const handleLogout = () => {
         removeToken();

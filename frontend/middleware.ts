@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const authRoutes = new Set(["/login", "/register", "/forgot-password"]);
+const publicRoutes = new Set(["/maintenance"]);
 const publicPrefixes = ["/_next", "/images", "/favicon.ico", "/icon.png", "/apple-icon.png"];
 
 function buildPublicUrl(request: NextRequest, pathname: string) {
@@ -35,7 +36,8 @@ export function middleware(request: NextRequest) {
 
     if (
         pathname.startsWith("/api") ||
-        publicPrefixes.some((prefix) => pathname.startsWith(prefix))
+        publicPrefixes.some((prefix) => pathname.startsWith(prefix)) ||
+        publicRoutes.has(pathname)
     ) {
         return NextResponse.next();
     }

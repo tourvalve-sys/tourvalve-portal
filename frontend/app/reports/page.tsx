@@ -3,7 +3,7 @@
 import { Component, type ReactNode, useEffect, useState } from "react";
 import { AlertTriangle, BarChart3, CircleDollarSign, Download, Gauge, ShieldCheck, XCircle } from "lucide-react";
 import BookingChart from "@/components/BookingChart";
-import { exportAgentPerformance, exportAncillaryReport, exportReportsOverview, getReportsOverview, type ReportsOverview } from "@/lib/api";
+import { exportAgentPerformance, exportAncillaryReport, exportReportsOverview, getCurrentUser, getReportsOverview, type CurrentUser, type ReportsOverview } from "@/lib/api";
 
 class ChartErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
     constructor(props: { children: ReactNode }) {
@@ -29,16 +29,26 @@ class ChartErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
 }
 
 export default function ReportsPage() {
+    const [user, setUser] = useState<CurrentUser | null>(null);
     const [reports, setReports] = useState<ReportsOverview | null>(null);
     const [error, setError] = useState("");
     const [exporting, setExporting] = useState("");
 
     useEffect(() => {
-        getReportsOverview()
-            .then(setReports)
-            .catch((value: unknown) =>
-                setError(value instanceof Error ? value.message : "Failed to load reports")
-            );
+        const load = async () => {
+            try {
+                const currentUser = await getCurrentUser();
+                setUser(currentUser);
+
+                if (currentUser.role === "ADMIN") {
+                    setReports(await getReportsOverview());
+                }
+            } catch (value: unknown) {
+                setError(value instanceof Error ? value.message : "Failed to load reports");
+            }
+        };
+
+        void load();
     }, []);
 
     const handleDownload = async (
@@ -62,6 +72,17 @@ export default function ReportsPage() {
             setExporting("");
         }
     };
+
+    if (user && user.role !== "ADMIN") {
+        return (
+            <div className="premium-panel rounded-[2rem] p-8 text-center fade-in">
+                <div className="font-display text-4xl text-[var(--ink)]">Reports</div>
+                <p className="mt-4 text-sm leading-7 text-slate-500">
+                    Only administrators can view commercial reporting and performance exports.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6 fade-in">
