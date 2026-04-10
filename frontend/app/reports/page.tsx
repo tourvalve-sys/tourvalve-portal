@@ -1,6 +1,7 @@
 "use client";
 
 import { Component, type ReactNode, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, BarChart3, CircleDollarSign, Download, Gauge, ShieldCheck, XCircle } from "lucide-react";
 import BookingChart from "@/components/BookingChart";
 import { exportAgentPerformance, exportAncillaryReport, exportReportsOverview, getCurrentUser, getReportsOverview, type CurrentUser, type ReportsOverview } from "@/lib/api";
@@ -29,6 +30,7 @@ class ChartErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
 }
 
 export default function ReportsPage() {
+    const router = useRouter();
     const [user, setUser] = useState<CurrentUser | null>(null);
     const [reports, setReports] = useState<ReportsOverview | null>(null);
     const [error, setError] = useState("");
@@ -40,16 +42,19 @@ export default function ReportsPage() {
                 const currentUser = await getCurrentUser();
                 setUser(currentUser);
 
-                if (currentUser.role === "ADMIN") {
-                    setReports(await getReportsOverview());
+                if (currentUser.role !== "ADMIN") {
+                    router.replace("/");
+                    return;
                 }
+
+                setReports(await getReportsOverview());
             } catch (value: unknown) {
                 setError(value instanceof Error ? value.message : "Failed to load reports");
             }
         };
 
         void load();
-    }, []);
+    }, [router]);
 
     const handleDownload = async (
         key: string,
@@ -74,14 +79,7 @@ export default function ReportsPage() {
     };
 
     if (user && user.role !== "ADMIN") {
-        return (
-            <div className="premium-panel rounded-[2rem] p-8 text-center fade-in">
-                <div className="font-display text-4xl text-[var(--ink)]">Reports</div>
-                <p className="mt-4 text-sm leading-7 text-slate-500">
-                    Only administrators can view commercial reporting and performance exports.
-                </p>
-            </div>
-        );
+        return null;
     }
 
     return (

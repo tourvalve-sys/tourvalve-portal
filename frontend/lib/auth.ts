@@ -2,6 +2,7 @@
 
 export const TOKEN_STORAGE_KEY = "token";
 export const SESSION_COOKIE_NAME = "tv_session";
+export const ROLE_COOKIE_NAME = "tv_role";
 export const LAST_ACTIVITY_STORAGE_KEY = "tv_last_activity";
 export const INACTIVITY_WARNING_MS = 15 * 60 * 1000;
 export const INACTIVITY_LOGOUT_GRACE_MS = 30 * 1000;
@@ -24,11 +25,45 @@ function clearSessionCookie() {
     document.cookie = `${SESSION_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
 }
 
+function writeRoleCookie(role: string) {
+    if (typeof document === "undefined") {
+        return;
+    }
+
+    const secure =
+        typeof location !== "undefined" && location.protocol === "https:"
+            ? "; Secure"
+            : "";
+    document.cookie = `${ROLE_COOKIE_NAME}=${encodeURIComponent(role)}; path=/; SameSite=Lax${secure}`;
+}
+
+function clearRoleCookie() {
+    if (typeof document === "undefined") {
+        return;
+    }
+
+    document.cookie = `${ROLE_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+}
+
 export function setToken(token: string) {
     if (typeof window !== "undefined") {
         localStorage.setItem(TOKEN_STORAGE_KEY, token);
         markSessionActivity();
         writeSessionCookie();
+
+        // Extract role from JWT and persist it in a cookie so the
+        // Next.js middleware can enforce admin-only routes server-side.
+        try {
+            const payload = token.split(".")[1];
+            const decoded = JSON.parse(atob(payload)) as Record<string, unknown>;
+            const role = typeof decoded.role === "string" ? decoded.role : "";
+            if (role) {
+                writeRoleCookie(role);
+            }
+        } catch {
+            // If the token cannot be decoded the role cookie is simply not
+            // written; middleware will treat the missing cookie as non-admin.
+        }
     }
 }
 
@@ -60,6 +95,7 @@ export function removeToken() {
         localStorage.removeItem(TOKEN_STORAGE_KEY);
         localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
         clearSessionCookie();
+        clearRoleCookie();
     }
 }
 

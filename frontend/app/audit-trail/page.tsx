@@ -1,34 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ScrollText, ShieldCheck } from "lucide-react";
 import { getAuditTrail, type AuditTrailItem } from "@/lib/api";
 import { getUserFromToken } from "@/lib/auth";
 
 export default function AuditTrailPage() {
+    const router = useRouter();
     const user = getUserFromToken();
     const [items, setItems] = useState<AuditTrailItem[]>([]);
     const [error, setError] = useState("");
 
     useEffect(() => {
-        if (user?.role !== "ADMIN") {
+        if (user === null) {
+            return;
+        }
+
+        if (user.role !== "ADMIN") {
+            router.replace("/");
             return;
         }
 
         getAuditTrail()
             .then(setItems)
             .catch((value: unknown) => setError(value instanceof Error ? value.message : "Failed to load audit trail"));
-    }, [user?.role]);
+    }, [router]);
 
     if (user && user.role !== "ADMIN") {
-        return (
-            <div className="premium-panel rounded-[2rem] p-8 text-center fade-in">
-                <div className="font-display text-4xl text-[var(--ink)]">Audit Trail</div>
-                <p className="mt-4 text-sm leading-7 text-slate-500">
-                    Only administrators can view the audit trail and operational access history.
-                </p>
-            </div>
-        );
+        return null;
     }
 
     return (

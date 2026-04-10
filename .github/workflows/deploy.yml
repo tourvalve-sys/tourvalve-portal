@@ -1,0 +1,70 @@
+name: Deploy to Ubuntu VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-frontend:
+    name: Deploy Next.js Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy frontend via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.APP_DIR || '/var/www/tourvalve-portal' }}
+
+            echo "==> Pulling latest code..."
+            git pull origin main
+
+            echo "==> Installing frontend dependencies..."
+            cd frontend
+            npm ci
+
+            echo "==> Building Next.js app..."
+            npm run build
+
+            echo "==> Restarting frontend service..."
+            pm2 restart tourvalve-frontend || pm2 start npm \
+              --name tourvalve-frontend \
+              --cwd /$(pwd) \
+              -- start
+            pm2 save
+
+            echo "==> Frontend deployed successfully."
+
+  deploy-backend:
+    name: Deploy .NET Backend
+    runs-on: ubuntu-latest
+    needs: deploy-frontend
+    steps:
+      - name: Deploy backend via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.APP_DIR || '/var/www/tourvalve-portal' }}
+
+            echo "==> Publishing .NET backend..."
+            cd backend
+            dotnet publish TourValve.Api/TourValve.Api.csproj \
+              -c Release \
+              -o /var/www/tourvalve-api/publish \
+              --nologo
+
+            echo "==> Restarting backend service..."
+            sudo systemctl restart tourvalve-api
+
+            echo "==> Backend deployed successfully."
