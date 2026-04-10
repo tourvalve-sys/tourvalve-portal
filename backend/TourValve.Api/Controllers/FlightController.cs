@@ -925,7 +925,11 @@ public class FlightsController : ControllerBase
     private string BuildSeatMapXml(FlightSeatMapRequest req)
     {
         var authorizedBy = _travelportConfig.Username.Replace("Universal API/", "", StringComparison.OrdinalIgnoreCase);
-        var segment = XElement.Parse(req.AirSegmentXml);
+        var normalizedSegmentXml = NormalizeSegmentXml(
+            req.AirSegmentXml,
+            !string.IsNullOrWhiteSpace(req.AirPricingContextXml) ? req.AirPricingContextXml : req.AirPricingSolutionXml,
+            requestedCabin: null);
+        var segment = XElement.Parse(normalizedSegmentXml);
         segment.Name = XName.Get("AirSegment", "http://www.travelport.com/schema/air_v51_0");
 
         EnsureSeatMapSegmentAttributes(segment);
