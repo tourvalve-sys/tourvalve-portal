@@ -63,10 +63,6 @@ export default function Sidebar() {
                     <p className="mt-3 text-sm leading-6 text-white/70">
                         Search, price, book, and service live air content from one connected workspace.
                     </p>
-                    <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/75">
-                        <span className="rounded-full bg-white/14 px-3 py-1">Travelport live</span>
-                        <span className="rounded-full bg-white/14 px-3 py-1">Agent ready</span>
-                    </div>
                 </div>
 
                 <nav className="mt-6 flex-1 overflow-y-auto pr-1">
