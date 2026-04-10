@@ -70,6 +70,10 @@ type PersistedFlightSearchState = {
     ui: FlightSearchUiState;
 };
 
+type SanitizedFlightSearchState = FlightSearchUiState & {
+    results: FlightResult[];
+};
+
 const createDefaultFilters = (): FilterState => ({
     maxPrice: 50000,
     stopCounts: [],
@@ -384,18 +388,55 @@ function readPersistedFlightSearchState(): FlightSearchUiState | null {
     }
 }
 
+function sanitizeInMemoryFlightSearchState(value: unknown): SanitizedFlightSearchState | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    const candidate = value as {
+        results?: unknown;
+        tripType?: unknown;
+        searchMode?: unknown;
+        hasSearched?: unknown;
+        searchNotice?: unknown;
+        lastSearchedKey?: unknown;
+        pricingErrors?: unknown;
+        filters?: unknown;
+        form?: unknown;
+        multiCitySegments?: unknown;
+    };
+
+    const ui = sanitizePersistedFlightSearchUiState(candidate);
+
+    if (!ui) {
+        return null;
+    }
+
+    const results = Array.isArray(candidate.results)
+        ? candidate.results
+              .filter((flight): flight is FlightResult => Boolean(sanitizeFlightResult(flight as FlightResult)?.id))
+              .map((flight) => sanitizeFlightResult(flight))
+        : [];
+
+    return {
+        ...ui,
+        results,
+    };
+}
+
 export default function FlightSearch() {
     const router = useRouter();
     const { flightSearchState, setFlightSearchState, setSelectedFlight, setTravelerCounts } = useBooking();
     const today = new Date().toISOString().split("T")[0];
     const persistedUiState = readPersistedFlightSearchState();
-    const restoredState = flightSearchState ?? persistedUiState;
+    const sanitizedContextState = sanitizeInMemoryFlightSearchState(flightSearchState);
+    const restoredState = sanitizedContextState ?? persistedUiState;
 
     const [tripType, setTripType] = useState<"oneway" | "return" | "multicity">(
         restoredState?.tripType ?? "oneway"
     );
     const [results, setResults] = useState<FlightResult[]>(
-        (flightSearchState?.results ?? []).map((flight) => sanitizeFlightResult(flight))
+        sanitizedContextState?.results ?? []
     );
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
