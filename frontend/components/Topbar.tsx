@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bell, ShieldCheck, Zap } from "lucide-react";
+import { Bell } from "lucide-react";
 import { getCurrentUser, getNotifications, markAllNotificationsRead, markNotificationRead, type CurrentUser, type NotificationItem } from "@/lib/api";
 
 const titles: Record<string, string> = {
@@ -77,16 +77,6 @@ export default function Topbar() {
             </div>
 
             <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:gap-3 lg:w-auto lg:flex-nowrap lg:justify-end">
-                <div className="hidden md:flex items-center gap-2 rounded-full bg-[rgba(16,35,60,0.06)] px-3 py-2 text-[11px] font-semibold text-[var(--ink)]">
-                    <ShieldCheck size={15} />
-                    Secure Session
-                </div>
-
-                <div className="hidden xl:flex items-center gap-2 rounded-full bg-[rgba(15,110,207,0.08)] px-3 py-2 text-[11px] font-semibold text-[var(--accent-strong)]">
-                    <Zap size={15} />
-                    Travelport-connected
-                </div>
-
                 <div className="relative">
                     <button
                         onClick={() => setOpen((value) => !value)}

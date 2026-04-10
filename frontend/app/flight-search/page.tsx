@@ -1240,21 +1240,6 @@ export default function FlightSearch() {
 
             <div className="relative z-10 px-2 py-3 sm:px-4 md:p-6">
                 <div className="mx-auto mb-6 max-w-7xl fade-in-delay sm:mb-8">
-                    <div className="subtle-kicker mb-2 sm:mb-3">Flight Shopping</div>
-                    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                        <div>
-                            <h1 className="hero-title max-w-3xl">
-                                Search and price flights in a cleaner booking flow.
-                            </h1>
-                            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:mt-4 sm:text-[15px] sm:leading-7">
-                                Use live availability, pricing context, and pre-book ancillary data to move from search results to booking with fewer handoff gaps.
-                            </p>
-                        </div>
-
-                        <div className="premium-panel hidden rounded-full px-4 py-3 status-pill status-success md:inline-flex">
-                            Live {"->"} Price {"->"} Book
-                        </div>
-                    </div>
                 </div>
 
                 <div className="mx-auto max-w-[88rem] rounded-[1.7rem] premium-panel classic-grid p-3.5 sm:p-4 md:rounded-[2rem] md:p-8">
