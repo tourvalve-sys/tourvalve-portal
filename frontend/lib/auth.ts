@@ -30,7 +30,11 @@ function writeRoleCookie(role: string) {
         return;
     }
 
-    document.cookie = `${ROLE_COOKIE_NAME}=${encodeURIComponent(role)}; path=/; SameSite=Lax`;
+    const secure =
+        typeof location !== "undefined" && location.protocol === "https:"
+            ? "; Secure"
+            : "";
+    document.cookie = `${ROLE_COOKIE_NAME}=${encodeURIComponent(role)}; path=/; SameSite=Lax${secure}`;
 }
 
 function clearRoleCookie() {

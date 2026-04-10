@@ -25,7 +25,7 @@ export default function AuditTrailPage() {
         getAuditTrail()
             .then(setItems)
             .catch((value: unknown) => setError(value instanceof Error ? value.message : "Failed to load audit trail"));
-    }, [user?.role, router]);
+    }, [router]);
 
     if (user && user.role !== "ADMIN") {
         return null;
