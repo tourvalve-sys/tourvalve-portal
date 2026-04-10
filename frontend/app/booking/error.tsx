@@ -17,6 +17,8 @@ export default function BookingError({
         if (typeof window !== "undefined") {
             sessionStorage.removeItem("selectedFlight");
             sessionStorage.removeItem("travelerCounts");
+            localStorage.removeItem("selectedFlight");
+            localStorage.removeItem("travelerCounts");
         }
 
         reset();

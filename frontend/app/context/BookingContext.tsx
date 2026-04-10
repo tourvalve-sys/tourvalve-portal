@@ -49,6 +49,9 @@ interface BookingContextType {
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
+const SELECTED_FLIGHT_STORAGE_KEY = "selectedFlight";
+const TRAVELER_COUNTS_STORAGE_KEY = "travelerCounts";
+
 function normalizeFlightResult(value: unknown): FlightResult | null {
     if (!value || typeof value !== "object") {
         return null;
@@ -141,23 +144,24 @@ function createPersistedFlightSnapshot(flight: FlightResult): FlightResult {
     };
 }
 
-function readSessionJson<T>(key: string, fallback: T): T {
+function readStorageJson<T>(key: string, fallback: T): T {
     if (typeof window === "undefined") {
         return fallback;
     }
 
     try {
-        const raw = sessionStorage.getItem(key);
+        const raw = sessionStorage.getItem(key) ?? localStorage.getItem(key);
         return raw ? (JSON.parse(raw) as T) : fallback;
     } catch {
         sessionStorage.removeItem(key);
+        localStorage.removeItem(key);
         return fallback;
     }
 }
 
 export function BookingProvider({ children }: { children: React.ReactNode }) {
     const [selectedFlight, setSelectedFlightState] = useState<FlightResult | null>(() => {
-        const storedFlight = readSessionJson<unknown>("selectedFlight", null);
+        const storedFlight = readStorageJson<unknown>(SELECTED_FLIGHT_STORAGE_KEY, null);
         return normalizeFlightResult(storedFlight);
     });
 
@@ -171,13 +175,17 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
 
         try {
             if (normalizedFlight) {
-                sessionStorage.setItem("selectedFlight", JSON.stringify(createPersistedFlightSnapshot(normalizedFlight)));
+                const snapshot = JSON.stringify(createPersistedFlightSnapshot(normalizedFlight));
+                sessionStorage.setItem(SELECTED_FLIGHT_STORAGE_KEY, snapshot);
+                localStorage.setItem(SELECTED_FLIGHT_STORAGE_KEY, snapshot);
             } else {
-                sessionStorage.removeItem("selectedFlight");
+                sessionStorage.removeItem(SELECTED_FLIGHT_STORAGE_KEY);
+                localStorage.removeItem(SELECTED_FLIGHT_STORAGE_KEY);
             }
         } catch {
             try {
-                sessionStorage.removeItem("selectedFlight");
+                sessionStorage.removeItem(SELECTED_FLIGHT_STORAGE_KEY);
+                localStorage.removeItem(SELECTED_FLIGHT_STORAGE_KEY);
             } catch {
                 // Ignore browser storage cleanup failures and keep in-memory state alive.
             }
@@ -185,11 +193,13 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
     };
 
     const [travelerCounts, setTravelerCountsState] = useState(() => {
-        return readSessionJson("travelerCounts", { adults: 1, child: 0, infant: 0 });
+        return readStorageJson(TRAVELER_COUNTS_STORAGE_KEY, { adults: 1, child: 0, infant: 0 });
     });
 
     const setTravelerCounts = (counts: { adults: number; child: number; infant: number }) => {
-        sessionStorage.setItem("travelerCounts", JSON.stringify(counts));
+        const serialized = JSON.stringify(counts);
+        sessionStorage.setItem(TRAVELER_COUNTS_STORAGE_KEY, serialized);
+        localStorage.setItem(TRAVELER_COUNTS_STORAGE_KEY, serialized);
         setTravelerCountsState(counts);
     };
 

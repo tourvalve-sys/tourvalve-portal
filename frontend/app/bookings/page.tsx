@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, Download, FileText, MapPinned, ReceiptText, ShieldCheck } from "lucide-react";
 import {
     cancelBooking,
@@ -24,6 +24,7 @@ import {
 } from "@/lib/api";
 
 function BookingsPageContent() {
+    const router = useRouter();
     const params = useSearchParams();
     const created = params.get("created");
     const [bookings, setBookings] = useState<BookingRecord[]>([]);
@@ -552,7 +553,7 @@ function BookingsPageContent() {
                                 </div>
                                 <div className="mt-4 flex flex-wrap gap-3">
                                     <button
-                                        onClick={() => window.open(`/ancillaries?bookingId=${selectedBooking.id}`, "_blank", "noopener,noreferrer")}
+                                        onClick={() => router.push(`/ancillaries?bookingId=${encodeURIComponent(selectedBooking.id)}`)}
                                         className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold"
                                     >
                                         Open Ancillary Studio
