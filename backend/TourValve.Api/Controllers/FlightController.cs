@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security;
 using System.Xml.Linq;
 using Microsoft.AspNetCore.Mvc;
@@ -1025,6 +1026,10 @@ public class FlightsController : ControllerBase
             .Take(5)
             .ToList();
         var message = supplierMessages.FirstOrDefault() ?? string.Empty;
+        var optionalServices = doc.Descendants()
+            .Where(x => x.Name.LocalName == "OptionalService" && !string.IsNullOrWhiteSpace(x.Attribute("Key")?.Value))
+            .GroupBy(x => x.Attribute("Key")!.Value, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
 
         var rowNodes = doc.Descendants()
             .Where(x =>
@@ -1086,7 +1091,7 @@ public class FlightsController : ControllerBase
                                 !string.Equals(facility.Attribute("Type")?.Value, "Aisle", StringComparison.OrdinalIgnoreCase)
                             )
                         ))
-                    .Select(facility => MapSeatFacility(facility, row.Attribute("Number")?.Value ?? string.Empty))
+                    .Select(facility => MapSeatFacility(facility, optionalServices, row.Attribute("Number")?.Value ?? string.Empty))
                     .Where(seat => !string.IsNullOrWhiteSpace(seat.code))
                     .ToList()
             })
@@ -1099,7 +1104,7 @@ public class FlightsController : ControllerBase
                 .Select(facility => new
                 {
                     rowNumber = ExtractSeatRowNumber(facility),
-                    seat = MapSeatFacility(facility, ExtractSeatRowNumber(facility))
+                    seat = MapSeatFacility(facility, optionalServices, ExtractSeatRowNumber(facility))
                 })
                 .Where(x => !string.IsNullOrWhiteSpace(x.rowNumber))
                 .GroupBy(x => x.rowNumber, StringComparer.OrdinalIgnoreCase)
@@ -1123,13 +1128,16 @@ public class FlightsController : ControllerBase
             from = segment?.Attribute("Origin")?.Value ?? string.Empty,
             to = segment?.Attribute("Destination")?.Value ?? string.Empty,
             message = string.IsNullOrWhiteSpace(message)
-                ? "The airline returned a seat-map response, but there were no seat rows available to render for this leg. This can happen when the carrier does not publish a pre-book graphical seat map for that fare."
+                ? optionalServices.Count > 0
+                    ? "The airline returned seat products for this leg, but no graphical row layout was available to render before booking."
+                    : "The airline returned a seat-map response, but there were no seat rows available to render for this leg. This can happen when the carrier does not publish a pre-book graphical seat map for that fare."
                 : message,
             rows,
             diagnostics = new
             {
                 rowCount = rowNodes.Count,
                 facilityCount = facilityNodes.Count,
+                optionalServiceCount = optionalServices.Count,
                 seatLikeFacilityCount = seatLikeFacilities.Count,
                 distinctSeatCodeCount = rawSeatCodes.Count,
                 sampleSeatCodes = rawSeatCodes,
@@ -1138,7 +1146,9 @@ public class FlightsController : ControllerBase
                 supplierMessages,
                 structuralHints,
                 parserAssessment =
-                    rowNodes.Count == 0 && facilityNodes.Count == 0
+                    rowNodes.Count == 0 && facilityNodes.Count == 0 && optionalServices.Count > 0
+                        ? "Travelport returned optional seat products, but no drawable row or facility seat-map nodes."
+                        : rowNodes.Count == 0 && facilityNodes.Count == 0
                         ? "Travelport responded without row/facility seat-map nodes."
                         : rowNodes.Count == 0 && seatLikeFacilities.Count > 0
                             ? "Travelport returned seat-like facilities without row containers. Parser extension may be needed for this carrier response."
@@ -1154,18 +1164,86 @@ public class FlightsController : ControllerBase
         };
     }
 
-    private static (string code, string availability, bool paid, List<string> characteristics) MapSeatFacility(XElement facility, string rowNumberHint)
+    private static (string code, string availability, bool paid, List<string> characteristics, decimal? seatPrice, string currency, decimal? taxes, string optionalServiceRef, string serviceSubCode, string source) MapSeatFacility(
+        XElement facility,
+        IReadOnlyDictionary<string, XElement> optionalServices,
+        string rowNumberHint)
     {
         var seatCode = ResolveSeatCode(facility, rowNumberHint);
+        var optionalServiceRef = facility.Attribute("OptionalServiceRef")?.Value?.Trim()
+            ?? facility.Attribute("OptionalServicesRef")?.Value?.Trim()
+            ?? facility.Descendants().FirstOrDefault(x => x.Name.LocalName.Equals("OptionalServiceRef", StringComparison.OrdinalIgnoreCase))?.Value?.Trim()
+            ?? string.Empty;
+
+        optionalServices.TryGetValue(optionalServiceRef, out var optionalService);
+        var seatPriceText =
+            facility.Attribute("SeatPrice")?.Value?.Trim()
+            ?? facility.Elements().FirstOrDefault(x => x.Name.LocalName == "SeatPrice")?.Value?.Trim()
+            ?? optionalService?.Attribute("TotalPrice")?.Value?.Trim()
+            ?? optionalService?.Attribute("BasePrice")?.Value?.Trim();
+        TryParseCurrencyAmount(seatPriceText, out var seatPrice, out var currency);
+
+        decimal? taxes = null;
+        if (!TryParseCurrencyAmount(optionalService?.Attribute("TotalTaxes")?.Value?.Trim(), out taxes, out _))
+        {
+            var parsedTaxes = optionalService?
+                .Descendants()
+                .Where(x => x.Name.LocalName == "TaxInfo")
+                .Select(x => x.Attribute("Amount")?.Value?.Trim())
+                .Select(value =>
+                {
+                    TryParseCurrencyAmount(value, out var amount, out _);
+                    return amount;
+                })
+                .Where(amount => amount.HasValue)
+                .Select(amount => amount!.Value)
+                .ToList();
+
+            if (parsedTaxes is { Count: > 0 })
+            {
+                taxes = parsedTaxes.Sum();
+            }
+        }
+
+        var isPaid = bool.TryParse(facility.Attribute("Paid")?.Value, out var paid) && paid;
+        isPaid = isPaid || !string.IsNullOrWhiteSpace(optionalServiceRef) || seatPrice.HasValue;
+
         return (
             seatCode,
             facility.Attribute("Availability")?.Value ?? string.Empty,
-            bool.TryParse(facility.Attribute("Paid")?.Value, out var paid) && paid,
+            isPaid,
             facility.Elements()
                 .Where(x => x.Name.LocalName == "Characteristic")
                 .Select(x => x.Attribute("Value")?.Value ?? x.Attribute("PADISCode")?.Value ?? string.Empty)
                 .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToList());
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            seatPrice,
+            currency,
+            taxes,
+            optionalServiceRef,
+            optionalService?.Attribute("ServiceSubCode")?.Value?.Trim() ?? string.Empty,
+            string.IsNullOrWhiteSpace(optionalServiceRef) ? string.Empty : "SEATMAP_OPTIONAL_SERVICE");
+    }
+
+    private static bool TryParseCurrencyAmount(string? raw, out decimal? amount, out string currency)
+    {
+        amount = null;
+        currency = "MYR";
+
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        var text = raw.Trim();
+        if (text.Length < 4)
+            return false;
+
+        currency = text[..3].ToUpperInvariant();
+        if (!decimal.TryParse(text[3..], NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var parsed))
+            return false;
+
+        amount = parsed;
+        return true;
     }
 
     private static string ExtractSeatRowNumber(XElement facility)
