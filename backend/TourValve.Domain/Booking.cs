@@ -29,6 +29,9 @@ namespace TourValve.Domain
         public decimal BaseAmount { get; set; }
         public decimal MarkupAmount { get; set; }
         public string ItinerarySegmentsJson { get; set; } = "[]";
+        public string TicketNumbersJson { get; set; } = "[]";
+        public DateTime? TicketedAt { get; set; }
+        public string TicketingResponseXml { get; set; } = string.Empty;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

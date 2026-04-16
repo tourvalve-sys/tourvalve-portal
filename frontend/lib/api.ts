@@ -275,6 +275,8 @@ export type BookingRecord = {
         departure: string;
         arrival: string;
     }>;
+    ticketNumbers?: string[];
+    ticketedAt?: string | null;
     status: string;
     createdAt: string;
 };
@@ -395,6 +397,15 @@ export type BookingServiceRequestPayload = {
     frequentFlyerProgram: string;
     frequentFlyerNumber: string;
     note: string;
+};
+
+export type IssueBookingTicketResponse = {
+    message: string;
+    ticketNumbers: string[];
+    ticketedAt: string;
+    status: string;
+    rawResponse: string;
+    refreshedRecord?: string | null;
 };
 
 export type BookingAncillaryRequestPayload = {
@@ -965,6 +976,15 @@ export async function sendBookingServiceRequest(bookingId: string, payload: Book
     });
 
     return readJson<{ message: string; rawResponse: string }>(res);
+}
+
+export async function issueBookingTicket(bookingId: string): Promise<IssueBookingTicketResponse> {
+    const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/issue-ticket`, {
+        method: "POST",
+        body: JSON.stringify({ confirm: true }),
+    });
+
+    return readJson<IssueBookingTicketResponse>(res);
 }
 
 export async function getBookingAncillaries(bookingId: string): Promise<BookingAncillaryOrder[]> {

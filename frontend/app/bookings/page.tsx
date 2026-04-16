@@ -15,6 +15,7 @@ import {
     quoteBookingAncillary,
     retrieveBookingRecord,
     sendBookingServiceRequest,
+    issueBookingTicket,
     updateBookingAncillaryStatus,
     type BookingAncillaryOrder,
     type BookingAncillaryQuote,
@@ -22,10 +23,13 @@ import {
     type BookingRecord,
     type BookingRetrieveResponse,
 } from "@/lib/api";
+import { getUserFromToken } from "@/lib/auth";
 
 function BookingsPageContent() {
     const router = useRouter();
     const params = useSearchParams();
+    const currentUser = getUserFromToken();
+    const isAdmin = currentUser?.role === "ADMIN";
     const created = params.get("created");
     const [bookings, setBookings] = useState<BookingRecord[]>([]);
     const [loading, setLoading] = useState(true);
@@ -203,6 +207,25 @@ function BookingsPageContent() {
             setRetrievedRecord((current) => current ? { ...current, rawResponse: result.rawResponse } : current);
         } catch (value: unknown) {
             setError(value instanceof Error ? value.message : "Failed to send service request");
+        } finally {
+            setServiceAction("");
+        }
+    };
+
+    const handleIssueTicket = async () => {
+        if (!selectedBookingId || !isAdmin) return;
+        try {
+            setServiceAction("issue-ticket");
+            setError("");
+            const result = await issueBookingTicket(selectedBookingId);
+            await loadBookings();
+            const detail = await getBookingDetail(selectedBookingId);
+            setSelectedBooking(detail);
+            setRetrievedRecord((current) =>
+                current ? { ...current, rawResponse: result.refreshedRecord || result.rawResponse } : current
+            );
+        } catch (value: unknown) {
+            setError(value instanceof Error ? value.message : "Failed to issue ticket");
         } finally {
             setServiceAction("");
         }
@@ -492,6 +515,8 @@ function BookingsPageContent() {
                                     <div className="mt-2">Agent: <span className="font-semibold text-[var(--ink)]">{selectedBooking.agentEmail}</span></div>
                                     <div>Status: <span className="font-semibold text-[var(--ink)]">{selectedBooking.status}</span></div>
                                     <div>Amount: <span className="font-semibold text-[var(--ink)]">MYR {selectedBooking.amount.toFixed(2)}</span></div>
+                                    <div>Ticketed: <span className="font-semibold text-[var(--ink)]">{selectedBooking.ticketedAt ? new Date(selectedBooking.ticketedAt).toLocaleString() : "Not yet"}</span></div>
+                                    <div>Tickets: <span className="font-semibold text-[var(--ink)]">{selectedBooking.ticketNumbers?.length ? selectedBooking.ticketNumbers.join(", ") : "-"}</span></div>
                                 </div>
                             </div>
 
@@ -511,6 +536,26 @@ function BookingsPageContent() {
                                     {documentBookingId === selectedBooking.id ? "Opening..." : "Open PDF"}
                                 </button>
                             </div>
+
+                            {isAdmin && (
+                                <div className="soft-panel rounded-[1.5rem] p-4">
+                                    <div className="subtle-kicker">Ticketing</div>
+                                    <div className="mt-2 text-sm leading-7 text-slate-500">
+                                        Issue the live ticket from the stored Travelport reservation locator. This action is admin-only and should only be used once per confirmed booking.
+                                    </div>
+                                    <button
+                                        onClick={() => void handleIssueTicket()}
+                                        disabled={serviceAction === "issue-ticket" || selectedBooking.status === "TICKETED"}
+                                        className="gold-button mt-3 w-full rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
+                                    >
+                                        {serviceAction === "issue-ticket"
+                                            ? "Issuing ticket..."
+                                            : selectedBooking.status === "TICKETED"
+                                                ? "Already Ticketed"
+                                                : "Issue Ticket"}
+                                    </button>
+                                </div>
+                            )}
 
                             <div className="soft-panel rounded-[1.5rem] p-4">
                                 <div className="subtle-kicker">Modify</div>

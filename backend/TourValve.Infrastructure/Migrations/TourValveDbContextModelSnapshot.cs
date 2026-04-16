@@ -222,6 +222,17 @@ namespace TourValve.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("TicketNumbersJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("TicketedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TicketingResponseXml")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("To")
                         .IsRequired()
                         .HasColumnType("text");

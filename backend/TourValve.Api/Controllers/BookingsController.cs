@@ -33,6 +33,7 @@ public class BookingsController : ControllerBase
     private readonly AncillaryOfferService _ancillaryOffers;
     private readonly AirAncillaryAvailabilityService _liveAncillaryAvailability;
     private readonly BookingSeatMapService _bookingSeatMaps;
+    private readonly BookingTicketingService _ticketing;
     private static readonly Guid ReservedAdminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private const string ReservedAdminEmail = "admin@tourvalve.com";
 
@@ -47,6 +48,7 @@ public class BookingsController : ControllerBase
           AncillaryOfferService ancillaryOffers,
           AirAncillaryAvailabilityService liveAncillaryAvailability,
           BookingSeatMapService bookingSeatMaps,
+          BookingTicketingService ticketing,
           IOptions<WalletAlertOptions> walletAlertOptions)
     {
         _mediator = mediator;
@@ -59,6 +61,7 @@ public class BookingsController : ControllerBase
         _ancillaryOffers = ancillaryOffers;
         _liveAncillaryAvailability = liveAncillaryAvailability;
         _bookingSeatMaps = bookingSeatMaps;
+        _ticketing = ticketing;
         _walletAlertOptions = walletAlertOptions.Value;
     }
 
@@ -76,6 +79,7 @@ public class BookingsController : ControllerBase
     public record AncillaryOrderRequest(string Type, string SegmentLabel, string OptionCode, string Description, decimal BaseAmount, string Currency, string Notes, List<TravelerSelectionRequest>? TravelerSelections);
     public record AncillaryStatusRequest(string Status, string Notes, string ProviderReference);
     public record SeatMapRequest(string SegmentLabel, string FrequentFlyerProgram, string FrequentFlyerNumber);
+    public record IssueTicketRequest(bool Confirm);
 
     [HttpGet]
     public async Task<IActionResult> List()
@@ -112,6 +116,8 @@ public class BookingsController : ControllerBase
                     x.BaseAmount,
                     x.MarkupAmount,
                     itinerarySegments = DeserializeItinerarySegments(x.ItinerarySegmentsJson),
+                    ticketNumbers = DeserializeStringList(x.TicketNumbersJson),
+                    x.TicketedAt,
                     x.Status,
                     x.CreatedAt
                 })
@@ -156,6 +162,8 @@ public class BookingsController : ControllerBase
             booking.BaseAmount,
             booking.MarkupAmount,
             itinerarySegments = DeserializeItinerarySegments(booking.ItinerarySegmentsJson),
+            ticketNumbers = DeserializeStringList(booking.TicketNumbersJson),
+            booking.TicketedAt,
             booking.Status,
             booking.CreatedAt,
             ancillaries = await _db.BookingAncillaryOrders
@@ -742,6 +750,101 @@ public class BookingsController : ControllerBase
             });
     }
 
+    [Authorize(Roles = "ADMIN")]
+    [HttpPost("{id:guid}/issue-ticket")]
+    public async Task<IActionResult> IssueTicket(Guid id, [FromBody] IssueTicketRequest request)
+    {
+        var booking = await GetAuthorizedBookingAsync(id);
+        if (booking == null)
+            return NotFound(new { error = "Booking not found." });
+
+        if (!request.Confirm)
+            return BadRequest(new { error = "Ticket issuance requires explicit confirmation." });
+
+        if (string.IsNullOrWhiteSpace(booking.UniversalRecordLocator))
+            return BadRequest(new { error = "This booking does not have a Universal Record locator yet." });
+
+        var existingTicketNumbers = DeserializeStringList(booking.TicketNumbersJson);
+        if (booking.TicketedAt.HasValue || existingTicketNumbers.Count > 0 || booking.Status == "TICKETED")
+        {
+            return BadRequest(new
+            {
+                error = "This booking already appears to be ticketed.",
+                ticketNumbers = existingTicketNumbers,
+                booking.TicketedAt,
+                booking.Status
+            });
+        }
+
+        return await ExecuteTravelportAction(
+            booking,
+            "ISSUE_TICKET",
+            "Ticket issuance update",
+            async () =>
+            {
+                var result = await _ticketing.IssueAsync(booking);
+                var issuedAt = DateTime.UtcNow;
+                var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+
+                booking.TicketNumbersJson = JsonSerializer.Serialize(result.TicketNumbers);
+                booking.TicketedAt = issuedAt;
+                booking.TicketingResponseXml = string.IsNullOrWhiteSpace(result.RefreshedRecordXml)
+                    ? result.ResponseXml
+                    : result.RefreshedRecordXml;
+                booking.Status = "TICKETED";
+
+                await _db.SaveChangesAsync();
+
+                var ticketSummary = result.TicketNumbers.Count > 0
+                    ? string.Join(", ", result.TicketNumbers)
+                    : "Ticketing response returned without parseable ticket numbers.";
+
+                await _audit.WriteAsync(
+                    GetRequesterAgentId(),
+                    actorEmail,
+                    "BOOKING",
+                    "ISSUE_TICKET",
+                    "Booking",
+                    booking.Id.ToString(),
+                    booking.BookingReference,
+                    $"Issued ticket for booking {booking.BookingReference}. {ticketSummary}");
+
+                await _notifications.CreateAsync(
+                    booking.AgentId,
+                    "AGENT",
+                    "BOOKING",
+                    "Ticket issued",
+                    result.TicketNumbers.Count > 0
+                        ? $"Booking {booking.BookingReference} has been ticketed. Ticket numbers: {string.Join(", ", result.TicketNumbers)}."
+                        : $"Booking {booking.BookingReference} has been ticketed. Verify ticket numbers from the live record.",
+                    result.TicketNumbers.Count > 0 ? "SUCCESS" : "WARN",
+                    "/bookings");
+
+                await _notifications.CreateAsync(
+                    null,
+                    "ADMIN",
+                    "BOOKING",
+                    "Ticket issued",
+                    result.TicketNumbers.Count > 0
+                        ? $"Booking {booking.BookingReference} ticketed successfully. Ticket numbers: {string.Join(", ", result.TicketNumbers)}."
+                        : $"Booking {booking.BookingReference} ticketed successfully, but ticket numbers should be verified from Travelport.",
+                    result.TicketNumbers.Count > 0 ? "SUCCESS" : "WARN",
+                    "/bookings");
+
+                return Ok(new
+                {
+                    message = result.TicketNumbers.Count > 0
+                        ? "Ticket issued successfully."
+                        : "Ticketing request completed. Verify ticket numbers from the refreshed live record.",
+                    ticketNumbers = result.TicketNumbers,
+                    ticketedAt = issuedAt,
+                    booking.Status,
+                    rawResponse = result.ResponseXml,
+                    refreshedRecord = string.IsNullOrWhiteSpace(result.RefreshedRecordXml) ? null : result.RefreshedRecordXml
+                });
+            });
+    }
+
     [HttpGet("{id:guid}/document")]
     public async Task<IActionResult> Document(Guid id)
     {
@@ -913,6 +1016,21 @@ public class BookingsController : ControllerBase
         catch
         {
             return new List<object>();
+        }
+    }
+
+    private static List<string> DeserializeStringList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return new List<string>();
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+        }
+        catch
+        {
+            return new List<string>();
         }
     }
 

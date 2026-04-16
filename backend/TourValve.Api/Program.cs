@@ -173,6 +173,7 @@ builder.Services.AddScoped<AirPriceService>();
 builder.Services.AddScoped<AirBookService>();
 builder.Services.AddScoped<AirAncillaryAvailabilityService>();
 builder.Services.AddScoped<BookingSeatMapService>();
+builder.Services.AddScoped<BookingTicketingService>();
 builder.Services.AddScoped<AncillaryOfferService>();
 builder.Services.AddScoped<UniversalRecordService>();
 
