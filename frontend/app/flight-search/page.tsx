@@ -175,6 +175,50 @@ function splitSeatRow<T>(seats: T[]) {
     };
 }
 
+function coerceFiniteNumber(value: unknown) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+
+    if (typeof value === "string" && value.trim()) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
+}
+
+function formatMoney(currency: unknown, amount: unknown) {
+    const safeCurrency = typeof currency === "string" && currency.trim() ? currency : "MYR";
+    return `${safeCurrency} ${(coerceFiniteNumber(amount) ?? 0).toFixed(2)}`;
+}
+
+function normalizeSeatRows(seatMap: FlightSeatMapResponse | null) {
+    if (!Array.isArray(seatMap?.rows)) {
+        return [];
+    }
+
+    return seatMap.rows
+        .filter((row) => row && typeof row === "object" && Array.isArray(row.seats))
+        .map((row, rowIndex) => ({
+            number: typeof row.number === "string" && row.number.trim() ? row.number : String(rowIndex + 1),
+            seats: row.seats
+                .filter((seat) => seat && typeof seat === "object")
+                .map((seat) => ({
+                    ...seat,
+                    code: typeof seat.code === "string" ? seat.code : "",
+                    availability: typeof seat.availability === "string" ? seat.availability : "",
+                    paid: Boolean(seat.paid),
+                    characteristics: Array.isArray(seat.characteristics)
+                        ? seat.characteristics.filter((item): item is string => typeof item === "string")
+                        : [],
+                    seatPrice: coerceFiniteNumber(seat.seatPrice),
+                    currency: typeof seat.currency === "string" ? seat.currency : "",
+                })),
+        }))
+        .filter((row) => row.seats.length > 0);
+}
+
 function getBaggageHighlights(flight: FlightResult) {
     const highlights = [
         flight.carryOnAllowance?.trim(),
@@ -616,6 +660,10 @@ export default function FlightSearch() {
     const prebookBaggageOptions = useMemo(
         () => (prebookFlight ? getBaggageHighlights(prebookFlight) : []),
         [prebookFlight]
+    );
+    const prebookSeatRows = useMemo(
+        () => normalizeSeatRows(prebookSeatMap),
+        [prebookSeatMap]
     );
 
     useEffect(() => {
@@ -1844,7 +1892,7 @@ export default function FlightSearch() {
                                                     {isBookable ? (
                                                         <>
                                                             <div className="text-[1.8rem] font-bold leading-none text-[var(--success)] sm:text-2xl">
-                                                                {flight.currency} {flight.price.toFixed(2)}
+                                                                {formatMoney(flight.currency, flight.price)}
                                                             </div>
                                                             <div className="text-xs text-slate-500">bookable wallet amount</div>
                                                         </>
@@ -1927,7 +1975,7 @@ export default function FlightSearch() {
                                 <div className="rounded-[1.2rem] bg-white/12 px-4 py-3 text-right">
                                     <div className="text-[10px] uppercase tracking-[0.18em] text-white/60">Live fare</div>
                                     <div className="mt-1 text-xl font-semibold">
-                                        {prebookFlight.currency} {prebookFlight.price.toFixed(2)}
+                                        {formatMoney(prebookFlight.currency, prebookFlight.price)}
                                     </div>
                                 </div>
                                 <button
@@ -2107,9 +2155,9 @@ export default function FlightSearch() {
                                                     <span>H J K</span>
                                                 </div>
 
-                                                {prebookSeatMap?.rows?.length ? (
+                                                {prebookSeatRows.length ? (
                                                     <div className="space-y-3">
-                                                        {prebookSeatMap.rows.map((row) => {
+                                                        {prebookSeatRows.map((row) => {
                                                             const { left, right } = splitSeatRow(row.seats);
                                                             return (
                                                                 <div key={row.number} className="grid grid-cols-[1fr_3rem_1fr] items-center gap-3">
@@ -2138,7 +2186,7 @@ export default function FlightSearch() {
                                                                                     </div>
                                                                                     {seat.seatPrice ? (
                                                                                         <div className="mt-1 text-[10px] opacity-90">
-                                                                                            {(seat.currency || prebookFlight.currency)} {seat.seatPrice.toFixed(2)}
+                                                                                            {formatMoney(seat.currency || prebookFlight.currency, seat.seatPrice)}
                                                                                         </div>
                                                                                     ) : null}
                                                                                 </button>
@@ -2173,7 +2221,7 @@ export default function FlightSearch() {
                                                                                     </div>
                                                                                     {seat.seatPrice ? (
                                                                                         <div className="mt-1 text-[10px] opacity-90">
-                                                                                            {(seat.currency || prebookFlight.currency)} {seat.seatPrice.toFixed(2)}
+                                                                                            {formatMoney(seat.currency || prebookFlight.currency, seat.seatPrice)}
                                                                                         </div>
                                                                                     ) : null}
                                                                                 </button>
