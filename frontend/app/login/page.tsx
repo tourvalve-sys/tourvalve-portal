@@ -7,7 +7,7 @@ import { loginUser } from "@/lib/api";
 import Link from "next/link";
 import { hasSessionCookie, removeToken, setToken } from "@/lib/auth";
 
-const LOGIN_VIDEO_SRC = "/videos/login-bg.mp4?v=20260416-1220";
+const LOGIN_VIDEO_SRC = "/videos/login-bg.mp4?v=20260416-fill";
 const BACKGROUND_MEDIA_SIZE = {
     width: "max(100vw, 178vh)",
     height: "max(100vh, 56.25vw)",
@@ -89,7 +89,7 @@ export default function LoginPage() {
     return (
         <div className="relative isolate min-h-screen min-h-[100svh] w-screen overflow-hidden px-4 py-6 fade-in sm:px-6 sm:py-8 lg:py-10">
             <video
-                className="pointer-events-none absolute left-1/2 top-1/2 z-0 max-w-none -translate-x-1/2 -translate-y-1/2 object-cover"
+                className="pointer-events-none absolute left-1/2 top-1/2 z-0 max-w-none -translate-x-1/2 -translate-y-1/2 scale-[1.72] object-cover sm:scale-[1.64] lg:scale-[1.58]"
                 style={BACKGROUND_MEDIA_SIZE}
                 autoPlay
                 muted
