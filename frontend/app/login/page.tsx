@@ -8,6 +8,10 @@ import Link from "next/link";
 import { hasSessionCookie, removeToken, setToken } from "@/lib/auth";
 
 const LOGIN_VIDEO_SRC = "/videos/login-bg.mp4?v=20260416-1220";
+const BACKGROUND_MEDIA_SIZE = {
+    width: "max(100vw, 178vh)",
+    height: "max(100vh, 56.25vw)",
+};
 
 export default function LoginPage() {
     const router = useRouter();
@@ -83,9 +87,10 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="relative isolate min-h-screen overflow-hidden px-4 py-6 fade-in sm:px-6 sm:py-10">
+        <div className="relative isolate min-h-screen min-h-[100svh] w-screen overflow-hidden px-4 py-6 fade-in sm:px-6 sm:py-8 lg:py-10">
             <video
-                className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-full min-h-full w-full min-w-full -translate-x-1/2 -translate-y-1/2 object-cover scale-[1.22] md:scale-[1.14]"
+                className="pointer-events-none absolute left-1/2 top-1/2 z-0 max-w-none -translate-x-1/2 -translate-y-1/2 object-cover"
+                style={BACKGROUND_MEDIA_SIZE}
                 autoPlay
                 muted
                 loop
@@ -103,11 +108,11 @@ export default function LoginPage() {
                 }}
             />
 
-            <div className="relative z-10 mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl flex-col items-center justify-center gap-8 lg:min-h-[calc(100vh-5rem)] lg:flex-row lg:gap-12">
-                <div className="w-full max-w-3xl text-white fade-in-delay lg:pr-6">
-                    <div className="inline-block max-w-2xl rounded-[2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(7,16,31,0.24),rgba(7,16,31,0.08))] px-5 py-6 shadow-[0_28px_60px_rgba(8,15,28,0.16)] backdrop-blur-[2px] sm:px-7 sm:py-7">
+            <div className="relative z-10 mx-auto flex min-h-[calc(100svh-3rem)] w-full max-w-7xl flex-col items-stretch justify-center gap-5 sm:gap-7 lg:min-h-[calc(100svh-5rem)] lg:flex-row lg:items-center lg:gap-10 xl:gap-12">
+                <div className="w-full text-white fade-in-delay lg:flex-1 lg:pr-4">
+                    <div className="w-full rounded-[2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(7,16,31,0.24),rgba(7,16,31,0.08))] px-5 py-5 shadow-[0_28px_60px_rgba(8,15,28,0.16)] backdrop-blur-[2px] sm:px-7 sm:py-7 lg:max-w-2xl">
                         <h1
-                            className="font-display max-w-xl text-[clamp(2.1rem,4.2vw,4rem)] font-medium leading-[0.98] !text-white"
+                            className="font-display max-w-xl text-[clamp(2rem,4vw,4rem)] font-medium leading-[0.98] !text-white"
                             style={{ textShadow: "0 6px 18px rgba(0, 0, 0, 0.16)" }}
                         >
                             A reservation portal that feels tailored, not templated.
@@ -121,7 +126,7 @@ export default function LoginPage() {
                     </div>
                 </div>
 
-                <div className="premium-panel w-full max-w-xl rounded-[2.25rem] p-6 shadow-[0_26px_80px_rgba(15,23,42,0.24)] sm:p-8 md:p-10">
+                <div className="premium-panel w-full rounded-[2.25rem] p-6 shadow-[0_26px_80px_rgba(15,23,42,0.24)] sm:p-8 md:p-10 lg:max-w-xl lg:flex-1">
                     <div className="subtle-kicker mb-3">Member Access</div>
                     <h2 className="font-display text-4xl text-[var(--ink)]">Welcome back</h2>
                     <p className="mt-3 text-sm leading-7 text-slate-600">
