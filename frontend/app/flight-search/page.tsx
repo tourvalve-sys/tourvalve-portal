@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import Image from "next/image";
 import {
     ArrowLeftRight,
@@ -137,6 +137,50 @@ const prebookMealOptions = [
         detail: "Use when the traveler needs a custom meal note after booking.",
     },
 ] as const;
+
+class PrebookStudioBoundary extends Component<
+    { children: ReactNode; onReset: () => void },
+    { hasError: boolean }
+> {
+    state = { hasError: false };
+
+    static getDerivedStateFromError() {
+        return { hasError: true };
+    }
+
+    componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+        console.error("Pre-book studio render error", error, errorInfo);
+    }
+
+    render() {
+        if (!this.state.hasError) {
+            return this.props.children;
+        }
+
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(17,22,31,0.55)] px-4 py-6 backdrop-blur-sm">
+                <div className="w-full max-w-xl rounded-[2rem] border border-[rgba(255,255,255,0.18)] bg-[rgba(244,248,255,0.98)] p-6 shadow-[0_30px_80px_rgba(16,24,40,0.34)]">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                        Seat & Baggage
+                    </div>
+                    <h2 className="mt-3 text-2xl font-semibold text-[var(--ink)]">
+                        This airline did not return a usable seat-map format.
+                    </h2>
+                    <p className="mt-3 text-sm leading-7 text-slate-600">
+                        The fare is still available. Close this panel and continue with the standard booking flow, or choose another itinerary.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={this.props.onReset}
+                        className="gold-button mt-6 rounded-2xl px-5 py-3 text-sm font-semibold"
+                    >
+                        Close Seat & Baggage
+                    </button>
+                </div>
+            </div>
+        );
+    }
+}
 
 function buildPrebookSegmentLabel(segment: {
     carrier: string;
@@ -1951,10 +1995,11 @@ export default function FlightSearch() {
             </div>
 
             {prebookFlight && (
-                <div
-                    className="fixed inset-0 z-50 overflow-y-auto bg-[rgba(17,22,31,0.55)] px-4 py-4 backdrop-blur-sm sm:py-6"
-                    onClick={closePrebookStudio}
-                >
+                <PrebookStudioBoundary onReset={closePrebookStudio}>
+                    <div
+                        className="fixed inset-0 z-50 overflow-y-auto bg-[rgba(17,22,31,0.55)] px-4 py-4 backdrop-blur-sm sm:py-6"
+                        onClick={closePrebookStudio}
+                    >
                     <div
                         className="mx-auto flex max-h-[calc(100vh-2rem)] w-full max-w-[1280px] flex-col overflow-hidden rounded-[2rem] border border-[rgba(255,255,255,0.14)] bg-[linear-gradient(160deg,rgba(244,248,255,0.98),rgba(232,239,250,0.94))] shadow-[0_30px_80px_rgba(16,24,40,0.34)]"
                         onClick={(event) => event.stopPropagation()}
@@ -2311,7 +2356,8 @@ export default function FlightSearch() {
                             </aside>
                         </div>
                     </div>
-                </div>
+                    </div>
+                </PrebookStudioBoundary>
             )}
         </div>
     );
