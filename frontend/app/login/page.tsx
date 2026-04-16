@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
@@ -83,13 +82,17 @@ export default function LoginPage() {
 
     return (
         <div className="relative min-h-screen overflow-hidden px-4 py-6 fade-in sm:px-6 sm:py-10">
-            <Image
-                src="/images/flight-bg.jpg"
-                alt="background"
-                fill
-                priority
+            <video
                 className="absolute inset-0 h-full w-full object-cover scale-105"
-            />
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                poster="/images/flight-bg.jpg"
+            >
+                <source src="/videos/login-bg.mp4" type="video/mp4" />
+            </video>
             <div
                 className="absolute inset-0"
                 style={{
