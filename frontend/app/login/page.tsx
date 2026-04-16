@@ -7,12 +7,6 @@ import { loginUser } from "@/lib/api";
 import Link from "next/link";
 import { hasSessionCookie, removeToken, setToken } from "@/lib/auth";
 
-const LOGIN_VIDEO_SRC = "/videos/login-bg.mp4?v=20260416-full";
-const BACKGROUND_MEDIA_SIZE = {
-    width: "max(100vw, 178vh)",
-    height: "max(100vh, 56.25vw)",
-};
-
 export default function LoginPage() {
     const router = useRouter();
     const [form, setForm] = useState({
@@ -87,32 +81,24 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="relative isolate min-h-screen min-h-[100svh] w-screen overflow-hidden px-4 py-6 fade-in sm:px-6 sm:py-8 lg:py-10">
-            <video
-                className="pointer-events-none absolute left-1/2 top-1/2 z-0 max-w-none -translate-x-1/2 -translate-y-1/2 scale-[2.08] object-cover sm:scale-[2] lg:scale-[1.92]"
-                style={BACKGROUND_MEDIA_SIZE}
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="auto"
-                poster="/images/flight-bg.jpg"
-            >
-                <source src={LOGIN_VIDEO_SRC} type="video/mp4" />
-            </video>
+        <div className="relative isolate min-h-screen min-h-[100dvh] w-full overflow-x-hidden overflow-y-auto px-4 py-6 fade-in sm:px-6 sm:py-8 lg:py-10">
+            <div
+                className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
+                style={{ backgroundImage: "url('/images/flight-bg.jpg')" }}
+            />
             <div
                 className="pointer-events-none absolute inset-0 z-[1]"
                 style={{
                     background:
-                        "linear-gradient(118deg, rgba(7, 16, 31, 0.46), rgba(33, 24, 17, 0.22), rgba(251, 247, 240, 0.12))",
+                        "linear-gradient(118deg, rgba(7, 16, 31, 0.68), rgba(33, 24, 17, 0.32), rgba(251, 247, 240, 0.18))",
                 }}
             />
 
-            <div className="relative z-10 mx-auto flex min-h-[calc(100svh-3rem)] w-full max-w-7xl flex-col items-stretch justify-center gap-5 sm:gap-7 lg:min-h-[calc(100svh-5rem)] lg:flex-row lg:items-center lg:gap-10 xl:gap-12">
-                <div className="w-full text-white fade-in-delay lg:flex-1 lg:pr-4">
-                    <div className="w-full rounded-[2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(7,16,31,0.24),rgba(7,16,31,0.08))] px-5 py-5 shadow-[0_28px_60px_rgba(8,15,28,0.16)] backdrop-blur-[2px] sm:px-7 sm:py-7 lg:max-w-2xl">
+            <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-3rem)] w-full max-w-7xl flex-col items-stretch justify-center gap-5 sm:gap-7 lg:min-h-[calc(100dvh-5rem)] lg:flex-row lg:items-center lg:gap-10 xl:gap-12">
+                <div className="w-full min-w-0 text-white fade-in-delay lg:flex-1 lg:pr-4">
+                    <div className="w-full rounded-[2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(7,16,31,0.36),rgba(7,16,31,0.14))] px-5 py-5 shadow-[0_28px_60px_rgba(8,15,28,0.16)] backdrop-blur-[2px] sm:px-7 sm:py-7 lg:max-w-2xl">
                         <h1
-                            className="font-display max-w-xl text-[clamp(2rem,4vw,4rem)] font-medium leading-[0.98] !text-white"
+                            className="font-display max-w-xl text-4xl font-medium leading-[1.02] !text-white sm:text-5xl lg:text-6xl"
                             style={{ textShadow: "0 6px 18px rgba(0, 0, 0, 0.16)" }}
                         >
                             A reservation portal that feels tailored, not templated.
@@ -126,7 +112,7 @@ export default function LoginPage() {
                     </div>
                 </div>
 
-                <div className="premium-panel w-full rounded-[2.25rem] p-6 shadow-[0_26px_80px_rgba(15,23,42,0.24)] sm:p-8 md:p-10 lg:max-w-xl lg:flex-1">
+                <div className="premium-panel w-full min-w-0 rounded-[2.25rem] p-6 shadow-[0_26px_80px_rgba(15,23,42,0.24)] sm:p-8 md:p-10 lg:max-w-xl lg:flex-1">
                     <div className="subtle-kicker mb-3">Member Access</div>
                     <h2 className="font-display text-4xl text-[var(--ink)]">Welcome back</h2>
                     <p className="mt-3 text-sm leading-7 text-slate-600">
