@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, Download, FileText, MapPinned, ReceiptText, ShieldCheck } from "lucide-react";
+import { CalendarDays, Download, FileText, MapPinned, ReceiptText, ShieldCheck, Ticket } from "lucide-react";
 import {
     cancelBooking,
     createBookingAncillaryOrder,
@@ -212,14 +212,16 @@ function BookingsPageContent() {
         }
     };
 
-    const handleIssueTicket = async () => {
-        if (!selectedBookingId || !isAdmin) return;
+    const handleIssueTicket = async (bookingIdOverride?: string) => {
+        const bookingId = bookingIdOverride ?? selectedBookingId;
+        if (!bookingId || !isAdmin) return;
         try {
             setServiceAction("issue-ticket");
             setError("");
-            const result = await issueBookingTicket(selectedBookingId);
+            const result = await issueBookingTicket(bookingId);
             await loadBookings();
-            const detail = await getBookingDetail(selectedBookingId);
+            const detail = await getBookingDetail(bookingId);
+            setSelectedBookingId(bookingId);
             setSelectedBooking(detail);
             setRetrievedRecord((current) =>
                 current ? { ...current, rawResponse: result.refreshedRecord || result.rawResponse } : current
@@ -438,7 +440,7 @@ function BookingsPageContent() {
                                     <th>Route</th>
                                     <th>Status</th>
                                     <th className="text-right">Amount</th>
-                                    <th className="text-right">Document</th>
+                                    <th className="text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -472,17 +474,32 @@ function BookingsPageContent() {
                                             MYR {booking.amount.toFixed(2)}
                                         </td>
                                         <td className="text-right">
-                                            <button
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    void handleOpenDocument(booking.id);
-                                                }}
-                                                disabled={documentBookingId === booking.id}
-                                                className="ghost-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition disabled:opacity-60"
-                                            >
-                                                <FileText size={16} />
-                                                {documentBookingId === booking.id ? "Opening..." : "Open PDF"}
-                                            </button>
+                                            <div className="flex justify-end gap-2">
+                                                {isAdmin && (
+                                                    <button
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            void handleIssueTicket(booking.id);
+                                                        }}
+                                                        disabled={serviceAction === "issue-ticket" || booking.status === "TICKETED"}
+                                                        className="gold-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                                                    >
+                                                        <Ticket size={16} />
+                                                        {booking.status === "TICKETED" ? "Ticketed" : serviceAction === "issue-ticket" ? "Issuing..." : "Issue Ticket"}
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        void handleOpenDocument(booking.id);
+                                                    }}
+                                                    disabled={documentBookingId === booking.id}
+                                                    className="ghost-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition disabled:opacity-60"
+                                                >
+                                                    <FileText size={16} />
+                                                    {documentBookingId === booking.id ? "Opening..." : "Open PDF"}
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
