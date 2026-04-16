@@ -86,7 +86,11 @@ const chunkRecoveryScript = `
     }
   });
 
-  window.addEventListener("pageshow", clearRetryMark);
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      clearRetryMark();
+    }
+  });
 })();
 `;
 
