@@ -83,9 +83,9 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="relative min-h-screen overflow-hidden px-4 py-6 fade-in sm:px-6 sm:py-10">
+        <div className="relative isolate min-h-screen overflow-hidden px-4 py-6 fade-in sm:px-6 sm:py-10">
             <video
-                className="absolute left-1/2 top-1/2 h-full min-h-full w-full min-w-full -translate-x-1/2 -translate-y-1/2 object-cover scale-[1.22] md:scale-[1.14]"
+                className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-full min-h-full w-full min-w-full -translate-x-1/2 -translate-y-1/2 object-cover scale-[1.22] md:scale-[1.14]"
                 autoPlay
                 muted
                 loop
@@ -96,14 +96,14 @@ export default function LoginPage() {
                 <source src={LOGIN_VIDEO_SRC} type="video/mp4" />
             </video>
             <div
-                className="absolute inset-0"
+                className="pointer-events-none absolute inset-0 z-[1]"
                 style={{
                     background:
                         "linear-gradient(118deg, rgba(7, 16, 31, 0.46), rgba(33, 24, 17, 0.22), rgba(251, 247, 240, 0.12))",
                 }}
             />
 
-            <div className="relative z-20 mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl flex-col items-center justify-center gap-8 lg:min-h-[calc(100vh-5rem)] lg:flex-row lg:gap-12">
+            <div className="relative z-10 mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl flex-col items-center justify-center gap-8 lg:min-h-[calc(100vh-5rem)] lg:flex-row lg:gap-12">
                 <div className="w-full max-w-3xl text-white fade-in-delay lg:pr-6">
                     <div className="inline-block max-w-2xl rounded-[2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(7,16,31,0.24),rgba(7,16,31,0.08))] px-5 py-6 shadow-[0_28px_60px_rgba(8,15,28,0.16)] backdrop-blur-[2px] sm:px-7 sm:py-7">
                         <h1
