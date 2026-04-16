@@ -132,6 +132,7 @@ export type FlightSeatMapResponse = {
     diagnostics?: {
         rowCount: number;
         facilityCount: number;
+        optionalServiceCount?: number;
         seatLikeFacilityCount: number;
         distinctSeatCodeCount: number;
         sampleSeatCodes: string[];

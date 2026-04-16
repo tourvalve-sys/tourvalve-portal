@@ -237,6 +237,14 @@ function formatMoney(currency: unknown, amount: unknown) {
     return `${safeCurrency} ${(coerceFiniteNumber(amount) ?? 0).toFixed(2)}`;
 }
 
+function formatSeatMapRawPreview(raw: unknown) {
+    if (typeof raw !== "string" || !raw.trim()) {
+        return "No raw Travelport response was returned for this request.";
+    }
+
+    return raw.replace(/\s+/g, " ").trim().slice(0, 1200);
+}
+
 function normalizeSeatRows(seatMap: FlightSeatMapResponse | null) {
     if (!Array.isArray(seatMap?.rows)) {
         return [];
@@ -1998,14 +2006,14 @@ export default function FlightSearch() {
             {prebookFlight && (
                 <PrebookStudioBoundary onReset={closePrebookStudio}>
                     <div
-                        className="fixed inset-0 z-50 overflow-y-auto bg-[rgba(17,22,31,0.55)] px-4 py-4 backdrop-blur-sm sm:py-6"
+                        className="fixed inset-0 z-[2000] overflow-hidden bg-[rgba(17,22,31,0.58)] px-2 py-2 backdrop-blur-sm sm:px-4 sm:py-4"
                         onClick={closePrebookStudio}
                     >
                     <div
-                        className="mx-auto flex max-h-[calc(100vh-2rem)] w-full max-w-[1280px] flex-col overflow-hidden rounded-[2rem] border border-[rgba(255,255,255,0.14)] bg-[linear-gradient(160deg,rgba(244,248,255,0.98),rgba(232,239,250,0.94))] shadow-[0_30px_80px_rgba(16,24,40,0.34)]"
+                        className="mx-auto flex h-[calc(100dvh-1rem)] w-full max-w-[1360px] flex-col overflow-hidden rounded-[1.5rem] border border-[rgba(255,255,255,0.14)] bg-[linear-gradient(160deg,rgba(244,248,255,0.98),rgba(232,239,250,0.94))] shadow-[0_30px_80px_rgba(16,24,40,0.34)] sm:rounded-[2rem]"
                         onClick={(event) => event.stopPropagation()}
                     >
-                        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[rgba(32,63,92,0.08)] bg-[linear-gradient(90deg,#1f5fb6,#174498)] px-6 py-5 text-white">
+                        <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-[rgba(32,63,92,0.08)] bg-[linear-gradient(90deg,#1f5fb6,#174498)] px-4 py-4 text-white sm:px-6 sm:py-5">
                             <div className="min-w-0">
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/70">
                                     Pre-Book Studio
@@ -2028,15 +2036,16 @@ export default function FlightSearch() {
                                     type="button"
                                     onClick={closePrebookStudio}
                                     aria-label="Close pre-book studio"
-                                    className="rounded-2xl border border-white/20 bg-white/10 p-3 text-white transition hover:bg-white/18"
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white/12 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
                                 >
                                     <X size={18} />
+                                    Exit
                                 </button>
                             </div>
                         </div>
 
-                        <div className="grid min-h-0 flex-1 gap-0 overflow-y-auto lg:grid-cols-[280px_minmax(0,1fr)_250px]">
-                            <aside className="min-h-0 overflow-y-auto border-r border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(231,239,252,0.88),rgba(238,244,252,0.94))] p-5">
+                        <div className="grid min-h-0 flex-1 gap-0 overflow-y-auto lg:grid-cols-[290px_minmax(0,1fr)_260px]">
+                            <aside className="min-h-0 border-r border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(231,239,252,0.88),rgba(238,244,252,0.94))] p-5">
                                 <div className="rounded-[1.35rem] border border-[rgba(23,68,152,0.18)] bg-white/90 p-4 shadow-[0_14px_30px_rgba(26,56,117,0.12)]">
                                     <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Traveler</div>
                                     <div className="mt-3 flex items-center gap-3">
@@ -2075,7 +2084,7 @@ export default function FlightSearch() {
                                         })}
                                     </div>
                                     <div className="mt-3 rounded-[1rem] bg-[rgba(241,248,255,0.92)] px-3 py-3 text-xs leading-6 text-slate-500">
-                                        These baggage details come from the priced shopping response when the airline exposes them before booking.
+                                        These baggage details come from the live priced Travelport shopping response when the airline exposes them before booking.
                                     </div>
                                 </div>
 
@@ -2137,14 +2146,14 @@ export default function FlightSearch() {
 
                             <section
                                 ref={prebookSeatMapSectionRef}
-                                className="min-h-0 min-w-0 overflow-y-auto bg-[linear-gradient(180deg,rgba(247,250,255,0.94),rgba(239,244,252,0.96))] p-5"
+                                className="min-h-0 min-w-0 bg-[linear-gradient(180deg,rgba(247,250,255,0.94),rgba(239,244,252,0.96))] p-5"
                             >
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>
                                         <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Live seat map</div>
                                         <h3 className="mt-2 text-2xl font-semibold text-[var(--ink)]">Choose seats before checkout.</h3>
                                         <div className="mt-2 text-sm text-slate-500">
-                                            This panel uses the pre-book `SeatMapRsp` when the airline returns drawable rows and facilities.
+                                            This panel requests a live Travelport `SeatMapReq` and renders the returned `SeatMapRsp` when the airline exposes drawable rows and facilities.
                                         </div>
                                     </div>
                                     <button
@@ -2185,6 +2194,64 @@ export default function FlightSearch() {
                                 {prebookSeatMapError && (
                                     <div className="mt-4 rounded-[1.2rem] bg-[rgba(255,236,236,0.92)] px-4 py-4 text-sm text-[var(--danger)]">
                                         {prebookSeatMapError}
+                                    </div>
+                                )}
+
+                                {prebookSeatMap && (
+                                    <div className="mt-4 rounded-[1.4rem] border border-[rgba(23,68,152,0.1)] bg-white/88 p-4 shadow-[0_14px_30px_rgba(33,64,111,0.08)]">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                                    Live Travelport response
+                                                </div>
+                                                <div className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                                                    {prebookSeatMap.source || "PRE_BOOK_SEATMAP"} - {prebookSeatMap.carrier || prebookFlight.carrier} {prebookSeatMap.flightNumber || prebookFlight.flightNumber}
+                                                </div>
+                                            </div>
+                                            <span className="rounded-full bg-[rgba(225,246,236,0.96)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--success)]">
+                                                Live
+                                            </span>
+                                        </div>
+
+                                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                            {[
+                                                ["Rows", prebookSeatMap.diagnostics?.rowCount ?? prebookSeatRows.length],
+                                                ["Facilities", prebookSeatMap.diagnostics?.facilityCount ?? 0],
+                                                ["Seat nodes", prebookSeatMap.diagnostics?.seatLikeFacilityCount ?? prebookSeatRows.reduce((sum, row) => sum + row.seats.length, 0)],
+                                                ["Optional services", prebookSeatMap.diagnostics?.optionalServiceCount ?? 0],
+                                            ].map(([label, value]) => (
+                                                <div key={label} className="rounded-[1rem] bg-[rgba(241,248,255,0.92)] px-3 py-3">
+                                                    <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400">{label}</div>
+                                                    <div className="mt-1 text-lg font-semibold text-[var(--ink)]">{value}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {prebookSeatMap.diagnostics?.supplierMessages?.length ? (
+                                            <div className="mt-4 rounded-[1rem] bg-[rgba(247,244,239,0.8)] px-3 py-3 text-sm leading-6 text-slate-600">
+                                                <div className="font-semibold text-[var(--ink)]">Supplier message</div>
+                                                <div className="mt-1">{prebookSeatMap.diagnostics.supplierMessages.join(" | ")}</div>
+                                            </div>
+                                        ) : null}
+
+                                        {prebookSeatMap.diagnostics?.sampleSeatCodes?.length ? (
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {prebookSeatMap.diagnostics.sampleSeatCodes.map((code) => (
+                                                    <span key={code} className="rounded-full border border-[rgba(23,68,152,0.12)] bg-white px-3 py-1 text-xs font-semibold text-[#174498]">
+                                                        {code}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : null}
+
+                                        <details className="mt-4 rounded-[1rem] border border-[rgba(23,68,152,0.08)] bg-[rgba(248,250,255,0.86)] px-3 py-3 text-xs leading-6 text-slate-600">
+                                            <summary className="cursor-pointer font-semibold text-[var(--ink)]">
+                                                View raw Travelport XML preview
+                                            </summary>
+                                            <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-[0.85rem] bg-slate-950 p-3 text-[11px] leading-5 text-slate-100">
+                                                {formatSeatMapRawPreview(prebookSeatMap.rawResponse)}
+                                            </pre>
+                                        </details>
                                     </div>
                                 )}
 
@@ -2286,7 +2353,7 @@ export default function FlightSearch() {
                                             </div>
                                         </div>
 
-                                        <aside className="min-h-0 overflow-y-auto border-l border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(247,249,255,0.94),rgba(240,244,251,0.98))] p-5">
+                                        <aside className="min-h-0 border-l border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(247,249,255,0.94),rgba(240,244,251,0.98))] p-5">
                                             <div className="rounded-[1.35rem] bg-white/90 p-4 shadow-[0_14px_30px_rgba(33,64,111,0.08)]">
                                                 <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Selection summary</div>
                                                 <div className="mt-3 text-sm font-semibold text-[var(--ink)]">
@@ -2321,7 +2388,7 @@ export default function FlightSearch() {
                                 </div>
                             </section>
 
-                            <aside className="min-h-0 overflow-y-auto border-l border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(244,247,252,0.96),rgba(238,243,250,0.96))] p-5">
+                            <aside className="min-h-0 border-l border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(244,247,252,0.96),rgba(238,243,250,0.96))] p-5">
                                 <div className="rounded-[1.35rem] bg-white/88 p-4 shadow-[0_14px_30px_rgba(33,64,111,0.08)]">
                                     <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Live summary</div>
                                     <div className="mt-3 text-lg font-semibold text-[var(--ink)]">{prebookFlight.from} {"->"} {prebookFlight.to}</div>
