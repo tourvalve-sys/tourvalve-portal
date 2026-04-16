@@ -7,6 +7,8 @@ import { loginUser } from "@/lib/api";
 import Link from "next/link";
 import { hasSessionCookie, removeToken, setToken } from "@/lib/auth";
 
+const LOGIN_VIDEO_SRC = "/videos/login-bg.mp4?v=20260416-1220";
+
 export default function LoginPage() {
     const router = useRouter();
     const [form, setForm] = useState({
@@ -88,10 +90,10 @@ export default function LoginPage() {
                 muted
                 loop
                 playsInline
-                preload="metadata"
+                preload="auto"
                 poster="/images/flight-bg.jpg"
             >
-                <source src="/videos/login-bg.mp4" type="video/mp4" />
+                <source src={LOGIN_VIDEO_SRC} type="video/mp4" />
             </video>
             <div
                 className="absolute inset-0"
