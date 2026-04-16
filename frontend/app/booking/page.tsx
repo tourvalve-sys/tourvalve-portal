@@ -133,6 +133,45 @@ function seatTone(seat: {
     return "border-[rgba(89,64,46,0.1)] bg-white/90 text-[var(--ink)] hover:-translate-y-0.5 hover:border-[rgba(176,122,67,0.4)] hover:shadow-[0_10px_22px_rgba(66,49,30,0.12)]";
 }
 
+function coerceFiniteNumber(value: unknown) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+
+    if (typeof value === "string" && value.trim()) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
+}
+
+function normalizeSeatRows(seatMap: FlightSeatMapResponse | null) {
+    if (!Array.isArray(seatMap?.rows)) {
+        return [];
+    }
+
+    return seatMap.rows
+        .filter((row) => row && typeof row === "object" && Array.isArray(row.seats))
+        .map((row, rowIndex) => ({
+            number: typeof row.number === "string" && row.number.trim() ? row.number : String(rowIndex + 1),
+            seats: row.seats
+                .filter((seat) => seat && typeof seat === "object")
+                .map((seat) => ({
+                    ...seat,
+                    code: typeof seat.code === "string" ? seat.code : "",
+                    availability: typeof seat.availability === "string" ? seat.availability : "",
+                    paid: Boolean(seat.paid),
+                    characteristics: Array.isArray(seat.characteristics)
+                        ? seat.characteristics.filter((item): item is string => typeof item === "string")
+                        : [],
+                    seatPrice: coerceFiniteNumber(seat.seatPrice),
+                    currency: typeof seat.currency === "string" ? seat.currency : "",
+                })),
+        }))
+        .filter((row) => row.seats.length > 0);
+}
+
 export default function BookingPage() {
     const router = useRouter();
     const { selectedFlight: rawSelectedFlight, travelerCounts, setSelectedFlight } = useBooking();
@@ -235,6 +274,10 @@ export default function BookingPage() {
 
         return Array.from(new Set(items)).slice(0, 4);
     }, [selectedFlight]);
+    const normalizedSeatRows = useMemo(
+        () => normalizeSeatRows(seatMap),
+        [seatMap]
+    );
     const canViewSeatDiagnostics = currentUser?.role === "ADMIN";
 
     useEffect(() => {
@@ -884,7 +927,7 @@ export default function BookingPage() {
                                     </div>
 
                                     <div className="space-y-3">
-                                        {seatMap.rows.map((row) => (
+                                        {normalizedSeatRows.map((row) => (
                                             <div
                                                 key={row.number}
                                                 className="grid grid-cols-1 gap-3 rounded-[1.3rem] bg-white/55 px-3 py-3 backdrop-blur-sm sm:grid-cols-[4rem_1fr] sm:items-center"
@@ -921,7 +964,7 @@ export default function BookingPage() {
                                         ))}
                                     </div>
 
-                                    {!seatMap.rows.length && (
+                                    {!normalizedSeatRows.length && (
                                         <div className="rounded-[1.4rem] border border-[rgba(50,93,147,0.12)] bg-[linear-gradient(135deg,rgba(245,249,255,0.98),rgba(235,243,255,0.94))] px-5 py-4 text-sm leading-7 text-slate-600">
                                             <div className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--accent-strong)]">
                                                 Seat map unavailable for this fare
@@ -944,22 +987,22 @@ export default function BookingPage() {
                                                         <span>Seat-like facilities: {seatMap.diagnostics.seatLikeFacilityCount}</span>
                                                         <span>Seat codes: {seatMap.diagnostics.distinctSeatCodeCount}</span>
                                                     </div>
-                                                    {seatMap.diagnostics.supplierMessages.length > 0 && (
+                                                    {(seatMap.diagnostics.supplierMessages?.length ?? 0) > 0 && (
                                                         <div className="mt-2">
                                                             <div className="font-semibold text-slate-500">Supplier messages</div>
-                                                            <div>{seatMap.diagnostics.supplierMessages.join(" | ")}</div>
+                                                            <div>{seatMap.diagnostics.supplierMessages?.join(" | ")}</div>
                                                         </div>
                                                     )}
-                                                    {seatMap.diagnostics.structuralHints.length > 0 && (
+                                                    {(seatMap.diagnostics.structuralHints?.length ?? 0) > 0 && (
                                                         <div className="mt-2">
                                                             <div className="font-semibold text-slate-500">Response hints</div>
-                                                            <div>{seatMap.diagnostics.structuralHints.join(", ")}</div>
+                                                            <div>{seatMap.diagnostics.structuralHints?.join(", ")}</div>
                                                         </div>
                                                     )}
-                                                    {seatMap.diagnostics.sampleSeatCodes.length > 0 && (
+                                                    {(seatMap.diagnostics.sampleSeatCodes?.length ?? 0) > 0 && (
                                                         <div className="mt-2">
                                                             <div className="font-semibold text-slate-500">Sample seat codes</div>
-                                                            <div>{seatMap.diagnostics.sampleSeatCodes.join(", ")}</div>
+                                                            <div>{seatMap.diagnostics.sampleSeatCodes?.join(", ")}</div>
                                                         </div>
                                                     )}
                                                 </div>
