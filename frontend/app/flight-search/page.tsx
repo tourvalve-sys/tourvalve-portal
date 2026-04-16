@@ -1314,13 +1314,14 @@ export default function FlightSearch() {
         : "Pricing the selected itinerary and preparing the booking handoff.";
 
     return (
-        <div className="relative min-h-screen fade-in">
+        <>
             {showPageLoader ? (
                 <PageLoader
                     label={loaderLabel}
                     detail={loaderDetail}
                 />
             ) : null}
+            <div className="relative min-h-screen fade-in">
             <Image
                 src="/images/flight-bg.jpg"
                 alt="bg"
@@ -2359,6 +2360,7 @@ export default function FlightSearch() {
                     </div>
                 </PrebookStudioBoundary>
             )}
-        </div>
+            </div>
+        </>
     );
 }
