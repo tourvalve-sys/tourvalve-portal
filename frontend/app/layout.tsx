@@ -119,11 +119,7 @@ export default function RootLayout({
             <body>
                 <BookingProvider>
                     {isAuthPage ? (
-                        <div className="page-shell classic-grid">
-                            <div className="app-surface min-h-screen">
-                                {children}
-                            </div>
-                        </div>
+                        <div className="app-surface min-h-screen">{children}</div>
                     ) : (
                         <ProtectedSessionShell>
                             <div className="page-shell">
