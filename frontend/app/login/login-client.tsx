@@ -7,8 +7,6 @@ import { loginUser } from "@/lib/api";
 import Link from "next/link";
 import { hasSessionCookie, removeToken, setToken } from "@/lib/auth";
 
-const LOGIN_VIDEO_SRC = "/videos/login-bg.mp4?v=20260416-restored";
-
 export default function LoginClient() {
     const router = useRouter();
     const [form, setForm] = useState({
@@ -88,19 +86,8 @@ export default function LoginClient() {
                 className="pointer-events-none fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
                 style={{ backgroundImage: "url('/images/flight-bg.jpg')" }}
             />
-            <video
-                className="pointer-events-none fixed inset-0 z-[1] h-full w-full scale-[1.08] object-cover sm:scale-[1.05] lg:scale-[1.02]"
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="metadata"
-                poster="/images/flight-bg.jpg"
-            >
-                <source src={LOGIN_VIDEO_SRC} type="video/mp4" />
-            </video>
             <div
-                className="pointer-events-none fixed inset-0 z-[2]"
+                className="pointer-events-none fixed inset-0 z-[1]"
                 style={{
                     background:
                         "linear-gradient(118deg, rgba(7, 16, 31, 0.68), rgba(33, 24, 17, 0.32), rgba(251, 247, 240, 0.18))",
