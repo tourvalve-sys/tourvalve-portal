@@ -130,10 +130,15 @@ export default function LoginClient() {
         const reason = params.get("reason");
 
         if (params.has("__tv_refresh")) {
-            params.delete("__tv_refresh");
-            const nextQuery = params.toString();
-            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
-            window.history.replaceState(null, "", nextUrl);
+            const cleanParams = new URLSearchParams();
+
+            if (reason) {
+                cleanParams.set("reason", reason);
+            }
+
+            const target = `/login${cleanParams.toString() ? `?${cleanParams.toString()}` : ""}`;
+            window.location.replace(target);
+            return;
         }
 
         if (reason === "inactive") {
