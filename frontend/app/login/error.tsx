@@ -4,39 +4,14 @@ import { useEffect } from "react";
 
 export default function LoginError({
     error,
+    reset,
 }: {
     error: Error & { digest?: string };
+    reset: () => void;
 }) {
     useEffect(() => {
         console.error("Login route error", error);
     }, [error]);
-
-    useEffect(() => {
-        if (typeof window === "undefined") {
-            return;
-        }
-
-        try {
-            const autoRecoverKey = "tv_login_auto_recover";
-            const currentPath = `${window.location.pathname}${window.location.search}`;
-            const hasRefreshQuery = window.location.search.includes("__tv_refresh");
-            const hasRecoveredAlready = sessionStorage.getItem(autoRecoverKey) === "1";
-
-            if ((hasRefreshQuery || currentPath.startsWith("/login")) && !hasRecoveredAlready) {
-                sessionStorage.setItem(autoRecoverKey, "1");
-                localStorage.removeItem("token");
-                localStorage.removeItem("tv_last_activity");
-                window.location.replace("/login");
-                return;
-            }
-
-            if (!hasRefreshQuery) {
-                sessionStorage.removeItem(autoRecoverKey);
-            }
-        } catch {
-            // If storage is blocked, keep the manual recovery UI available.
-        }
-    }, []);
 
     const handleReset = () => {
         if (typeof window !== "undefined") {
@@ -49,7 +24,7 @@ export default function LoginError({
             }
         }
 
-        window.location.replace("/login");
+        reset();
     };
 
     return (
