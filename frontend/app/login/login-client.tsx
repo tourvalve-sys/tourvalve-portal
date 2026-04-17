@@ -126,7 +126,15 @@ export default function LoginClient() {
             return;
         }
 
-        const reason = new URLSearchParams(window.location.search).get("reason");
+        const params = new URLSearchParams(window.location.search);
+        const reason = params.get("reason");
+
+        if (params.has("__tv_refresh")) {
+            params.delete("__tv_refresh");
+            const nextQuery = params.toString();
+            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+            window.history.replaceState(null, "", nextUrl);
+        }
 
         if (reason === "inactive") {
             setSessionNotice("Your session became inactive and you were logged out for security.");
