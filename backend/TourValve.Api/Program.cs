@@ -108,12 +108,17 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
+builder.Services.Configure<BillplzOptions>(builder.Configuration.GetSection("Billplz"));
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.Configure<WalletAlertOptions>(builder.Configuration.GetSection("WalletAlerts"));
 builder.Services.Configure<TicketMarkupOptions>(builder.Configuration.GetSection("TicketMarkup"));
 builder.Services.Configure<AncillaryMarkupOptions>(builder.Configuration.GetSection("AncillaryMarkup"));
 builder.Services.AddScoped<IAuditTrailService, AuditTrailService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddHttpClient<IBillplzTopUpService, BillplzTopUpService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 builder.Services.AddScoped<TicketMarkupService>();
 builder.Services.AddScoped<AncillaryMarkupService>();
 

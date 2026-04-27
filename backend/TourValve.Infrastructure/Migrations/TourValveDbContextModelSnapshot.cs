@@ -639,12 +639,31 @@ namespace TourValve.Infrastructure.Migrations
                     b.Property<decimal>("Amount")
                         .HasColumnType("numeric(12,2)");
 
-                    b.Property<string>("ExternalReference")
+                    b.Property<string>("CallbackPayloadJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CheckoutUrl")
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("CreditedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalReference")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<DateTime>("RequestedAt")
                         .HasColumnType("timestamp with time zone");
@@ -665,6 +684,8 @@ namespace TourValve.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AgentId", "Status");
+
+                    b.HasIndex("Provider", "ExternalReference");
 
                     b.ToTable("WalletTopUpRequests");
                 });

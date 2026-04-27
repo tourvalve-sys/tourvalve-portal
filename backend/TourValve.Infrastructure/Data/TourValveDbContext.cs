@@ -104,7 +104,18 @@ public class TourValveDbContext : DbContext, IApplicationDbContext
             .HasColumnType("numeric(12,2)");
 
         modelBuilder.Entity<WalletTopUpRequest>()
+            .Property(x => x.Provider)
+            .HasMaxLength(40);
+
+        modelBuilder.Entity<WalletTopUpRequest>()
+            .Property(x => x.ExternalReference)
+            .HasMaxLength(120);
+
+        modelBuilder.Entity<WalletTopUpRequest>()
             .HasIndex(x => new { x.AgentId, x.Status });
+
+        modelBuilder.Entity<WalletTopUpRequest>()
+            .HasIndex(x => new { x.Provider, x.ExternalReference });
 
         modelBuilder.Entity<AdminWithdrawalRequest>()
             .Property(x => x.Amount)

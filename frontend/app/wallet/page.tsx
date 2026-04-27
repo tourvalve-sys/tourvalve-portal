@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Download, Landmark, RefreshCw, ShieldCheck, WalletCards, Waves } from "lucide-react";
 import {
+    confirmBillplzWalletReturn,
+    createBillplzWalletTopUp,
     createAdminWithdrawal,
     exportWalletStatement,
     getAdminWithdrawals,
@@ -24,6 +26,7 @@ export default function WalletPage() {
     const [selectedWallet, setSelectedWallet] = useState("");
     const [amount, setAmount] = useState("100");
     const [reference, setReference] = useState("");
+    const [agentTopUpAmount, setAgentTopUpAmount] = useState("100");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
@@ -36,41 +39,85 @@ export default function WalletPage() {
     const [withdrawalPayoutRefs, setWithdrawalPayoutRefs] = useState<Record<string, string>>({});
     const [withdrawing, setWithdrawing] = useState(false);
     const [updatingWithdrawalId, setUpdatingWithdrawalId] = useState("");
+    const [creatingBillplzTopUp, setCreatingBillplzTopUp] = useState(false);
+
+    const loadWallet = async (quiet = false) => {
+        try {
+            if (!quiet) {
+                setLoading(true);
+            }
+            const currentUser = await getCurrentUser();
+            setUser(currentUser);
+
+            if (currentUser.role === "ADMIN") {
+                setMyWallet(await getMyWallet());
+                const wallets = await getAgentWallets();
+                setWithdrawals(await getAdminWithdrawals());
+                setAgentWallets(wallets);
+                setSelectedWallet(wallets[0]?.walletAccountId ?? "");
+            } else {
+                setMyWallet(await getMyWallet());
+            }
+        } catch (value: unknown) {
+            setError(value instanceof Error ? value.message : "Failed to load wallet");
+        } finally {
+            if (!quiet) {
+                setLoading(false);
+            }
+        }
+    };
 
     useEffect(() => {
-        const load = async (quiet = false) => {
-            try {
-                if (!quiet) {
-                    setLoading(true);
-                }
-                const currentUser = await getCurrentUser();
-                setUser(currentUser);
-
-                if (currentUser.role === "ADMIN") {
-                    setMyWallet(await getMyWallet());
-                    const wallets = await getAgentWallets();
-                    setWithdrawals(await getAdminWithdrawals());
-                    setAgentWallets(wallets);
-                    setSelectedWallet(wallets[0]?.walletAccountId ?? "");
-                } else {
-                    setMyWallet(await getMyWallet());
-                }
-            } catch (value: unknown) {
-                setError(value instanceof Error ? value.message : "Failed to load wallet");
-            } finally {
-                if (!quiet) {
-                    setLoading(false);
-                }
-            }
-        };
-
-        void load();
+        void loadWallet();
 
         const intervalId = window.setInterval(() => {
-            void load(true);
+            void loadWallet(true);
         }, 20000);
 
         return () => window.clearInterval(intervalId);
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        const search = new URLSearchParams(window.location.search);
+        const mode = search.get("billplz");
+        const hasBillId = search.has("billplz[id]") || search.has("id");
+
+        if (mode !== "return" || !hasBillId) {
+            return;
+        }
+
+        let cancelled = false;
+
+        const confirmReturn = async () => {
+            try {
+                const result = await confirmBillplzWalletReturn(window.location.search);
+                if (cancelled) {
+                    return;
+                }
+
+                setError("");
+                setSuccess(result.message);
+                window.history.replaceState({}, "", "/wallet");
+                await loadWallet(true);
+            } catch (value: unknown) {
+                if (cancelled) {
+                    return;
+                }
+
+                setError(value instanceof Error ? value.message : "Failed to confirm Billplz payment");
+                window.history.replaceState({}, "", "/wallet");
+            }
+        };
+
+        void confirmReturn();
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     const handleTopUp = async () => {
@@ -84,6 +131,21 @@ export default function WalletPage() {
             setReference("");
         } catch (value: unknown) {
             setError(value instanceof Error ? value.message : "Top up failed");
+        }
+    };
+
+    const handleBillplzTopUp = async () => {
+        try {
+            setCreatingBillplzTopUp(true);
+            setError("");
+            setSuccess("");
+
+            const session = await createBillplzWalletTopUp(Number(agentTopUpAmount));
+            window.location.href = session.checkoutUrl;
+        } catch (value: unknown) {
+            setError(value instanceof Error ? value.message : "Billplz top-up could not be started");
+        } finally {
+            setCreatingBillplzTopUp(false);
         }
     };
 
@@ -578,6 +640,33 @@ export default function WalletPage() {
                                     <div className="float-slow text-[var(--accent-strong)]">
                                         <Waves size={34} />
                                     </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 rounded-[1.75rem] border border-[rgba(89,64,46,0.1)] bg-white/78 p-5">
+                                <div className="subtle-kicker mb-2">Online Top-Up</div>
+                                <h3 className="font-display text-2xl text-[var(--ink)]">Fund wallet with Billplz</h3>
+                                <p className="mt-3 text-sm leading-7 text-slate-500">
+                                    Start a Billplz sandbox payment and we will credit your wallet automatically after the payment callback is verified.
+                                </p>
+
+                                <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
+                                    <input
+                                        className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/90 p-4 outline-none transition focus:border-[var(--accent)]"
+                                        type="number"
+                                        min="1"
+                                        step="0.01"
+                                        value={agentTopUpAmount}
+                                        onChange={(event) => setAgentTopUpAmount(event.target.value)}
+                                        placeholder="Top-up amount"
+                                    />
+                                    <button
+                                        onClick={() => void handleBillplzTopUp()}
+                                        disabled={creatingBillplzTopUp}
+                                        className="gold-button rounded-2xl px-5 py-4 font-semibold disabled:opacity-60"
+                                    >
+                                        {creatingBillplzTopUp ? "Redirecting..." : "Top Up via Billplz"}
+                                    </button>
                                 </div>
                             </div>
 

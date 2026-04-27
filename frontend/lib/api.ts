@@ -239,6 +239,23 @@ export type MyWalletResponse = {
     }>;
 };
 
+export type BillplzCheckoutSession = {
+    topUpRequestId: string;
+    billId: string;
+    checkoutUrl: string;
+    amount: number;
+    status: string;
+};
+
+export type BillplzTopUpResolution = {
+    billId: string;
+    status: string;
+    paid: boolean;
+    credited: boolean;
+    amount: number;
+    message: string;
+};
+
 export type AdminWithdrawalRequest = {
     id: string;
     walletAccountId: string;
@@ -868,6 +885,24 @@ export async function topUpAgentWallet(walletAccountId: string, amount: number, 
     });
 
     return readJson<{ ledgerEntryId: string }>(res);
+}
+
+export async function createBillplzWalletTopUp(amount: number): Promise<BillplzCheckoutSession> {
+    const res = await authFetch(`${API_BASE}/api/payments/billplz/wallet-topup`, {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+    });
+
+    return readJson<BillplzCheckoutSession>(res);
+}
+
+export async function confirmBillplzWalletReturn(queryString: string): Promise<BillplzTopUpResolution> {
+    const res = await authFetch(`${API_BASE}/api/payments/billplz/redirect-confirm`, {
+        method: "POST",
+        body: JSON.stringify({ queryString }),
+    });
+
+    return readJson<BillplzTopUpResolution>(res);
 }
 
 export async function getAdminWithdrawals(): Promise<AdminWithdrawalRequest[]> {
