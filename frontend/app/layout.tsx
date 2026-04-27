@@ -104,6 +104,24 @@ const chunkRecoveryScript = `
 })();
 `;
 
+const themeBootstrapScript = `
+(() => {
+  const storageKey = "tv_theme";
+  const root = document.documentElement;
+
+  try {
+    const saved = localStorage.getItem(storageKey);
+    const theme = saved === "dark" || saved === "light"
+      ? saved
+      : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+
+    root.dataset.theme = theme;
+  } catch {
+    root.dataset.theme = "light";
+  }
+})();
+`;
+
 export default function RootLayout({
     children,
 }: {
@@ -120,6 +138,11 @@ export default function RootLayout({
     return (
         <html lang="en">
             <head>
+                <Script
+                    id="tv-theme-bootstrap"
+                    strategy="beforeInteractive"
+                    dangerouslySetInnerHTML={{ __html: themeBootstrapScript }}
+                />
                 <Script
                     id="tv-chunk-recovery"
                     strategy="beforeInteractive"

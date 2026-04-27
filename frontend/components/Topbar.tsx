@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Bell } from "lucide-react";
 import { getCurrentUser, getNotifications, markAllNotificationsRead, markNotificationRead, type CurrentUser, type NotificationItem } from "@/lib/api";
+import ThemeToggle from "./ThemeToggle";
 
 const titles: Record<string, string> = {
     "/": "Dashboard",
@@ -77,10 +78,12 @@ export default function Topbar() {
             </div>
 
             <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:gap-3 lg:w-auto lg:flex-nowrap lg:justify-end">
+                <ThemeToggle />
+
                 <div className="relative">
                     <button
                         onClick={() => setOpen((value) => !value)}
-                        className="relative flex h-10 w-10 items-center justify-center rounded-[1rem] bg-white/70 text-slate-600 transition hover:bg-white sm:h-11 sm:w-11 sm:rounded-2xl"
+                        className="topbar-action-button relative flex h-10 w-10 items-center justify-center rounded-[1rem] bg-white/70 text-slate-600 transition hover:bg-white sm:h-11 sm:w-11 sm:rounded-2xl"
                     >
                         <Bell size={18} />
                         {unreadCount > 0 && (
