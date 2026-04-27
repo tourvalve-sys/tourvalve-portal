@@ -12,6 +12,7 @@ const chunkRecoveryScript = `
 (() => {
   const reloadKey = "tv_chunk_recovery_path";
   const staleStateKeys = ["flightSearchState", "selectedFlight", "travelerCounts"];
+  const authPaths = new Set(["/login", "/register", "/forgot-password", "/maintenance"]);
 
   const clearStaleState = () => {
     try {
@@ -55,7 +56,16 @@ const chunkRecoveryScript = `
     markRetried();
     clearStaleState();
 
+    const isAuthPath = authPaths.has(window.location.pathname);
     const url = new URL(window.location.href);
+
+    if (isAuthPath) {
+      url.search = "";
+      url.hash = "";
+      window.location.replace(url.toString());
+      return;
+    }
+
     url.searchParams.set("__tv_refresh", Date.now().toString());
     window.location.replace(url.toString());
   };

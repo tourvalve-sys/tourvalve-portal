@@ -127,8 +127,9 @@ export default function LoginClient() {
         const params = new URLSearchParams(window.location.search);
         const reason = params.get("reason");
 
-        if (params.has("__tv_refresh")) {
+        if (params.has("__tv_refresh") || params.has("__tv_recover")) {
             params.delete("__tv_refresh");
+            params.delete("__tv_recover");
             const nextQuery = params.toString();
             const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
             window.history.replaceState(null, "", nextUrl);

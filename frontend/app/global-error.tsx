@@ -25,6 +25,10 @@ function clearBrowserState() {
     }
 }
 
+function isAuthPath(pathname: string) {
+    return pathname === "/login" || pathname === "/register" || pathname === "/forgot-password" || pathname === "/maintenance";
+}
+
 export default function GlobalError({
     error,
     reset,
@@ -59,6 +63,14 @@ export default function GlobalError({
         clearBrowserState();
 
         const nextUrl = new URL(window.location.href);
+
+        if (isAuthPath(window.location.pathname)) {
+            nextUrl.search = "";
+            nextUrl.hash = "";
+            window.location.replace(nextUrl.toString());
+            return;
+        }
+
         nextUrl.searchParams.set("__tv_recover", Date.now().toString());
         window.location.replace(nextUrl.toString());
     }, [error, shouldAutoRecover]);
