@@ -2,7 +2,6 @@
 
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { loginUser } from "@/lib/api";
 import Link from "next/link";
@@ -104,7 +103,6 @@ const loginButtonStyle: CSSProperties = {
 };
 
 export default function LoginClient() {
-    const router = useRouter();
     const [form, setForm] = useState({
         email: "",
         password: "",
@@ -171,7 +169,7 @@ export default function LoginClient() {
 
             const data = await loginUser(form);
             setToken(data.token);
-            router.push("/");
+            window.location.assign("/");
         } catch (error: unknown) {
             setError(getErrorMessage(error));
         } finally {
