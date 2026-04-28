@@ -1346,6 +1346,8 @@ export default function FlightSearch() {
                 </div>
 
                 <div className="mx-auto max-w-[88rem] rounded-[1.7rem] premium-panel classic-grid p-3.5 sm:p-4 md:rounded-[2rem] md:p-8">
+                    <PromoCarousel slides={flightSearchPromoSlides} variant="compact" className="mb-5" />
+
                     <div className="mb-5 flex flex-wrap gap-2.5 sm:mb-6 sm:gap-3">
                         <button
                             onClick={() => setTripType("oneway")}
@@ -1590,8 +1592,6 @@ export default function FlightSearch() {
                             ))}
                         </div>
                     </div>
-
-                    <PromoCarousel slides={flightSearchPromoSlides} variant="compact" className="mb-5" />
 
                     <div id="flight-search-form" className="mb-5 rounded-[1.4rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.7)] px-4 py-4 sm:rounded-[1.6rem]">
                         <div className="mb-2 flex items-center justify-between gap-3">
