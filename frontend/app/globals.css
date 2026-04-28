@@ -477,6 +477,18 @@ html[data-theme="dark"] .bg-red-50\/90 {
   background-color: rgba(85, 25, 31, 0.9) !important;
 }
 
+html[data-theme="dark"] .bg-amber-50\/90 {
+  background-color: rgba(87, 55, 18, 0.92) !important;
+}
+
+html[data-theme="dark"] .border-amber-200 {
+  border-color: rgba(255, 204, 120, 0.24) !important;
+}
+
+html[data-theme="dark"] .text-amber-700 {
+  color: #ffd89a !important;
+}
+
 html[data-theme="dark"] .border-red-200 {
   border-color: rgba(255, 142, 150, 0.26) !important;
 }
@@ -516,7 +528,11 @@ html[data-theme="dark"] .bg-\[rgba\(246\,249\,255\,0\.96\)\],
 html[data-theme="dark"] .bg-\[rgba\(231\,239\,252\,0\.88\)\],
 html[data-theme="dark"] .bg-\[rgba\(238\,244\,252\,0\.94\)\],
 html[data-theme="dark"] .bg-\[rgba\(247\,250\,255\,0\.94\)\],
-html[data-theme="dark"] .bg-\[rgba\(239\,244\,252\,0\.96\)\] {
+html[data-theme="dark"] .bg-\[rgba\(239\,244\,252\,0\.96\)\],
+html[data-theme="dark"] .bg-\[rgba\(255\,251\,245\,0\.55\)\],
+html[data-theme="dark"] .bg-\[rgba\(255\,247\,236\,0\.82\)\],
+html[data-theme="dark"] .bg-\[rgba\(255\,252\,247\,0\.72\)\],
+html[data-theme="dark"] .bg-\[rgba\(255\,252\,247\,0\.7\)\] {
   background: rgba(18, 32, 49, 0.94) !important;
 }
 
@@ -528,7 +544,8 @@ html[data-theme="dark"] .bg-\[linear-gradient\(180deg\,rgba\(244\,247\,252\,0\.9
 html[data-theme="dark"] .bg-\[linear-gradient\(180deg\,rgba\(231\,239\,252\,0\.88\)\,rgba\(238\,244\,252\,0\.94\)\)\],
 html[data-theme="dark"] .bg-\[linear-gradient\(180deg\,rgba\(247\,250\,255\,0\.94\)\,rgba\(239\,244\,252\,0\.96\)\)\],
 html[data-theme="dark"] .bg-\[linear-gradient\(180deg\,\#fefefe\,\#f6f8fc\)\],
-html[data-theme="dark"] .bg-\[linear-gradient\(180deg\,rgba\(255\,255\,255\,0\.9\)\,rgba\(247\,243\,236\,0\.88\)\)\] {
+html[data-theme="dark"] .bg-\[linear-gradient\(180deg\,rgba\(255\,255\,255\,0\.9\)\,rgba\(247\,243\,236\,0\.88\)\)\],
+html[data-theme="dark"] .topbar-user-chip {
   background: linear-gradient(180deg, rgba(16, 29, 45, 0.98), rgba(10, 20, 33, 0.94)) !important;
 }
 
