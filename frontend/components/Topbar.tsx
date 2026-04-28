@@ -7,7 +7,7 @@ import { getCurrentUser, getNotifications, markAllNotificationsRead, markNotific
 import ThemeToggle from "./ThemeToggle";
 
 const titles: Record<string, string> = {
-    "/": "Dashboard",
+    "/dashboard": "Dashboard",
     "/flight-search": "Flight Search",
     "/booking": "Booking",
     "/bookings": "Bookings",
@@ -18,7 +18,7 @@ const titles: Record<string, string> = {
 };
 
 const subtitles: Record<string, string> = {
-    "/": "Live sales, booking, and service performance",
+    "/dashboard": "Live sales, booking, and service performance",
     "/flight-search": "Live shopping, pricing, and pre-book ancillaries",
     "/booking": "Review traveler details before reservation",
     "/bookings": "Manage reservations and post-book servicing",

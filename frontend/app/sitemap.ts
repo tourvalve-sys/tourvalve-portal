@@ -9,10 +9,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
         "/login",
         "/register",
         "/forgot-password",
+        "/dashboard",
+        "/flight-search",
     ].map((path) => ({
         url: `${baseUrl}${path}`,
         lastModified: now,
-        changeFrequency: path === "" ? "weekly" : "monthly",
-        priority: path === "" ? 1 : 0.7,
+        changeFrequency: path === "" ? "weekly" : path === "/dashboard" || path === "/flight-search" ? "weekly" : "monthly",
+        priority: path === "" ? 1 : path === "/dashboard" || path === "/flight-search" ? 0.8 : 0.7,
     }));
 }

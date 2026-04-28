@@ -129,11 +129,15 @@ export default function RootLayout({
 }) {
     const pathname = usePathname();
 
-    const isAuthPage =
-        pathname === "/login" ||
-        pathname === "/register" ||
-        pathname === "/forgot-password" ||
-        pathname === "/maintenance";
+    const publicPaths = new Set([
+        "/",
+        "/login",
+        "/register",
+        "/forgot-password",
+        "/maintenance",
+    ]);
+
+    const isPublicPage = publicPaths.has(pathname);
 
     return (
         <html lang="en">
@@ -151,7 +155,7 @@ export default function RootLayout({
             </head>
             <body>
                 <BookingProvider>
-                    {isAuthPage ? (
+                    {isPublicPage ? (
                         <div className="app-surface min-h-screen">{children}</div>
                     ) : (
                         <ProtectedSessionShell>

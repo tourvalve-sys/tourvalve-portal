@@ -8,7 +8,7 @@ import { getCurrentUser } from "@/lib/api";
 import { getUserFromToken, removeToken } from "@/lib/auth";
 
 const menu = [
-    { name: "Dashboard", path: "/", icon: LayoutGrid },
+    { name: "Dashboard", path: "/dashboard", icon: LayoutGrid },
     { name: "Flight Search", path: "/flight-search", icon: PlaneTakeoff },
     { name: "Bookings", path: "/bookings", icon: Briefcase },
     { name: "Wallet", path: "/wallet", icon: Wallet },

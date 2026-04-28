@@ -25,6 +25,21 @@ export default function Head() {
             },
             {
                 "@type": "SiteNavigationElement",
+                name: "Homepage",
+                url: `${siteUrl}/`,
+            },
+            {
+                "@type": "SiteNavigationElement",
+                name: "Dashboard",
+                url: `${siteUrl}/dashboard`,
+            },
+            {
+                "@type": "SiteNavigationElement",
+                name: "Flight Search",
+                url: `${siteUrl}/flight-search`,
+            },
+            {
+                "@type": "SiteNavigationElement",
                 name: "Login",
                 url: `${siteUrl}/login`,
             },

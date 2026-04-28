@@ -170,7 +170,7 @@ export default function LoginClient() {
 
             const data = await loginUser(form);
             setToken(data.token);
-            window.location.assign("/");
+            window.location.assign("/dashboard");
         } catch (error: unknown) {
             setError(getErrorMessage(error));
         } finally {
