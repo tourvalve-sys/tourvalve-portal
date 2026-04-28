@@ -1,7 +1,7 @@
 export default function Head() {
-    const title = "TourValve | Agent Login and B2B Flight Booking Portal";
+    const title = "TourValve B2B Portal";
     const description =
-        "TourValve is a B2B flight booking portal for agent login, registration, wallet funding, and live reservation operations in one connected workspace.";
+        "TourValve B2B Portal for agent login, registration, password recovery, wallet funding, and live reservation operations in one connected workspace.";
     const siteUrl = "https://tourvalve.com";
     const jsonLd = {
         "@context": "https://schema.org",
@@ -30,7 +30,7 @@ export default function Head() {
             },
             {
                 "@type": "SiteNavigationElement",
-                name: "Request Agent Access",
+                name: "Register",
                 url: `${siteUrl}/register`,
             },
             {

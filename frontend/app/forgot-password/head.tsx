@@ -1,10 +1,10 @@
 export default function Head() {
     return (
         <>
-            <title>Password Assistance | TourValve</title>
+            <title>TourValve B2B Portal | Forgot Password</title>
             <meta
                 name="description"
-                content="Request password assistance for your TourValve account through the admin approval workflow."
+                content="Forgot your TourValve B2B Portal password? Request password assistance through the admin approval workflow."
             />
             <link rel="canonical" href="https://tourvalve.com/forgot-password" />
         </>

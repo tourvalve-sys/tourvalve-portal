@@ -1,10 +1,10 @@
 export default function Head() {
     return (
         <>
-            <title>TourValve Login | Agent and Admin Access</title>
+            <title>TourValve B2B Portal | Login</title>
             <meta
                 name="description"
-                content="Sign in to TourValve to manage live reservations, agent wallets, approvals, and booking performance."
+                content="Login to TourValve B2B Portal to manage live reservations, agent wallets, approvals, and booking performance."
             />
             <link rel="canonical" href="https://tourvalve.com/login" />
         </>

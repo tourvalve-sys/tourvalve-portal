@@ -1,10 +1,10 @@
 export default function Head() {
     return (
         <>
-            <title>Request Agent Access | TourValve</title>
+            <title>TourValve B2B Portal | Register</title>
             <meta
                 name="description"
-                content="Request agent access to TourValve for B2B flight booking, reservation handling, and controlled wallet operations."
+                content="Register for TourValve B2B Portal to request agent access for B2B flight booking, reservation handling, and controlled wallet operations."
             />
             <link rel="canonical" href="https://tourvalve.com/register" />
         </>
