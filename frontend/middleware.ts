@@ -5,12 +5,17 @@ const authRoutes = new Set(["/login", "/register", "/forgot-password"]);
 const publicRoutes = new Set(["/maintenance"]);
 const publicPrefixes = ["/_next", "/images", "/favicon.ico", "/icon.png", "/apple-icon.png"];
 
-function buildPublicUrl(request: NextRequest, pathname: string) {
-    const url = request.nextUrl.clone();
+function getForwardedHost(request: NextRequest) {
     const forwardedHostHeader =
         request.headers.get("x-forwarded-host") ??
         request.headers.get("host");
-    const forwardedHost = forwardedHostHeader?.split(",")[0].trim() ?? "";
+
+    return forwardedHostHeader?.split(",")[0].trim() ?? "";
+}
+
+function buildPublicUrl(request: NextRequest, pathname: string) {
+    const url = request.nextUrl.clone();
+    const forwardedHost = getForwardedHost(request);
     const forwardedProto =
         request.headers.get("x-forwarded-proto") ??
         url.protocol.replace(":", "");
@@ -33,6 +38,15 @@ function buildPublicUrl(request: NextRequest, pathname: string) {
 
 export function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
+    const forwardedHost = getForwardedHost(request);
+    const hostname = forwardedHost.split(":")[0];
+
+    if (hostname.startsWith("www.")) {
+        const canonicalUrl = request.nextUrl.clone();
+        canonicalUrl.hostname = hostname.slice(4);
+        canonicalUrl.port = "";
+        return NextResponse.redirect(canonicalUrl, 308);
+    }
 
     if (
         pathname.startsWith("/api") ||
@@ -51,8 +65,8 @@ export function middleware(request: NextRequest) {
     }
 
     if (hasSession && isAuthRoute) {
-        const homeUrl = buildPublicUrl(request, "/");
-        return NextResponse.redirect(homeUrl);
+        const dashboardUrl = buildPublicUrl(request, "/dashboard");
+        return NextResponse.redirect(dashboardUrl);
     }
 
     const response = NextResponse.next();
