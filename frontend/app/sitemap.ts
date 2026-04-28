@@ -5,16 +5,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     const now = new Date();
 
     return [
-        "",
         "/login",
         "/register",
         "/forgot-password",
-        "/dashboard",
-        "/flight-search",
     ].map((path) => ({
         url: `${baseUrl}${path}`,
         lastModified: now,
-        changeFrequency: path === "" ? "weekly" : path === "/dashboard" || path === "/flight-search" ? "weekly" : "monthly",
-        priority: path === "" ? 1 : path === "/dashboard" || path === "/flight-search" ? 0.8 : 0.7,
+        changeFrequency: "monthly",
+        priority: 0.7,
     }));
 }
