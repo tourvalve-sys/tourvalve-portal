@@ -81,6 +81,8 @@ export default function Dashboard() {
 
     return (
         <div className="space-y-6 md:space-y-8 fade-in">
+            <PromoCarousel slides={dashboardPromoSlides} variant="hero" className="fade-in-delay" />
+
             <section className="premium-panel rounded-[2rem] p-5 md:rounded-[2.5rem] md:p-10 classic-grid">
                 <div className="subtle-kicker mb-3">Executive Overview</div>
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
@@ -100,8 +102,6 @@ export default function Dashboard() {
                     </div>
                 </div>
             </section>
-
-            <PromoCarousel slides={dashboardPromoSlides} variant="hero" className="fade-in-delay" />
 
             {error && (
                 <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
