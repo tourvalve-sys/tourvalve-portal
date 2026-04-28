@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, BellRing, CalendarDays, Sparkles, Ticket, Wallet, Users, XCircle } from "lucide-react";
 import BookingChart from "@/components/BookingChart";
+import PromoCarousel from "@/components/PromoCarousel";
 import { getAdminAgents, getCurrentUser, getMyWallet, getReportsOverview, type ReportsOverview } from "@/lib/api";
+import { dashboardPromoSlides } from "@/lib/promotions";
 
 const EMPTY_REPORTS: ReportsOverview = {
     totalBookings: 0,
@@ -98,6 +100,8 @@ export default function Dashboard() {
                     </div>
                 </div>
             </section>
+
+            <PromoCarousel slides={dashboardPromoSlides} variant="hero" className="fade-in-delay" />
 
             {error && (
                 <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">

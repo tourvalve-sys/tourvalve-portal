@@ -304,6 +304,48 @@ h4,
   animation: floatSlow 8s ease-in-out infinite;
 }
 
+.promo-carousel {
+  position: relative;
+  isolation: isolate;
+}
+
+.promo-slide-image {
+  transition:
+    transform 8s ease,
+    filter 0.7s ease,
+    opacity 0.7s ease;
+  filter: saturate(1.03) contrast(1.02);
+}
+
+.promo-carousel:hover .promo-slide-image {
+  transform: scale(1.08);
+  filter: saturate(1.08) contrast(1.04);
+}
+
+.promo-dot {
+  height: 0.65rem;
+  width: 0.65rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(230, 240, 252, 0.22);
+  transition:
+    width 0.3s ease,
+    transform 0.2s ease,
+    background-color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.promo-dot:hover {
+  transform: translateY(-1px);
+  background: rgba(230, 240, 252, 0.4);
+}
+
+.promo-dot.is-active {
+  width: 2.25rem;
+  background: linear-gradient(90deg, rgba(99, 179, 255, 0.95), rgba(170, 217, 255, 0.95));
+  border-color: rgba(160, 214, 255, 0.58);
+}
+
 .shimmer-line {
   position: relative;
   overflow: hidden;

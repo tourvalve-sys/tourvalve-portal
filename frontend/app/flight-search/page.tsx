@@ -20,6 +20,8 @@ import { getFlightSeatMap, priceFlight, searchFlights, type FlightResult, type F
 import { findAirportMatches, type AirportOption } from "@/lib/airports";
 import AirlineBrand, { getAirlineDisplayName } from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
+import PromoCarousel from "@/components/PromoCarousel";
+import { flightSearchPromoSlides } from "@/lib/promotions";
 import { useBooking } from "../context/BookingContext";
 
 type FilterState = {
@@ -1589,7 +1591,9 @@ export default function FlightSearch() {
                         </div>
                     </div>
 
-                    <div className="mb-5 rounded-[1.4rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.7)] px-4 py-4 sm:rounded-[1.6rem]">
+                    <PromoCarousel slides={flightSearchPromoSlides} variant="compact" className="mb-5" />
+
+                    <div id="flight-search-form" className="mb-5 rounded-[1.4rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.7)] px-4 py-4 sm:rounded-[1.6rem]">
                         <div className="mb-2 flex items-center justify-between gap-3">
                             <div>
                                 <div className="subtle-kicker">Search Source</div>
