@@ -108,8 +108,14 @@ const themeBootstrapScript = `
 (() => {
   const storageKey = "tv_theme";
   const root = document.documentElement;
+  const forcedLightPaths = new Set(["/", "/login", "/register", "/forgot-password"]);
 
   try {
+    if (forcedLightPaths.has(window.location.pathname)) {
+      root.dataset.theme = "light";
+      return;
+    }
+
     const saved = localStorage.getItem(storageKey);
     const theme = saved === "dark" || saved === "light"
       ? saved
