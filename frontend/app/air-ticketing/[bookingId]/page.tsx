@@ -150,6 +150,7 @@ export default function AirTicketingWorkspacePage() {
     }
 
     const walletEnough = (walletSummary?.availableBalance ?? 0) >= booking.amount;
+    const pnr = booking.airlineLocator || booking.providerLocator || booking.universalRecordLocator || "-";
 
     return (
         <div className="space-y-6 fade-in">
@@ -157,11 +158,11 @@ export default function AirTicketingWorkspacePage() {
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                     <div className="max-w-3xl">
                         <div className="subtle-kicker">AirTicketing Workspace</div>
-                        <h1 className="mt-3 font-display text-4xl text-[var(--ink)] md:text-5xl">
-                            Smartpoint-style ticketing controls for {booking.bookingReference}
+                        <h1 className="mt-3 font-display text-2xl text-[var(--ink)] md:text-3xl">
+                            Air reservation locator (PNR): {pnr}
                         </h1>
-                        <p className="mt-4 text-sm leading-7 text-slate-600 md:text-base">
-                            Choose the form of payment, lock the ticketing date, auto-issue by date, and keep a safe post-issue void path for unpaid tickets.
+                        <p className="mt-3 text-sm text-slate-600 md:text-base">
+                            Booking reference: {booking.bookingReference}
                         </p>
                     </div>
 
@@ -335,7 +336,7 @@ export default function AirTicketingWorkspacePage() {
                             <div>Provider code: <span className="font-semibold text-[var(--ink)]">{booking.providerCode || "-"}</span></div>
                             <div>Universal locator: <span className="font-semibold text-[var(--ink)]">{booking.universalRecordLocator || "-"}</span></div>
                             <div>Provider locator: <span className="font-semibold text-[var(--ink)]">{booking.providerLocator || "-"}</span></div>
-                            <div>Air reservation locator: <span className="font-semibold text-[var(--ink)]">{booking.airlineLocator || "-"}</span></div>
+                            <div>Air reservation locator (PNR): <span className="font-semibold text-[var(--ink)]">{pnr}</span></div>
                         </div>
                     </div>
 

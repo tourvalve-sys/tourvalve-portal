@@ -1346,7 +1346,14 @@ export default function FlightSearch() {
                 </div>
 
                 <div className="mx-auto max-w-[88rem] rounded-[1.7rem] premium-panel classic-grid p-3.5 sm:p-4 md:rounded-[2rem] md:p-8">
-                    <PromoCarousel slides={flightSearchPromoSlides} variant="compact" className="mb-5" />
+                    <PromoCarousel
+                        slides={flightSearchPromoSlides}
+                        variant="compact"
+                        className="mb-5"
+                        hideBadges
+                        hideArrows
+                        hideCta
+                    />
 
                     <div className="mb-5 flex flex-wrap gap-2.5 sm:mb-6 sm:gap-3">
                         <button

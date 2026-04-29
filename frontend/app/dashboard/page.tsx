@@ -81,13 +81,22 @@ export default function Dashboard() {
 
     return (
         <div className="space-y-6 md:space-y-8 fade-in">
-            <PromoCarousel slides={dashboardPromoSlides} variant="hero" className="fade-in-delay" />
+            <PromoCarousel
+                slides={dashboardPromoSlides}
+                variant="hero"
+                className="fade-in-delay"
+                hideBadges
+                hideArrows
+                hideCta
+            />
 
             <section className="premium-panel rounded-[2rem] p-5 md:rounded-[2.5rem] md:p-10 classic-grid">
                 <div className="subtle-kicker mb-3">Executive Overview</div>
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                     <div className="max-w-3xl">
-                        <h1 className="hero-title">A sharper booking workspace for live air commerce.</h1>
+                        <h1 className="font-display text-[clamp(2.3rem,3.2vw,3.8rem)] leading-[0.98] text-[var(--ink)]">
+                            A sharper booking workspace for live air commerce.
+                        </h1>
                         <p className="mt-5 text-base leading-8 text-slate-600">
                             Track live booking performance, monitor wallet strength, and move from shopping to reservation without leaving the portal.
                         </p>

@@ -11,6 +11,9 @@ type PromoCarouselProps = {
     variant?: "hero" | "compact";
     className?: string;
     autoplayMs?: number;
+    hideBadges?: boolean;
+    hideArrows?: boolean;
+    hideCta?: boolean;
 };
 
 export default function PromoCarousel({
@@ -18,6 +21,9 @@ export default function PromoCarousel({
     variant = "hero",
     className = "",
     autoplayMs = 6500,
+    hideBadges = false,
+    hideArrows = false,
+    hideCta = false,
 }: PromoCarouselProps) {
     const [activeIndex, setActiveIndex] = useState(0);
     const [paused, setPaused] = useState(false);
@@ -82,35 +88,39 @@ export default function PromoCarousel({
                     }`}
                 >
                     <div className="flex items-start justify-between gap-4">
-                        <div className="flex flex-wrap gap-2">
-                            <span className="rounded-full border border-white/14 bg-white/8 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[rgba(229,239,252,0.88)] backdrop-blur">
-                                {activeSlide.eyebrow}
-                            </span>
-                            {activeSlide.badge ? (
-                                <span className="rounded-full border border-[rgba(99,179,255,0.22)] bg-[rgba(99,179,255,0.14)] px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[rgba(175,221,255,0.92)] backdrop-blur">
-                                    {activeSlide.badge}
+                        {hideBadges ? <div /> : (
+                            <div className="flex flex-wrap gap-2">
+                                <span className="rounded-full border border-white/14 bg-white/8 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[rgba(229,239,252,0.88)] backdrop-blur">
+                                    {activeSlide.eyebrow}
                                 </span>
-                            ) : null}
-                        </div>
+                                {activeSlide.badge ? (
+                                    <span className="rounded-full border border-[rgba(99,179,255,0.22)] bg-[rgba(99,179,255,0.14)] px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[rgba(175,221,255,0.92)] backdrop-blur">
+                                        {activeSlide.badge}
+                                    </span>
+                                ) : null}
+                            </div>
+                        )}
 
-                        <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                aria-label="Previous promotion"
-                                onClick={() => setActiveIndex((current) => (current - 1 + slides.length) % slides.length)}
-                                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-[rgba(9,18,32,0.62)] text-white/90 backdrop-blur transition hover:-translate-y-0.5 hover:bg-[rgba(15,31,52,0.88)]"
-                            >
-                                <ArrowLeft size={16} />
-                            </button>
-                            <button
-                                type="button"
-                                aria-label="Next promotion"
-                                onClick={() => setActiveIndex((current) => (current + 1) % slides.length)}
-                                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-[rgba(9,18,32,0.62)] text-white/90 backdrop-blur transition hover:-translate-y-0.5 hover:bg-[rgba(15,31,52,0.88)]"
-                            >
-                                <ArrowRight size={16} />
-                            </button>
-                        </div>
+                        {hideArrows ? <div /> : (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    aria-label="Previous promotion"
+                                    onClick={() => setActiveIndex((current) => (current - 1 + slides.length) % slides.length)}
+                                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-[rgba(9,18,32,0.62)] text-white/90 backdrop-blur transition hover:-translate-y-0.5 hover:bg-[rgba(15,31,52,0.88)]"
+                                >
+                                    <ArrowLeft size={16} />
+                                </button>
+                                <button
+                                    type="button"
+                                    aria-label="Next promotion"
+                                    onClick={() => setActiveIndex((current) => (current + 1) % slides.length)}
+                                    className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-[rgba(9,18,32,0.62)] text-white/90 backdrop-blur transition hover:-translate-y-0.5 hover:bg-[rgba(15,31,52,0.88)]"
+                                >
+                                    <ArrowRight size={16} />
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <div className={isCompact ? "max-w-2xl" : "max-w-3xl"}>
@@ -137,20 +147,22 @@ export default function PromoCarousel({
                             ))}
                         </div>
 
-                        <div className="flex flex-col items-start gap-3 md:items-end">
-                            {activeSlide.secondary ? (
-                                <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(220,233,251,0.66)]">
-                                    {activeSlide.secondary}
-                                </span>
-                            ) : null}
-                            <Link
-                                href={activeSlide.ctaHref}
-                                className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#0f6ecf,#2d86e9)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(13,90,180,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(13,90,180,0.38)]"
-                            >
-                                {activeSlide.ctaLabel}
-                                <ArrowRight size={16} />
-                            </Link>
-                        </div>
+                        {hideCta ? <div /> : (
+                            <div className="flex flex-col items-start gap-3 md:items-end">
+                                {activeSlide.secondary ? (
+                                    <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(220,233,251,0.66)]">
+                                        {activeSlide.secondary}
+                                    </span>
+                                ) : null}
+                                <Link
+                                    href={activeSlide.ctaHref}
+                                    className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#0f6ecf,#2d86e9)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(13,90,180,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(13,90,180,0.38)]"
+                                >
+                                    {activeSlide.ctaLabel}
+                                    <ArrowRight size={16} />
+                                </Link>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
