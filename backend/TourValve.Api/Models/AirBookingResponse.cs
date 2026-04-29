@@ -7,6 +7,7 @@ public sealed class AirBookingResponse
     public string UniversalRecordLocator { get; set; } = string.Empty;
     public string ProviderLocator { get; set; } = string.Empty;
     public string AirlineLocator { get; set; } = string.Empty;
+    public string ProviderCode { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
     public string RawResponse { get; set; } = string.Empty;

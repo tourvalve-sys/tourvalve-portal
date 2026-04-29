@@ -8,6 +8,7 @@ using TourValve.Application.Agents;
 using TourValve.Application.Common.Interfaces;
 using TourValve.Application.Security;
 using TourValve.Application.Wallet;
+using TourValve.Api.Services;
 using TourValve.Infrastructure.Agents;
 using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Security;
@@ -179,8 +180,10 @@ builder.Services.AddScoped<AirBookService>();
 builder.Services.AddScoped<AirAncillaryAvailabilityService>();
 builder.Services.AddScoped<BookingSeatMapService>();
 builder.Services.AddScoped<BookingTicketingService>();
+builder.Services.AddScoped<AirTicketingWorkflowService>();
 builder.Services.AddScoped<AncillaryOfferService>();
 builder.Services.AddScoped<UniversalRecordService>();
+builder.Services.AddHostedService<AirTicketingWorker>();
 
 // ==============================
 // CRITICAL FIX — PORT BINDING

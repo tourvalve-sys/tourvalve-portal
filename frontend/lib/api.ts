@@ -192,6 +192,7 @@ export type AirBookingResponse = {
     universalRecordLocator: string;
     providerLocator: string;
     airlineLocator: string;
+    providerCode: string;
     status: string;
     message: string;
     rawResponse: string;
@@ -276,6 +277,7 @@ export type BookingRecord = {
     universalRecordLocator: string;
     providerLocator: string;
     airlineLocator: string;
+    providerCode?: string;
     carrier: string;
     flightNumber: string;
     from: string;
@@ -295,6 +297,15 @@ export type BookingRecord = {
     }>;
     ticketNumbers?: string[];
     ticketedAt?: string | null;
+    airTicketingStatus?: string;
+    airTicketingFormOfPayment?: string;
+    airTicketingPaymentStatus?: string;
+    airTicketingDate?: string | null;
+    airTicketingScheduledAt?: string | null;
+    airTicketingScheduledByAgentId?: string | null;
+    airTicketingWalletHoldId?: string | null;
+    airTicketingLastError?: string;
+    ticketVoidedAt?: string | null;
     status: string;
     createdAt: string;
 };
@@ -422,8 +433,41 @@ export type IssueBookingTicketResponse = {
     ticketNumbers: string[];
     ticketedAt: string;
     status: string;
+    airTicketingStatus?: string;
+    airTicketingPaymentStatus?: string;
+    paymentWarning?: string | null;
     rawResponse: string;
     refreshedRecord?: string | null;
+};
+
+export type AirTicketingScheduleResponse = {
+    message: string;
+    airTicketingStatus: string;
+    airTicketingFormOfPayment: string;
+    airTicketingPaymentStatus: string;
+    airTicketingDate: string | null;
+    airTicketingScheduledAt: string | null;
+    airTicketingWalletHoldId: string | null;
+    providerCode: string;
+};
+
+export type AirTicketingCancelResponse = {
+    message: string;
+    airTicketingStatus: string;
+    holdReleased: boolean;
+};
+
+export type AirTicketingMarkPaidResponse = {
+    message: string;
+    airTicketingPaymentStatus: string;
+};
+
+export type AirTicketingVoidResponse = {
+    message: string;
+    ticketVoidedAt: string | null;
+    airTicketingStatus: string;
+    airTicketingPaymentStatus: string;
+    rawResponse: string;
 };
 
 export type BookingAncillaryRequestPayload = {
@@ -463,6 +507,7 @@ export type CreateBookingPayload = {
     universalRecordLocator: string;
     providerLocator: string;
     airlineLocator: string;
+    providerCode?: string;
     status: string;
 };
 
@@ -1021,6 +1066,45 @@ export async function issueBookingTicket(bookingId: string): Promise<IssueBookin
     });
 
     return readJson<IssueBookingTicketResponse>(res);
+}
+
+export async function scheduleBookingAirTicketing(
+    bookingId: string,
+    formOfPayment: string,
+    ticketingDate: string
+): Promise<AirTicketingScheduleResponse> {
+    const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/air-ticketing/schedule`, {
+        method: "POST",
+        body: JSON.stringify({ formOfPayment, ticketingDate }),
+    });
+
+    return readJson<AirTicketingScheduleResponse>(res);
+}
+
+export async function cancelBookingAirTicketing(bookingId: string): Promise<AirTicketingCancelResponse> {
+    const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/air-ticketing/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ confirm: true }),
+    });
+
+    return readJson<AirTicketingCancelResponse>(res);
+}
+
+export async function markBookingAirTicketPaid(bookingId: string): Promise<AirTicketingMarkPaidResponse> {
+    const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/air-ticketing/mark-paid`, {
+        method: "POST",
+    });
+
+    return readJson<AirTicketingMarkPaidResponse>(res);
+}
+
+export async function voidBookingAirTicket(bookingId: string): Promise<AirTicketingVoidResponse> {
+    const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/air-ticketing/void`, {
+        method: "POST",
+        body: JSON.stringify({ confirm: true }),
+    });
+
+    return readJson<AirTicketingVoidResponse>(res);
 }
 
 export async function getBookingAncillaries(bookingId: string): Promise<BookingAncillaryOrder[]> {

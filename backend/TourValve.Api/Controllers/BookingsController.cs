@@ -33,7 +33,7 @@ public class BookingsController : ControllerBase
     private readonly AncillaryOfferService _ancillaryOffers;
     private readonly AirAncillaryAvailabilityService _liveAncillaryAvailability;
     private readonly BookingSeatMapService _bookingSeatMaps;
-    private readonly BookingTicketingService _ticketing;
+    private readonly AirTicketingWorkflowService _airTicketingWorkflow;
     private static readonly Guid ReservedAdminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private const string ReservedAdminEmail = "admin@tourvalve.com";
 
@@ -48,7 +48,7 @@ public class BookingsController : ControllerBase
           AncillaryOfferService ancillaryOffers,
           AirAncillaryAvailabilityService liveAncillaryAvailability,
           BookingSeatMapService bookingSeatMaps,
-          BookingTicketingService ticketing,
+          AirTicketingWorkflowService airTicketingWorkflow,
           IOptions<WalletAlertOptions> walletAlertOptions)
     {
         _mediator = mediator;
@@ -61,7 +61,7 @@ public class BookingsController : ControllerBase
         _ancillaryOffers = ancillaryOffers;
         _liveAncillaryAvailability = liveAncillaryAvailability;
         _bookingSeatMaps = bookingSeatMaps;
-        _ticketing = ticketing;
+        _airTicketingWorkflow = airTicketingWorkflow;
         _walletAlertOptions = walletAlertOptions.Value;
     }
 
@@ -80,6 +80,7 @@ public class BookingsController : ControllerBase
     public record AncillaryStatusRequest(string Status, string Notes, string ProviderReference);
     public record SeatMapRequest(string SegmentLabel, string FrequentFlyerProgram, string FrequentFlyerNumber);
     public record IssueTicketRequest(bool Confirm);
+    public record AirTicketingScheduleRequest(string FormOfPayment, DateOnly TicketingDate);
 
     [HttpGet]
     public async Task<IActionResult> List()
@@ -118,6 +119,13 @@ public class BookingsController : ControllerBase
                     itinerarySegments = DeserializeItinerarySegments(x.ItinerarySegmentsJson),
                     ticketNumbers = DeserializeStringList(x.TicketNumbersJson),
                     x.TicketedAt,
+                    x.ProviderCode,
+                    x.AirTicketingStatus,
+                    x.AirTicketingFormOfPayment,
+                    x.AirTicketingPaymentStatus,
+                    x.AirTicketingDate,
+                    x.AirTicketingScheduledAt,
+                    x.TicketVoidedAt,
                     x.Status,
                     x.CreatedAt
                 })
@@ -164,6 +172,16 @@ public class BookingsController : ControllerBase
             itinerarySegments = DeserializeItinerarySegments(booking.ItinerarySegmentsJson),
             ticketNumbers = DeserializeStringList(booking.TicketNumbersJson),
             booking.TicketedAt,
+            booking.ProviderCode,
+            booking.AirTicketingStatus,
+            booking.AirTicketingFormOfPayment,
+            booking.AirTicketingPaymentStatus,
+            booking.AirTicketingDate,
+            booking.AirTicketingScheduledAt,
+            booking.AirTicketingScheduledByAgentId,
+            booking.AirTicketingWalletHoldId,
+            booking.AirTicketingLastError,
+            booking.TicketVoidedAt,
             booking.Status,
             booking.CreatedAt,
             ancillaries = await _db.BookingAncillaryOrders
@@ -750,7 +768,6 @@ public class BookingsController : ControllerBase
             });
     }
 
-    [Authorize(Roles = "ADMIN")]
     [HttpPost("{id:guid}/issue-ticket")]
     public async Task<IActionResult> IssueTicket(Guid id, [FromBody] IssueTicketRequest request)
     {
@@ -761,88 +778,155 @@ public class BookingsController : ControllerBase
         if (!request.Confirm)
             return BadRequest(new { error = "Ticket issuance requires explicit confirmation." });
 
-        if (string.IsNullOrWhiteSpace(booking.UniversalRecordLocator))
-            return BadRequest(new { error = "This booking does not have a Universal Record locator yet." });
-
-        var existingTicketNumbers = DeserializeStringList(booking.TicketNumbersJson);
-        if (booking.TicketedAt.HasValue || existingTicketNumbers.Count > 0 || booking.Status == "TICKETED")
+        try
         {
-            return BadRequest(new
+            var result = await _airTicketingWorkflow.IssueAsync(
+                booking,
+                GetRequesterAgentId(),
+                User.FindFirstValue(ClaimTypes.Email) ?? string.Empty);
+
+            return Ok(new
             {
-                error = "This booking already appears to be ticketed.",
-                ticketNumbers = existingTicketNumbers,
-                booking.TicketedAt,
-                booking.Status
+                message = result.TicketNumbers.Count > 0
+                    ? "Ticket issued successfully."
+                    : "Ticketing request completed. Verify ticket numbers from the refreshed live record.",
+                ticketNumbers = result.TicketNumbers,
+                ticketedAt = result.TicketedAt,
+                result.Status,
+                airTicketingStatus = result.WorkflowStatus,
+                airTicketingPaymentStatus = result.PaymentStatus,
+                paymentWarning = string.IsNullOrWhiteSpace(result.PaymentWarning) ? null : result.PaymentWarning,
+                rawResponse = result.RawResponse,
+                refreshedRecord = result.RefreshedRecord
             });
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 
-        return await ExecuteTravelportAction(
-            booking,
-            "ISSUE_TICKET",
-            "Ticket issuance update",
-            async () =>
+    [HttpPost("{id:guid}/air-ticketing/schedule")]
+    public async Task<IActionResult> ScheduleAirTicketing(Guid id, [FromBody] AirTicketingScheduleRequest request)
+    {
+        var booking = await GetAuthorizedBookingAsync(id);
+        if (booking == null)
+            return NotFound(new { error = "Booking not found." });
+
+        try
+        {
+            var result = await _airTicketingWorkflow.ScheduleAsync(
+                booking,
+                request.FormOfPayment,
+                request.TicketingDate,
+                GetRequesterAgentId(),
+                User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
+                User.IsInRole("ADMIN"));
+
+            return Ok(new
             {
-                var result = await _ticketing.IssueAsync(booking);
-                var issuedAt = DateTime.UtcNow;
-                var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
-
-                booking.TicketNumbersJson = JsonSerializer.Serialize(result.TicketNumbers);
-                booking.TicketedAt = issuedAt;
-                booking.TicketingResponseXml = string.IsNullOrWhiteSpace(result.RefreshedRecordXml)
-                    ? result.ResponseXml
-                    : result.RefreshedRecordXml;
-                booking.Status = "TICKETED";
-
-                await _db.SaveChangesAsync();
-
-                var ticketSummary = result.TicketNumbers.Count > 0
-                    ? string.Join(", ", result.TicketNumbers)
-                    : "Ticketing response returned without parseable ticket numbers.";
-
-                await _audit.WriteAsync(
-                    GetRequesterAgentId(),
-                    actorEmail,
-                    "BOOKING",
-                    "ISSUE_TICKET",
-                    "Booking",
-                    booking.Id.ToString(),
-                    booking.BookingReference,
-                    $"Issued ticket for booking {booking.BookingReference}. {ticketSummary}");
-
-                await _notifications.CreateAsync(
-                    booking.AgentId,
-                    "AGENT",
-                    "BOOKING",
-                    "Ticket issued",
-                    result.TicketNumbers.Count > 0
-                        ? $"Booking {booking.BookingReference} has been ticketed. Ticket numbers: {string.Join(", ", result.TicketNumbers)}."
-                        : $"Booking {booking.BookingReference} has been ticketed. Verify ticket numbers from the live record.",
-                    result.TicketNumbers.Count > 0 ? "SUCCESS" : "WARN",
-                    "/bookings");
-
-                await _notifications.CreateAsync(
-                    null,
-                    "ADMIN",
-                    "BOOKING",
-                    "Ticket issued",
-                    result.TicketNumbers.Count > 0
-                        ? $"Booking {booking.BookingReference} ticketed successfully. Ticket numbers: {string.Join(", ", result.TicketNumbers)}."
-                        : $"Booking {booking.BookingReference} ticketed successfully, but ticket numbers should be verified from Travelport.",
-                    result.TicketNumbers.Count > 0 ? "SUCCESS" : "WARN",
-                    "/bookings");
-
-                return Ok(new
-                {
-                    message = result.TicketNumbers.Count > 0
-                        ? "Ticket issued successfully."
-                        : "Ticketing request completed. Verify ticket numbers from the refreshed live record.",
-                    ticketNumbers = result.TicketNumbers,
-                    ticketedAt = issuedAt,
-                    booking.Status,
-                    rawResponse = result.ResponseXml,
-                    refreshedRecord = string.IsNullOrWhiteSpace(result.RefreshedRecordXml) ? null : result.RefreshedRecordXml
-                });
+                message = "AirTicketing workflow saved.",
+                airTicketingStatus = result.Status,
+                airTicketingFormOfPayment = result.FormOfPayment,
+                airTicketingPaymentStatus = result.PaymentStatus,
+                airTicketingDate = result.TicketingDate,
+                airTicketingScheduledAt = result.ScheduledAt,
+                airTicketingWalletHoldId = result.WalletHoldId,
+                providerCode = result.ProviderCode
             });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/air-ticketing/cancel")]
+    public async Task<IActionResult> CancelAirTicketing(Guid id, [FromBody] IssueTicketRequest request)
+    {
+        var booking = await GetAuthorizedBookingAsync(id);
+        if (booking == null)
+            return NotFound(new { error = "Booking not found." });
+
+        if (!request.Confirm)
+            return BadRequest(new { error = "Workflow cancellation requires explicit confirmation." });
+
+        try
+        {
+            var result = await _airTicketingWorkflow.CancelWorkflowAsync(
+                booking,
+                GetRequesterAgentId(),
+                User.FindFirstValue(ClaimTypes.Email) ?? string.Empty);
+
+            return Ok(new
+            {
+                message = "AirTicketing workflow cancelled.",
+                airTicketingStatus = result.Status,
+                holdReleased = result.HoldReleased
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/air-ticketing/mark-paid")]
+    public async Task<IActionResult> MarkAirTicketingPaid(Guid id)
+    {
+        var booking = await GetAuthorizedBookingAsync(id);
+        if (booking == null)
+            return NotFound(new { error = "Booking not found." });
+
+        try
+        {
+            var result = await _airTicketingWorkflow.MarkPaidAsync(
+                booking,
+                GetRequesterAgentId(),
+                User.FindFirstValue(ClaimTypes.Email) ?? string.Empty);
+
+            return Ok(new
+            {
+                message = "Ticket marked as paid.",
+                airTicketingPaymentStatus = result.PaymentStatus
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/air-ticketing/void")]
+    public async Task<IActionResult> VoidAirTicket(Guid id, [FromBody] IssueTicketRequest request)
+    {
+        var booking = await GetAuthorizedBookingAsync(id);
+        if (booking == null)
+            return NotFound(new { error = "Booking not found." });
+
+        if (!request.Confirm)
+            return BadRequest(new { error = "Ticket void requires explicit confirmation." });
+
+        try
+        {
+            var result = await _airTicketingWorkflow.VoidAsync(
+                booking,
+                GetRequesterAgentId(),
+                User.FindFirstValue(ClaimTypes.Email) ?? string.Empty);
+
+            return Ok(new
+            {
+                message = "Ticket voided successfully.",
+                ticketVoidedAt = result.VoidedAt,
+                airTicketingStatus = result.WorkflowStatus,
+                airTicketingPaymentStatus = result.PaymentStatus,
+                rawResponse = result.RawResponse
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet("{id:guid}/document")]

@@ -15,7 +15,6 @@ import {
     quoteBookingAncillary,
     retrieveBookingRecord,
     sendBookingServiceRequest,
-    issueBookingTicket,
     updateBookingAncillaryStatus,
     type BookingAncillaryOrder,
     type BookingAncillaryQuote,
@@ -23,13 +22,10 @@ import {
     type BookingRecord,
     type BookingRetrieveResponse,
 } from "@/lib/api";
-import { getUserFromToken } from "@/lib/auth";
 
 function BookingsPageContent() {
     const router = useRouter();
     const params = useSearchParams();
-    const currentUser = getUserFromToken();
-    const isAdmin = currentUser?.role === "ADMIN";
     const created = params.get("created");
     const [bookings, setBookings] = useState<BookingRecord[]>([]);
     const [loading, setLoading] = useState(true);
@@ -212,25 +208,10 @@ function BookingsPageContent() {
         }
     };
 
-    const handleIssueTicket = async (bookingIdOverride?: string) => {
+    const handleIssueTicket = (bookingIdOverride?: string) => {
         const bookingId = bookingIdOverride ?? selectedBookingId;
-        if (!bookingId || !isAdmin) return;
-        try {
-            setServiceAction("issue-ticket");
-            setError("");
-            const result = await issueBookingTicket(bookingId);
-            await loadBookings();
-            const detail = await getBookingDetail(bookingId);
-            setSelectedBookingId(bookingId);
-            setSelectedBooking(detail);
-            setRetrievedRecord((current) =>
-                current ? { ...current, rawResponse: result.refreshedRecord || result.rawResponse } : current
-            );
-        } catch (value: unknown) {
-            setError(value instanceof Error ? value.message : "Failed to issue ticket");
-        } finally {
-            setServiceAction("");
-        }
+        if (!bookingId) return;
+        window.open(`/air-ticketing/${bookingId}`, "_blank", "noopener,noreferrer");
     };
 
     const reloadAncillaries = async (bookingId: string) => {
@@ -475,19 +456,16 @@ function BookingsPageContent() {
                                         </td>
                                         <td className="text-right">
                                             <div className="flex justify-end gap-2">
-                                                {isAdmin && (
-                                                    <button
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            void handleIssueTicket(booking.id);
-                                                        }}
-                                                        disabled={serviceAction === "issue-ticket" || booking.status === "TICKETED"}
-                                                        className="gold-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
-                                                    >
-                                                        <Ticket size={16} />
-                                                        {booking.status === "TICKETED" ? "Ticketed" : serviceAction === "issue-ticket" ? "Issuing..." : "Issue Ticket"}
-                                                    </button>
-                                                )}
+                                                <button
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handleIssueTicket(booking.id);
+                                                    }}
+                                                    className="gold-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold"
+                                                >
+                                                    <Ticket size={16} />
+                                                    {booking.status === "TICKETED" ? "Open AirTicketing" : "Issue Ticket"}
+                                                </button>
                                                 <button
                                                     onClick={(event) => {
                                                         event.stopPropagation();
@@ -554,25 +532,18 @@ function BookingsPageContent() {
                                 </button>
                             </div>
 
-                            {isAdmin && (
-                                <div className="soft-panel rounded-[1.5rem] p-4">
-                                    <div className="subtle-kicker">Ticketing</div>
-                                    <div className="mt-2 text-sm leading-7 text-slate-500">
-                                        Issue the live ticket from the stored Travelport reservation locator. This action is admin-only and should only be used once per confirmed booking.
-                                    </div>
-                                    <button
-                                        onClick={() => void handleIssueTicket()}
-                                        disabled={serviceAction === "issue-ticket" || selectedBooking.status === "TICKETED"}
-                                        className="gold-button mt-3 w-full rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
-                                    >
-                                        {serviceAction === "issue-ticket"
-                                            ? "Issuing ticket..."
-                                            : selectedBooking.status === "TICKETED"
-                                                ? "Already Ticketed"
-                                                : "Issue Ticket"}
-                                    </button>
+                            <div className="soft-panel rounded-[1.5rem] p-4">
+                                <div className="subtle-kicker">Ticketing</div>
+                                <div className="mt-2 text-sm leading-7 text-slate-500">
+                                    Open the dedicated AirTicketing workspace to choose payment type, save the ticketing date, issue now, or void unpaid tickets after issuance.
                                 </div>
-                            )}
+                                <button
+                                    onClick={() => handleIssueTicket()}
+                                    className="gold-button mt-3 w-full rounded-2xl px-4 py-3 text-sm font-semibold"
+                                >
+                                    {selectedBooking.status === "TICKETED" ? "Open AirTicketing" : "Issue Ticket"}
+                                </button>
+                            </div>
 
                             <div className="soft-panel rounded-[1.5rem] p-4">
                                 <div className="subtle-kicker">Modify</div>

@@ -81,6 +81,25 @@ public class TourValveDbContext : DbContext, IApplicationDbContext
             .HasIndex(x => x.BookingReference)
             .IsUnique();
 
+        modelBuilder.Entity<Booking>()
+            .Property(x => x.ProviderCode)
+            .HasMaxLength(8);
+
+        modelBuilder.Entity<Booking>()
+            .Property(x => x.AirTicketingStatus)
+            .HasMaxLength(32);
+
+        modelBuilder.Entity<Booking>()
+            .Property(x => x.AirTicketingFormOfPayment)
+            .HasMaxLength(32);
+
+        modelBuilder.Entity<Booking>()
+            .Property(x => x.AirTicketingPaymentStatus)
+            .HasMaxLength(32);
+
+        modelBuilder.Entity<Booking>()
+            .HasIndex(x => new { x.AirTicketingStatus, x.AirTicketingDate });
+
         modelBuilder.Entity<BookingAncillaryOrder>()
             .Property(x => x.BaseAmount)
             .HasColumnType("numeric(12,2)");

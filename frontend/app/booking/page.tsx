@@ -538,6 +538,7 @@ export default function BookingPage() {
                     universalRecordLocator: reservation.universalRecordLocator || reservation.locatorCode,
                     providerLocator: reservation.providerLocator || reservation.locatorCode,
                     airlineLocator: reservation.airlineLocator || reservation.locatorCode,
+                    providerCode: reservation.providerCode || "",
                     status: reservation.status || "CONFIRMED",
                 });
 

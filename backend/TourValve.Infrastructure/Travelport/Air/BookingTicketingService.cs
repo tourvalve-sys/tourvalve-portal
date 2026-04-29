@@ -10,6 +10,7 @@ public class BookingTicketingService
     private const string AirNamespace = "http://www.travelport.com/schema/air_v51_0";
     private const string CommonNamespace = "http://www.travelport.com/schema/common_v51_0";
     private const string TicketSoapAction = "http://www.travelport.com/schema/air_v51_0/AirTicketingReq";
+    private const string VoidSoapAction = "http://www.travelport.com/schema/air_v51_0/AirVoidDocumentReq";
 
     private readonly TravelportAirClient _air;
     private readonly UniversalRecordService _records;
@@ -50,25 +51,82 @@ public class BookingTicketingService
             ticketNumbers);
     }
 
-    private string BuildTicketingRequestXml(Booking booking, string retrieveXml)
+    public async Task<BookingTicketVoidResult> VoidAsync(Booking booking, IReadOnlyCollection<string> ticketNumbers)
     {
+        if (string.IsNullOrWhiteSpace(booking.UniversalRecordLocator))
+            throw new InvalidOperationException("Universal record locator is required before voiding.");
+
+        var retrieveXml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
+        var snapshot = ExtractSnapshot(retrieveXml, booking);
+
+        if (string.IsNullOrWhiteSpace(snapshot.ProviderCode))
+            throw new InvalidOperationException("Provider code is required before voiding the ticket.");
+
+        if (string.Equals(snapshot.ProviderCode, "1P", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Travelport AirVoidDocumentReq is not supported for Worldspan (1P) providers.");
+
+        var requestXml = BuildVoidRequestXml(booking, snapshot, ticketNumbers);
+        var responseXml = await _air.PostToAirServiceAsync(requestXml, VoidSoapAction);
+
+        return new BookingTicketVoidResult(requestXml, responseXml, snapshot);
+    }
+
+    public static BookingTicketingSnapshot ExtractSnapshot(string retrieveXml, Booking booking)
+    {
+        if (string.IsNullOrWhiteSpace(retrieveXml))
+        {
+            return new BookingTicketingSnapshot(
+                booking.UniversalRecordLocator?.Trim() ?? string.Empty,
+                booking.ProviderLocator?.Trim() ?? string.Empty,
+                booking.AirlineLocator?.Trim() ?? string.Empty,
+                booking.ProviderCode?.Trim() ?? string.Empty);
+        }
+
         var doc = XDocument.Parse(retrieveXml);
 
-        var airReservationLocator = doc.Descendants()
-            .FirstOrDefault(x => x.Name.LocalName == "AirReservation")
+        var universalLocator = doc.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName == "UniversalRecord")
             ?.Attribute("LocatorCode")
             ?.Value
-            ?.Trim();
+            ?.Trim()
+            ?? booking.UniversalRecordLocator?.Trim()
+            ?? string.Empty;
 
-        airReservationLocator ??= doc.Descendants()
-            .FirstOrDefault(x => x.Name.LocalName == "ProviderReservationInfo")
-            ?.Attribute("LocatorCode")
-            ?.Value
-            ?.Trim();
+        var providerReservation = doc.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName == "ProviderReservationInfo");
 
-        airReservationLocator ??= string.IsNullOrWhiteSpace(booking.AirlineLocator)
-            ? booking.ProviderLocator?.Trim()
-            : booking.AirlineLocator.Trim();
+        var airReservation = doc.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName == "AirReservation");
+
+        var firstSegment = doc.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName == "AirSegment");
+
+        var providerLocator = providerReservation?.Attribute("LocatorCode")?.Value?.Trim()
+            ?? booking.ProviderLocator?.Trim()
+            ?? string.Empty;
+
+        var airReservationLocator = airReservation?.Attribute("LocatorCode")?.Value?.Trim()
+            ?? firstSegment?.Attribute("ReservationLocatorCode")?.Value?.Trim()
+            ?? booking.AirlineLocator?.Trim()
+            ?? providerLocator;
+
+        var providerCode = providerReservation?.Attribute("ProviderCode")?.Value?.Trim()
+            ?? airReservation?.Attribute("ProviderCode")?.Value?.Trim()
+            ?? firstSegment?.Attribute("ProviderCode")?.Value?.Trim()
+            ?? booking.ProviderCode?.Trim()
+            ?? string.Empty;
+
+        return new BookingTicketingSnapshot(
+            universalLocator,
+            providerLocator,
+            airReservationLocator,
+            providerCode);
+    }
+
+    private string BuildTicketingRequestXml(Booking booking, string retrieveXml)
+    {
+        var snapshot = ExtractSnapshot(retrieveXml, booking);
+        var airReservationLocator = snapshot.AirReservationLocator;
 
         if (string.IsNullOrWhiteSpace(airReservationLocator))
             throw new InvalidOperationException("Air reservation locator could not be resolved for ticket issuance.");
@@ -85,6 +143,41 @@ public class BookingTicketingService
 </air:AirTicketingReq>".Trim();
     }
 
+    private string BuildVoidRequestXml(
+        Booking booking,
+        BookingTicketingSnapshot snapshot,
+        IReadOnlyCollection<string> ticketNumbers)
+    {
+        var airReservationLocator = string.IsNullOrWhiteSpace(snapshot.AirReservationLocator)
+            ? snapshot.ProviderLocator
+            : snapshot.AirReservationLocator;
+
+        if (string.IsNullOrWhiteSpace(airReservationLocator))
+            throw new InvalidOperationException("Air reservation locator could not be resolved for voiding.");
+
+        var documentNodes = ticketNumbers
+            .Where(number => !string.IsNullOrWhiteSpace(number))
+            .Distinct(StringComparer.Ordinal)
+            .Select(number => $@"
+  <air:VoidDocumentInfo>
+    <air:DocumentNumber>{Escape(number.Trim())}</air:DocumentNumber>
+    <air:DocumentType>E-Ticket</air:DocumentType>
+  </air:VoidDocumentInfo>")
+            .ToList();
+
+        return $@"
+<air:AirVoidDocumentReq xmlns:air=""{AirNamespace}""
+                        xmlns:com=""{CommonNamespace}""
+                        TargetBranch=""{Escape(_config.TargetBranch)}""
+                        AuthorizedBy=""TourValve""
+                        TraceId=""{Escape(BuildVoidTraceId(booking))}""
+                        ProviderCode=""{Escape(snapshot.ProviderCode)}""
+                        ReturnInfoOnFail=""true"">
+  <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
+  <air:AirReservationLocatorCode>{Escape(airReservationLocator)}</air:AirReservationLocatorCode>{string.Concat(documentNodes)}
+</air:AirVoidDocumentReq>".Trim();
+    }
+
     private static string BuildTraceId(Booking booking)
     {
         var reference = string.IsNullOrWhiteSpace(booking.BookingReference)
@@ -94,7 +187,16 @@ public class BookingTicketingService
         return $"TV-TKT-{reference}-{DateTime.UtcNow:yyyyMMddHHmmss}";
     }
 
-    private static List<string> ExtractTicketNumbers(string xml)
+    private static string BuildVoidTraceId(Booking booking)
+    {
+        var reference = string.IsNullOrWhiteSpace(booking.BookingReference)
+            ? booking.Id.ToString("N")[..12]
+            : booking.BookingReference.Trim();
+
+        return $"TV-VOID-{reference}-{DateTime.UtcNow:yyyyMMddHHmmss}";
+    }
+
+    public static List<string> ExtractTicketNumbers(string xml)
     {
         if (string.IsNullOrWhiteSpace(xml))
             return new List<string>();
@@ -141,3 +243,14 @@ public sealed record BookingTicketingResult(
     string ResponseXml,
     string RefreshedRecordXml,
     IReadOnlyList<string> TicketNumbers);
+
+public sealed record BookingTicketVoidResult(
+    string RequestXml,
+    string ResponseXml,
+    BookingTicketingSnapshot Snapshot);
+
+public sealed record BookingTicketingSnapshot(
+    string UniversalRecordLocator,
+    string ProviderLocator,
+    string AirReservationLocator,
+    string ProviderCode);

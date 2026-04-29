@@ -168,6 +168,37 @@ namespace TourValve.Infrastructure.Migrations
                     b.Property<Guid>("AgentId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateOnly?>("AirTicketingDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("AirTicketingFormOfPayment")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("AirTicketingLastError")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("AirTicketingPaymentStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("AirTicketingScheduledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("AirTicketingScheduledByAgentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AirTicketingStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid?>("AirTicketingWalletHoldId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("AirlineLocator")
                         .IsRequired()
                         .HasColumnType("text");
@@ -214,6 +245,11 @@ namespace TourValve.Infrastructure.Migrations
                     b.Property<decimal>("MarkupAmount")
                         .HasColumnType("numeric(12,2)");
 
+                    b.Property<string>("ProviderCode")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<string>("ProviderLocator")
                         .IsRequired()
                         .HasColumnType("text");
@@ -225,6 +261,13 @@ namespace TourValve.Infrastructure.Migrations
                     b.Property<string>("TicketNumbersJson")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("TicketVoidResponseXml")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("TicketVoidedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("TicketedAt")
                         .HasColumnType("timestamp with time zone");
@@ -247,6 +290,8 @@ namespace TourValve.Infrastructure.Migrations
 
                     b.HasIndex("BookingReference")
                         .IsUnique();
+
+                    b.HasIndex("AirTicketingStatus", "AirTicketingDate");
 
                     b.ToTable("Bookings");
                 });

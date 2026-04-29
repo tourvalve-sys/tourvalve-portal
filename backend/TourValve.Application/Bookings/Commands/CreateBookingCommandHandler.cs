@@ -39,6 +39,7 @@ namespace TourValve.Application.Bookings.Commands
                 UniversalRecordLocator = request.UniversalRecordLocator ?? string.Empty,
                 ProviderLocator = request.ProviderLocator ?? string.Empty,
                 AirlineLocator = request.AirlineLocator ?? string.Empty,
+                ProviderCode = request.ProviderCode ?? string.Empty,
                 Carrier = request.Carrier,
                 FlightNumber = request.FlightNumber,
                 From = request.From,

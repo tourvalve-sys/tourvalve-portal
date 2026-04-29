@@ -76,7 +76,8 @@ public sealed class AirBookingController : ControllerBase
         if (!_config.HasLiveCredentials())
             return BadRequest(new { error = "Live Travelport credentials are missing. Update Travelport settings before booking." });
 
-        var xml = BuildReservationRequest(request);
+        var providerCode = ResolveProviderCode(request.AirPricingSolutionXml, request.AirPricingContextXml);
+        var xml = BuildReservationRequest(request, providerCode);
         WriteBookingDebugSnapshot("REQUEST_PREPARED", xml, null, null);
 
         try
@@ -115,6 +116,7 @@ public sealed class AirBookingController : ControllerBase
                 UniversalRecordLocator = refs.UniversalRecordLocator ?? primaryLocator,
                 ProviderLocator = refs.ProviderLocator ?? primaryLocator,
                 AirlineLocator = refs.AirlineLocator ?? primaryLocator,
+                ProviderCode = providerCode,
                 Status = "CONFIRMED",
                 Message = "Air booking created successfully.",
                 RawResponse = rawResponse,
@@ -141,11 +143,9 @@ public sealed class AirBookingController : ControllerBase
         }
     }
 
-    private string BuildReservationRequest(AirBookingRequest request)
+    private string BuildReservationRequest(AirBookingRequest request, string providerCode)
     {
         var pricingPayload = BuildPricingPayload(request.AirPricingSolutionXml, request.AirPricingContextXml);
-
-        var providerCode = ResolveProviderCode(request.AirPricingSolutionXml, request.AirPricingContextXml);
 
         var passengersXml = string.Join(
             Environment.NewLine,

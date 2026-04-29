@@ -24,6 +24,7 @@ namespace TourValve.Application.Bookings.Commands
         public string UniversalRecordLocator { get; set; } = string.Empty;
         public string ProviderLocator { get; set; } = string.Empty;
         public string AirlineLocator { get; set; } = string.Empty;
+        public string ProviderCode { get; set; } = string.Empty;
         public string Status { get; set; } = "CONFIRMED";
         public List<BookingItinerarySegment> ItinerarySegments { get; set; } = new();
     }
