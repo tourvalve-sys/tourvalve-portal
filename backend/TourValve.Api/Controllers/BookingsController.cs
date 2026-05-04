@@ -1235,6 +1235,11 @@ public class BookingsController : ControllerBase
 
     private static bool NeedsAirlineLocatorRefresh(TourValve.Domain.Booking booking)
     {
+        if (booking.TicketedAt.HasValue ||
+            string.Equals(booking.Status, "TICKETED", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(booking.AirTicketingStatus, AirTicketingWorkflowService.WorkflowIssued, StringComparison.OrdinalIgnoreCase))
+            return true;
+
         if (string.IsNullOrWhiteSpace(booking.AirlineLocator))
             return true;
 
@@ -1244,9 +1249,7 @@ public class BookingsController : ControllerBase
         if (string.Equals(booking.AirlineLocator, booking.UniversalRecordLocator, StringComparison.OrdinalIgnoreCase))
             return true;
 
-        return booking.TicketedAt.HasValue ||
-               string.Equals(booking.Status, "TICKETED", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(booking.AirTicketingStatus, AirTicketingWorkflowService.WorkflowIssued, StringComparison.OrdinalIgnoreCase);
+        return false;
     }
 
     private static byte[] BuildSimpleBookingPdf(TourValve.Domain.Booking booking)

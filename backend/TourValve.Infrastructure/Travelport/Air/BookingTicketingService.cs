@@ -102,13 +102,11 @@ public class BookingTicketingService
         var firstSegment = doc.Descendants()
             .FirstOrDefault(x => x.Name.LocalName == "AirSegment");
 
-        var supplierLocator = doc.Descendants()
-            .Where(x => x.Name.LocalName == "SupplierLocator")
-            .Select(x =>
-                x.Attribute("LocatorCode")?.Value?.Trim()
-                ?? x.Attribute("SupplierLocatorCode")?.Value?.Trim()
-                ?? x.Value?.Trim())
-            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        var supplierLocator = ResolvePreferredSupplierLocator(
+            doc,
+            booking.Carrier,
+            firstSegment?.Attribute("Carrier")?.Value?.Trim(),
+            firstSegment?.Attribute("SupplierCode")?.Value?.Trim());
 
         var providerLocator = providerReservation?.Attribute("LocatorCode")?.Value?.Trim()
             ?? booking.ProviderLocator?.Trim()
@@ -246,6 +244,41 @@ public class BookingTicketingService
         {
             return new List<string>();
         }
+    }
+
+    public static string? ResolvePreferredSupplierLocator(
+        XDocument doc,
+        params string?[] preferredSupplierCodes)
+    {
+        var preferred = preferredSupplierCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code!.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var supplierLocators = doc.Descendants()
+            .Where(x => x.Name.LocalName == "SupplierLocator")
+            .Select(x => new
+            {
+                SupplierCode = x.Attribute("SupplierCode")?.Value?.Trim(),
+                Locator = x.Attribute("LocatorCode")?.Value?.Trim()
+                    ?? x.Attribute("SupplierLocatorCode")?.Value?.Trim()
+                    ?? x.Value?.Trim()
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Locator))
+            .ToList();
+
+        var preferredLocator = supplierLocators
+            .FirstOrDefault(x =>
+                !string.IsNullOrWhiteSpace(x.SupplierCode) &&
+                preferred.Contains(x.SupplierCode.Trim().ToUpperInvariant()));
+
+        if (!string.IsNullOrWhiteSpace(preferredLocator?.Locator))
+            return preferredLocator.Locator;
+
+        return supplierLocators
+            .Select(x => x.Locator)
+            .FirstOrDefault(locator => !string.IsNullOrWhiteSpace(locator));
     }
 
     private static string Escape(string value) =>

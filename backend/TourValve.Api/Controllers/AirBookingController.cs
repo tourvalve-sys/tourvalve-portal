@@ -94,7 +94,7 @@ public sealed class AirBookingController : ControllerBase
                 throw new InvalidOperationException("Travelport returned an HTTP 404 page for this booking request. The reservation call was routed to an endpoint that does not serve this payload.");
             }
 
-            var refs = ExtractReservationReferences(rawResponse);
+            var refs = ExtractReservationReferences(rawResponse, request.Carrier);
             var primaryLocator = refs.UniversalRecordLocator
                 ?? refs.ProviderLocator
                 ?? refs.AirlineLocator
@@ -336,9 +336,11 @@ public sealed class AirBookingController : ControllerBase
         return segment;
     }
 
-    private static (string? UniversalRecordLocator, string? ProviderLocator, string? AirlineLocator) ExtractReservationReferences(string xml)
+    private static (string? UniversalRecordLocator, string? ProviderLocator, string? AirlineLocator) ExtractReservationReferences(string xml, string? carrierCode = null)
     {
         var doc = XDocument.Parse(xml);
+        var firstSegment = doc.Descendants()
+            .FirstOrDefault(x => x.Name.LocalName == "AirSegment");
         var universalLocator = FirstValue(
             doc,
             ("UniversalRecord", "LocatorCode"),
@@ -359,14 +361,20 @@ public sealed class AirBookingController : ControllerBase
             ("AirReservation", "ReservationLocatorCode"),
             ("AirReservationLocatorCode", null));
 
-        var airlineLocator = FirstValue(
-            doc,
-            ("SupplierLocator", "LocatorCode"),
-            ("SupplierLocator", "SupplierLocatorCode"),
-            ("SupplierLocator", null),
-            ("AirReservationLocatorCode", null),
-            ("AirSegment", "ProviderLocatorCode"),
-            ("FlightDetails", "ProviderLocatorCode"));
+        var airlineLocator =
+            BookingTicketingService.ResolvePreferredSupplierLocator(
+                doc,
+                carrierCode,
+                firstSegment?.Attribute("Carrier")?.Value?.Trim(),
+                firstSegment?.Attribute("SupplierCode")?.Value?.Trim())
+            ?? FirstValue(
+                doc,
+                ("SupplierLocator", "LocatorCode"),
+                ("SupplierLocator", "SupplierLocatorCode"),
+                ("SupplierLocator", null),
+                ("AirReservationLocatorCode", null),
+                ("AirSegment", "ProviderLocatorCode"),
+                ("FlightDetails", "ProviderLocatorCode"));
 
         var genericLocatorCodes = doc.Descendants()
             .SelectMany(x => x.Attributes().Select(attr => (Element: x.Name.LocalName, Attribute: attr.Name.LocalName, Value: Clean(attr.Value))))

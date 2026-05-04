@@ -159,10 +159,13 @@ export default function AirTicketingWorkspacePage() {
                     <div className="max-w-3xl">
                         <div className="subtle-kicker">AirTicketing Workspace</div>
                         <h1 className="mt-3 font-display text-2xl text-[var(--ink)] md:text-3xl">
-                            Air reservation locator (PNR): {pnr}
+                            Airline PNR: {pnr}
                         </h1>
                         <p className="mt-3 text-sm text-slate-600 md:text-base">
                             Booking reference: {booking.bookingReference}
+                        </p>
+                        <p className="mt-2 text-xs leading-6 text-slate-500 md:text-sm">
+                            Use this airline PNR with the passenger name on airline manage-booking portals. The universal locator is for Travelport record retrieval.
                         </p>
                     </div>
 
@@ -334,9 +337,9 @@ export default function AirTicketingWorkspacePage() {
                             <div>Form of payment: <span className="font-semibold text-[var(--ink)]">{labelizeFormOfPayment(booking.airTicketingFormOfPayment)}</span></div>
                             <div>Ticketing date: <span className="font-semibold text-[var(--ink)]">{booking.airTicketingDate || "-"}</span></div>
                             <div>Provider code: <span className="font-semibold text-[var(--ink)]">{booking.providerCode || "-"}</span></div>
+                            <div>Airline PNR: <span className="font-semibold text-[var(--ink)]">{pnr}</span></div>
                             <div>Universal locator: <span className="font-semibold text-[var(--ink)]">{booking.universalRecordLocator || "-"}</span></div>
                             <div>Provider locator: <span className="font-semibold text-[var(--ink)]">{booking.providerLocator || "-"}</span></div>
-                            <div>Air reservation locator (PNR): <span className="font-semibold text-[var(--ink)]">{pnr}</span></div>
                         </div>
                     </div>
 

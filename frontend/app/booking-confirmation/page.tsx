@@ -139,7 +139,7 @@ function BookingConfirmationPageContent() {
                                     <div className="mt-1 font-medium text-[var(--ink)]">{confirmation.providerLocator || "Pending"}</div>
                                 </div>
                                 <div>
-                                    <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Airline locator</div>
+                                    <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Airline PNR</div>
                                     <div className="mt-1 font-medium text-[var(--ink)]">{confirmation.airlineLocator || "Pending"}</div>
                                 </div>
                             </div>

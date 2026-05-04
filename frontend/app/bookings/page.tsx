@@ -434,7 +434,7 @@ function BookingsPageContent() {
                                         <td>
                                             <div className="font-semibold text-[var(--ink)]">{booking.bookingReference}</div>
                                             <div className="text-xs text-slate-500">
-                                                {booking.universalRecordLocator || booking.providerLocator || "-"}
+                                                Airline PNR: {booking.airlineLocator || booking.providerLocator || booking.universalRecordLocator || "-"}
                                             </div>
                                         </td>
                                         <td>
@@ -500,10 +500,10 @@ function BookingsPageContent() {
 
                             <div className="grid gap-3 text-sm text-slate-600">
                                 <div className="soft-panel rounded-[1.5rem] p-4">
-                                    <div className="subtle-kicker">Locator</div>
-                                    <div className="mt-2 font-semibold text-[var(--ink)]">{selectedBooking.universalRecordLocator || "-"}</div>
-                                    <div className="mt-2">Provider: {selectedBooking.providerLocator || "-"}</div>
-                                    <div>Airline: {selectedBooking.airlineLocator || "-"}</div>
+                                    <div className="subtle-kicker">Locator References</div>
+                                    <div className="mt-2">Airline PNR: <span className="font-semibold text-[var(--ink)]">{selectedBooking.airlineLocator || "-"}</span></div>
+                                    <div className="mt-2">Universal locator: <span className="font-semibold text-[var(--ink)]">{selectedBooking.universalRecordLocator || "-"}</span></div>
+                                    <div>Provider locator: <span className="font-semibold text-[var(--ink)]">{selectedBooking.providerLocator || "-"}</span></div>
                                 </div>
                                 <div className="soft-panel rounded-[1.5rem] p-4">
                                     <div className="subtle-kicker">Ownership</div>
