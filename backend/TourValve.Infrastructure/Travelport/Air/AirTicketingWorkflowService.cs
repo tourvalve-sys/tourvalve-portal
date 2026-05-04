@@ -157,9 +157,11 @@ public class AirTicketingWorkflowService
             }
 
             var result = await _ticketing.IssueAsync(booking);
-            booking.TicketingResponseXml = string.IsNullOrWhiteSpace(result.RefreshedRecordXml)
-                ? result.ResponseXml
-                : result.RefreshedRecordXml;
+            booking.TicketingResponseXml = !string.IsNullOrWhiteSpace(result.DocumentRetrieveXml)
+                ? result.DocumentRetrieveXml
+                : string.IsNullOrWhiteSpace(result.RefreshedRecordXml)
+                    ? result.ResponseXml
+                    : result.RefreshedRecordXml;
 
             if (result.TicketNumbers.Count == 0)
             {
@@ -167,6 +169,7 @@ public class AirTicketingWorkflowService
                     BookingTicketingService.ExtractTicketingFailureDetail(
                         result.ResponseXml,
                         result.RefreshedRecordXml,
+                        result.DocumentRetrieveXml,
                         booking.TicketingResponseXml));
             }
 
@@ -465,7 +468,11 @@ public class AirTicketingWorkflowService
         if (string.IsNullOrWhiteSpace(booking.UniversalRecordLocator))
             throw new InvalidOperationException("This booking does not have a Universal Record locator yet.");
 
-        var retrieveXml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
+        var retrieveXml = await _records.RetrieveAsync(
+            booking.UniversalRecordLocator,
+            providerCode: booking.ProviderCode,
+            providerLocatorCode: booking.ProviderLocator,
+            retrieveProviderReservationDetails: true);
         ApplySnapshot(booking, BookingTicketingService.ExtractSnapshot(retrieveXml, booking));
         await _db.SaveChangesAsync(cancellationToken);
     }
@@ -544,7 +551,11 @@ public class AirTicketingWorkflowService
         {
         }
 
-        return BookingTicketingService.ExtractTicketNumbers(booking.TicketingResponseXml);
+        var verifiedFromXml = BookingTicketingService.ExtractVerifiedTicketNumbers(booking.TicketingResponseXml);
+        if (verifiedFromXml.Count > 0)
+            return verifiedFromXml;
+
+        return new List<string>();
     }
 
     private async Task NotifyAsync(Booking booking, string title, string message, string severity)

@@ -33,6 +33,7 @@ public class BookingsController : ControllerBase
     private readonly AncillaryOfferService _ancillaryOffers;
     private readonly AirAncillaryAvailabilityService _liveAncillaryAvailability;
     private readonly BookingSeatMapService _bookingSeatMaps;
+    private readonly BookingTicketingService _ticketing;
     private readonly AirTicketingWorkflowService _airTicketingWorkflow;
     private static readonly Guid ReservedAdminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private const string ReservedAdminEmail = "admin@tourvalve.com";
@@ -48,6 +49,7 @@ public class BookingsController : ControllerBase
           AncillaryOfferService ancillaryOffers,
           AirAncillaryAvailabilityService liveAncillaryAvailability,
           BookingSeatMapService bookingSeatMaps,
+          BookingTicketingService ticketing,
           AirTicketingWorkflowService airTicketingWorkflow,
           IOptions<WalletAlertOptions> walletAlertOptions)
     {
@@ -61,6 +63,7 @@ public class BookingsController : ControllerBase
         _ancillaryOffers = ancillaryOffers;
         _liveAncillaryAvailability = liveAncillaryAvailability;
         _bookingSeatMaps = bookingSeatMaps;
+        _ticketing = ticketing;
         _airTicketingWorkflow = airTicketingWorkflow;
         _walletAlertOptions = walletAlertOptions.Value;
     }
@@ -976,7 +979,11 @@ public class BookingsController : ControllerBase
 
         try
         {
-            var retrieveXml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
+            var retrieveXml = await _records.RetrieveAsync(
+                booking.UniversalRecordLocator,
+                providerCode: booking.ProviderCode,
+                providerLocatorCode: booking.ProviderLocator,
+                retrieveProviderReservationDetails: true);
             var snapshot = BookingTicketingService.ExtractSnapshot(retrieveXml, booking);
             var hasChanges = false;
 
@@ -1010,17 +1017,37 @@ public class BookingsController : ControllerBase
 
             if (needsTicketRefresh)
             {
-                var liveTicketNumbers = BookingTicketingService.ExtractTicketNumbers(retrieveXml);
-                if (liveTicketNumbers.Count > 0)
+                var verifiedTicketNumbers = BookingTicketingService.ExtractVerifiedTicketNumbers(retrieveXml);
+                var documentRetrieveXml = string.Empty;
+
+                try
                 {
-                    var serialized = JsonSerializer.Serialize(liveTicketNumbers);
+                    documentRetrieveXml = await _ticketing.RetrieveDocumentInfoAsync(
+                        snapshot,
+                        verifiedTicketNumbers.Count > 0 ? verifiedTicketNumbers : null);
+                    var documentVerifiedTicketNumbers = BookingTicketingService.ExtractVerifiedTicketNumbers(documentRetrieveXml);
+                    if (documentVerifiedTicketNumbers.Count > 0)
+                        verifiedTicketNumbers = documentVerifiedTicketNumbers;
+                }
+                catch
+                {
+                    // Keep detail available even if Travelport does not return document data right now.
+                }
+
+                var effectiveTicketNumbers = verifiedTicketNumbers.Count > 0
+                    ? verifiedTicketNumbers
+                    : new List<string>();
+
+                if (effectiveTicketNumbers.Count > 0)
+                {
+                    var serialized = JsonSerializer.Serialize(effectiveTicketNumbers);
                     if (!string.Equals(booking.TicketNumbersJson, serialized, StringComparison.Ordinal))
                     {
                         booking.TicketNumbersJson = serialized;
                         hasChanges = true;
                     }
                 }
-                else if (LooksTicketedButHasNoEvidence(booking))
+                else if (!string.IsNullOrWhiteSpace(documentRetrieveXml) && LooksTicketedButHasNoEvidence(booking))
                 {
                     booking.TicketNumbersJson = "[]";
                     booking.TicketedAt = null;
@@ -1028,14 +1055,19 @@ public class BookingsController : ControllerBase
                     booking.AirTicketingStatus = AirTicketingWorkflowService.WorkflowFailed;
                     booking.AirTicketingLastError = BookingTicketingService.ExtractTicketingFailureDetail(
                         booking.TicketingResponseXml,
-                        retrieveXml);
+                        retrieveXml,
+                        documentRetrieveXml);
                     hasChanges = true;
                 }
 
-                if (!string.IsNullOrWhiteSpace(retrieveXml) &&
-                    !string.Equals(booking.TicketingResponseXml, retrieveXml, StringComparison.Ordinal))
+                var latestTicketingXml = !string.IsNullOrWhiteSpace(documentRetrieveXml)
+                    ? documentRetrieveXml
+                    : retrieveXml;
+
+                if (!string.IsNullOrWhiteSpace(latestTicketingXml) &&
+                    !string.Equals(booking.TicketingResponseXml, latestTicketingXml, StringComparison.Ordinal))
                 {
-                    booking.TicketingResponseXml = retrieveXml;
+                    booking.TicketingResponseXml = latestTicketingXml;
                     hasChanges = true;
                 }
             }
@@ -1288,7 +1320,10 @@ public class BookingsController : ControllerBase
     }
 
     private static bool NeedsTicketingEvidenceRefresh(TourValve.Domain.Booking booking)
-        => LooksTicketedButHasNoEvidence(booking);
+        => booking.TicketedAt.HasValue ||
+            string.Equals(booking.Status, "TICKETED", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(booking.AirTicketingStatus, AirTicketingWorkflowService.WorkflowIssued, StringComparison.OrdinalIgnoreCase) ||
+            LooksTicketedButHasNoEvidence(booking);
 
     private static bool LooksTicketedButHasNoEvidence(TourValve.Domain.Booking booking)
     {

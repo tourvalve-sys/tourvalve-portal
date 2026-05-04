@@ -14,8 +14,27 @@ public class UniversalRecordService
         _config = config;
     }
 
-    public Task<string> RetrieveAsync(string locatorCode)
-        => _air.PostToUniversalServiceAsync(
+    public Task<string> RetrieveAsync(
+        string locatorCode,
+        string? providerCode = null,
+        string? providerLocatorCode = null,
+        string? travelerLastName = null,
+        bool retrieveProviderReservationDetails = false)
+    {
+        var providerReservationInfo = !string.IsNullOrWhiteSpace(providerCode) && !string.IsNullOrWhiteSpace(providerLocatorCode)
+            ? $@"
+  <univ:ProviderReservationInfo ProviderCode=""{Escape(providerCode)}"" ProviderLocatorCode=""{Escape(providerLocatorCode)}"" />"
+            : string.Empty;
+
+        var travelerLastNameAttribute = string.IsNullOrWhiteSpace(travelerLastName)
+            ? string.Empty
+            : $@" TravelerLastName=""{Escape(travelerLastName)}""";
+
+        var retrieveDetailsAttribute = retrieveProviderReservationDetails
+            ? @" RetrieveProviderReservationDetails=""true"""
+            : string.Empty;
+
+        return _air.PostToUniversalServiceAsync(
             $@"
 <univ:UniversalRecordRetrieveReq xmlns:univ=""http://www.travelport.com/schema/universal_v51_0""
                                  xmlns:com=""http://www.travelport.com/schema/common_v51_0""
@@ -23,10 +42,11 @@ public class UniversalRecordService
                                  AuthorizedBy=""TourValve""
                                  TraceId=""TV001""
                                  ReturnRecord=""true""
-                                 LocatorCode=""{Escape(locatorCode)}"">
-  <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
+                                 LocatorCode=""{Escape(locatorCode)}""{travelerLastNameAttribute}{retrieveDetailsAttribute}>
+  <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />{providerReservationInfo}
 </univ:UniversalRecordRetrieveReq>",
             "http://www.travelport.com/schema/universal_v51_0/UniversalRecordRetrieveReq");
+    }
 
     public Task<string> CancelAsync(string locatorCode)
         => _air.PostToUniversalServiceAsync(

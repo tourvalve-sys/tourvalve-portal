@@ -12,6 +12,7 @@ public class BookingTicketingService
     private const string AirNamespace = "http://www.travelport.com/schema/air_v51_0";
     private const string CommonNamespace = "http://www.travelport.com/schema/common_v51_0";
     private const string TicketSoapAction = "http://www.travelport.com/schema/air_v51_0/AirTicketingReq";
+    private const string RetrieveDocumentSoapAction = "http://www.travelport.com/schema/air_v51_0/AirRetrieveDocumentReq";
     private const string VoidSoapAction = "http://www.travelport.com/schema/air_v51_0/AirVoidDocumentReq";
 
     private readonly TravelportAirClient _air;
@@ -33,17 +34,30 @@ public class BookingTicketingService
         if (string.IsNullOrWhiteSpace(booking.UniversalRecordLocator))
             throw new InvalidOperationException("Universal record locator is required before ticket issuance.");
 
-        var retrieveXml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
+        var retrieveXml = await RetrieveTicketingRecordAsync(
+            booking.UniversalRecordLocator,
+            booking.ProviderCode,
+            booking.ProviderLocator);
+        var snapshot = ExtractSnapshot(retrieveXml, booking);
         var requestXml = BuildTicketingRequestXml(booking, retrieveXml);
         var ticketingResponseXml = await _air.PostToAirServiceAsync(requestXml, TicketSoapAction);
 
-        var ticketNumbers = ExtractTicketNumbers(ticketingResponseXml);
+        var ticketNumbers = ExtractVerifiedTicketNumbers(ticketingResponseXml);
+        var hasVerifiedTicketEvidence = ticketNumbers.Count > 0;
+        if (ticketNumbers.Count == 0)
+            ticketNumbers = ExtractTicketNumbers(ticketingResponseXml);
         var refreshedRecordXml = string.Empty;
 
         for (var attempt = 0; attempt < RetrieveRetryCount && ticketNumbers.Count == 0; attempt += 1)
         {
-            refreshedRecordXml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
-            ticketNumbers = ExtractTicketNumbers(refreshedRecordXml);
+            refreshedRecordXml = await RetrieveTicketingRecordAsync(
+                booking.UniversalRecordLocator,
+                snapshot.ProviderCode,
+                snapshot.ProviderLocator);
+            ticketNumbers = ExtractVerifiedTicketNumbers(refreshedRecordXml);
+            hasVerifiedTicketEvidence = hasVerifiedTicketEvidence || ticketNumbers.Count > 0;
+            if (ticketNumbers.Count == 0)
+                ticketNumbers = ExtractTicketNumbers(refreshedRecordXml);
 
             if (ticketNumbers.Count > 0 || attempt == RetrieveRetryCount - 1)
                 break;
@@ -51,10 +65,25 @@ public class BookingTicketingService
             await Task.Delay(RetrieveRetryDelay);
         }
 
+        if (!string.IsNullOrWhiteSpace(refreshedRecordXml))
+            snapshot = ExtractSnapshot(refreshedRecordXml, booking);
+
+        var documentVerification = await VerifyIssuedDocumentsAsync(booking, snapshot, ticketNumbers, hasVerifiedTicketEvidence);
+        if (documentVerification.VerifiedTicketNumbers.Count > 0)
+        {
+            ticketNumbers = documentVerification.VerifiedTicketNumbers.ToList();
+            hasVerifiedTicketEvidence = true;
+        }
+        else if (!hasVerifiedTicketEvidence)
+        {
+            ticketNumbers = new List<string>();
+        }
+
         return new BookingTicketingResult(
             requestXml,
             ticketingResponseXml,
             refreshedRecordXml,
+            documentVerification.ResponseXml,
             ticketNumbers);
     }
 
@@ -63,7 +92,10 @@ public class BookingTicketingService
         if (string.IsNullOrWhiteSpace(booking.UniversalRecordLocator))
             throw new InvalidOperationException("Universal record locator is required before voiding.");
 
-        var retrieveXml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
+        var retrieveXml = await RetrieveTicketingRecordAsync(
+            booking.UniversalRecordLocator,
+            booking.ProviderCode,
+            booking.ProviderLocator);
         var snapshot = ExtractSnapshot(retrieveXml, booking);
 
         if (string.IsNullOrWhiteSpace(snapshot.ProviderCode))
@@ -279,6 +311,15 @@ public class BookingTicketingService
         return "Travelport did not return any valid e-ticket numbers after ticket issuance. The booking should remain confirmed until live e-ticket numbers are present.";
     }
 
+    public async Task<string> RetrieveDocumentInfoAsync(BookingTicketingSnapshot snapshot, IReadOnlyCollection<string>? ticketNumbers = null)
+    {
+        if (string.IsNullOrWhiteSpace(snapshot.ProviderCode))
+            throw new InvalidOperationException("Provider code is required to retrieve ticket documents.");
+
+        var requestXml = BuildRetrieveDocumentRequestXml(snapshot, ticketNumbers);
+        return await _air.PostToAirServiceAsync(requestXml, RetrieveDocumentSoapAction);
+    }
+
     public static string? ResolvePreferredSupplierLocator(
         XDocument doc,
         params string?[] preferredSupplierCodes)
@@ -314,6 +355,102 @@ public class BookingTicketingService
             .FirstOrDefault(locator => !string.IsNullOrWhiteSpace(locator));
     }
 
+    public static List<string> ExtractVerifiedTicketNumbers(string xml)
+    {
+        if (string.IsNullOrWhiteSpace(xml))
+            return new List<string>();
+
+        try
+        {
+            var doc = XDocument.Parse(xml);
+
+            return doc.Descendants()
+                .Where(x =>
+                    x.Name.LocalName.Equals("Ticket", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("TicketInfo", StringComparison.OrdinalIgnoreCase))
+                .Select(x => new
+                {
+                    Number = NormalizeTicketNumber(
+                        x.Attribute("TicketNumber")?.Value ??
+                        x.Attribute("Number")?.Value ??
+                        x.Value),
+                    Status = (x.Attribute("TicketStatus")?.Value ?? x.Attribute("Status")?.Value ?? string.Empty).Trim().ToUpperInvariant(),
+                    CouponStatuses = x.Descendants()
+                        .Where(coupon => coupon.Name.LocalName.Equals("Coupon", StringComparison.OrdinalIgnoreCase))
+                        .Select(coupon => (coupon.Attribute("Status")?.Value ?? string.Empty).Trim().ToUpperInvariant())
+                        .Where(status => !string.IsNullOrWhiteSpace(status))
+                        .ToList()
+                })
+                .Where(ticket => !string.IsNullOrWhiteSpace(ticket.Number))
+                .Where(ticket => IsUsableTicketStatus(ticket.Status))
+                .Where(ticket => ticket.CouponStatuses.Count == 0 || ticket.CouponStatuses.Any(IsUsableCouponStatus))
+                .Select(ticket => ticket.Number!)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
+
+    private async Task<TicketDocumentVerificationResult> VerifyIssuedDocumentsAsync(
+        Booking booking,
+        BookingTicketingSnapshot snapshot,
+        IReadOnlyCollection<string> ticketNumbers,
+        bool allowTicketNumberLookup)
+    {
+        var lastResponseXml = string.Empty;
+        var failureMessages = new List<string>();
+        var liveSnapshot = snapshot;
+        var liveCandidates = ticketNumbers
+            .Where(number => !string.IsNullOrWhiteSpace(number))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        for (var attempt = 0; attempt < RetrieveRetryCount; attempt += 1)
+        {
+            try
+            {
+                lastResponseXml = await RetrieveDocumentInfoAsync(
+                    liveSnapshot,
+                    allowTicketNumberLookup ? liveCandidates : null);
+                var verifiedTicketNumbers = ExtractVerifiedTicketNumbers(lastResponseXml);
+                if (verifiedTicketNumbers.Count > 0)
+                    return new TicketDocumentVerificationResult(lastResponseXml, verifiedTicketNumbers);
+            }
+            catch (Exception ex)
+            {
+                failureMessages.Add(ex.Message);
+                lastResponseXml = ex.Message;
+            }
+
+            if (attempt == RetrieveRetryCount - 1)
+                break;
+
+            await Task.Delay(RetrieveRetryDelay);
+
+            var refreshedRecordXml = await RetrieveTicketingRecordAsync(
+                booking.UniversalRecordLocator!,
+                liveSnapshot.ProviderCode,
+                liveSnapshot.ProviderLocator);
+            liveSnapshot = ExtractSnapshot(refreshedRecordXml, booking);
+
+            var verifiedFromRecord = ExtractVerifiedTicketNumbers(refreshedRecordXml);
+            if (verifiedFromRecord.Count > 0)
+                return new TicketDocumentVerificationResult(refreshedRecordXml, verifiedFromRecord);
+
+            var refreshedCandidates = ExtractTicketNumbers(refreshedRecordXml);
+            if (refreshedCandidates.Count > 0)
+                liveCandidates = refreshedCandidates;
+        }
+
+        if (failureMessages.Count > 0 && string.IsNullOrWhiteSpace(lastResponseXml))
+            lastResponseXml = string.Join(" ", failureMessages.Distinct(StringComparer.OrdinalIgnoreCase));
+
+        return new TicketDocumentVerificationResult(lastResponseXml, new List<string>());
+    }
+
     private static string Escape(string value) =>
         (value ?? string.Empty)
             .Replace("&", "&amp;")
@@ -321,6 +458,34 @@ public class BookingTicketingService
             .Replace(">", "&gt;")
             .Replace("\"", "&quot;")
             .Replace("'", "&apos;");
+
+    private string BuildRetrieveDocumentRequestXml(BookingTicketingSnapshot snapshot, IReadOnlyCollection<string>? ticketNumbers)
+    {
+        var explicitTicketNumbers = (ticketNumbers ?? Array.Empty<string>())
+            .Select(NormalizeTicketNumber)
+            .Where(number => !string.IsNullOrWhiteSpace(number))
+            .Cast<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var ticketNodes = explicitTicketNumbers
+            .Select(number => $"  <com:TicketNumber>{Escape(number)}</com:TicketNumber>");
+
+        var locatorNode = explicitTicketNumbers.Count == 0 && !string.IsNullOrWhiteSpace(snapshot.AirReservationLocator)
+            ? $"{Environment.NewLine}  <air:AirReservationLocatorCode>{Escape(snapshot.AirReservationLocator)}</air:AirReservationLocatorCode>"
+            : string.Empty;
+
+        return $@"
+<air:AirRetrieveDocumentReq xmlns:air=""{AirNamespace}""
+                            xmlns:com=""{CommonNamespace}""
+                            ProviderCode=""{Escape(snapshot.ProviderCode)}""
+                            ReturnPricing=""true""
+                            ReturnRestrictions=""true""
+                            TargetBranch=""{Escape(_config.TargetBranch)}""
+                            AuthorizedBy=""TourValve"">
+  <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />{locatorNode}{(ticketNodes.Any() ? Environment.NewLine + string.Join(Environment.NewLine, ticketNodes) : string.Empty)}
+</air:AirRetrieveDocumentReq>".Trim();
+    }
 
     private static IEnumerable<string> ExtractTicketNumberCandidates(string? value)
     {
@@ -348,6 +513,12 @@ public class BookingTicketingService
             xml.Contains("document", StringComparison.OrdinalIgnoreCase) ||
             xml.Contains("etr", StringComparison.OrdinalIgnoreCase) ||
             xml.Contains("electronic", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsUsableTicketStatus(string status)
+        => status is "N" or "T" or "A" or "O";
+
+    private static bool IsUsableCouponStatus(string status)
+        => status is "O" or "A" or "C" or "P" or "I";
 
     private static IReadOnlyList<string> ExtractTicketingMessages(string xml)
     {
@@ -381,12 +552,23 @@ public class BookingTicketingService
             return Array.Empty<string>();
         }
     }
+
+    private Task<string> RetrieveTicketingRecordAsync(
+        string locatorCode,
+        string? providerCode,
+        string? providerLocatorCode)
+        => _records.RetrieveAsync(
+            locatorCode,
+            providerCode: providerCode,
+            providerLocatorCode: providerLocatorCode,
+            retrieveProviderReservationDetails: true);
 }
 
 public sealed record BookingTicketingResult(
     string RequestXml,
     string ResponseXml,
     string RefreshedRecordXml,
+    string DocumentRetrieveXml,
     IReadOnlyList<string> TicketNumbers);
 
 public sealed record BookingTicketVoidResult(
@@ -400,3 +582,7 @@ public sealed record BookingTicketingSnapshot(
     string AirReservationLocator,
     string AirlineLocator,
     string ProviderCode);
+
+public sealed record TicketDocumentVerificationResult(
+    string ResponseXml,
+    IReadOnlyList<string> VerifiedTicketNumbers);
