@@ -582,7 +582,7 @@ public static class TravelportFlightParser
                 x.Name.LocalName.Contains("Baggage", StringComparison.OrdinalIgnoreCase) ||
                 x.Name.LocalName.Contains("Allowance", StringComparison.OrdinalIgnoreCase) ||
                 x.Name.LocalName.Contains("CarryOn", StringComparison.OrdinalIgnoreCase))
-            .SelectMany(ReadTextInfoValues)
+            .SelectMany(ReadBaggageTextValues)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -591,7 +591,6 @@ public static class TravelportFlightParser
             .Concat(checkedBagOffers)
             .Concat(genericBaggageTexts)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(4)
             .ToList();
 
         return (
@@ -725,6 +724,23 @@ public static class TravelportFlightParser
             .Where(x => x.Name.LocalName.Equals("TextInfo", StringComparison.OrdinalIgnoreCase))
             .Select(x => x.Attribute("Text")?.Value?.Trim() ?? x.Value?.Trim() ?? string.Empty)
             .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> ReadBaggageTextValues(XElement container)
+    {
+        return container
+            .DescendantsAndSelf()
+            .SelectMany(element => new[]
+            {
+                element.Attribute("Text")?.Value?.Trim(),
+                element.Attribute("Description")?.Value?.Trim(),
+                element.Attribute("Title")?.Value?.Trim(),
+                element.Attribute("Value")?.Value?.Trim(),
+                element.Value?.Trim()
+            })
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
             .Distinct(StringComparer.OrdinalIgnoreCase);
     }
 

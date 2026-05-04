@@ -292,7 +292,7 @@ function getBaggageHighlights(flight: FlightResult) {
             .map((item) => item.trim()),
     ].filter(Boolean) as string[];
 
-    return Array.from(new Set(highlights)).slice(0, 4);
+    return Array.from(new Set(highlights));
 }
 
 function sanitizeFlightResult(flight: FlightResult): FlightResult {

@@ -51,21 +51,13 @@ public class FlightsController : ControllerBase
             if (availabilityDiagnostic.Exists)
             {
                 var availabilityFlights = FilterAvailabilityResults(availabilityDiagnostic.Flights, req);
-                var priceableAvailabilityFlights = await PriceAvailabilityResultsAsync(availabilityFlights, req, includeMarkup);
-
-                if (priceableAvailabilityFlights.Count > 0)
-                {
-                    return Ok(new
-                    {
-                        flights = priceableAvailabilityFlights,
-                        diagnosticMessage = "Availability results that returned a live fare are shown below."
-                    });
-                }
+                var availabilityJourneyFlights = BuildAvailabilityJourneyFlights(availabilityFlights, req);
+                var pricedAvailabilityFlights = await PriceAvailabilityResultsAsync(availabilityJourneyFlights, req, includeMarkup);
 
                 return Ok(new
                 {
-                    flights = availabilityFlights.Select(flight => _markup.ApplyForRole(flight, includeMarkup)).ToList(),
-                    diagnosticMessage = "Air availability shows timetable options. Use Price Flight on a result to request a live fare before booking."
+                    flights = pricedAvailabilityFlights,
+                    diagnosticMessage = BuildAvailabilityDiagnosticMessage(pricedAvailabilityFlights, !string.IsNullOrWhiteSpace(req.ReturnDate))
                 });
             }
 
@@ -534,9 +526,10 @@ public class FlightsController : ControllerBase
         var normalizedCabin = NormalizeCabin(req.Cabin);
         var requestedFrom = (req.From ?? string.Empty).Trim().ToUpperInvariant();
         var requestedTo = (req.To ?? string.Empty).Trim().ToUpperInvariant();
+        var includeReverseRoute = !string.IsNullOrWhiteSpace(req.ReturnDate);
 
         return flights
-            .Where(flight => MatchesAvailabilityRoute(flight, requestedFrom, requestedTo))
+            .Where(flight => MatchesAvailabilityRoute(flight, requestedFrom, requestedTo, includeReverseRoute))
             .Where(flight => normalizedCabin is null || SupportsRequestedCabin(flight, normalizedCabin))
             .Select(flight =>
             {
@@ -550,7 +543,7 @@ public class FlightsController : ControllerBase
             .ToList();
     }
 
-    private static bool MatchesAvailabilityRoute(FlightDto flight, string requestedFrom, string requestedTo)
+    private static bool MatchesAvailabilityRoute(FlightDto flight, string requestedFrom, string requestedTo, bool includeReverseRoute)
     {
         var actualFrom = (flight.From ?? string.Empty).Trim().ToUpperInvariant();
         var actualTo = (flight.To ?? string.Empty).Trim().ToUpperInvariant();
@@ -560,7 +553,190 @@ public class FlightsController : ControllerBase
             return true;
         }
 
-        return actualFrom == requestedFrom && actualTo == requestedTo;
+        return MatchesAvailabilityDirection(actualFrom, actualTo, requestedFrom, requestedTo) ||
+            (includeReverseRoute && MatchesAvailabilityDirection(actualFrom, actualTo, requestedTo, requestedFrom));
+    }
+
+    private static bool MatchesAvailabilityDirection(
+        FlightDto flight,
+        string requestedFrom,
+        string requestedTo)
+    {
+        var actualFrom = (flight.From ?? string.Empty).Trim().ToUpperInvariant();
+        var actualTo = (flight.To ?? string.Empty).Trim().ToUpperInvariant();
+        return MatchesAvailabilityDirection(actualFrom, actualTo, requestedFrom, requestedTo);
+    }
+
+    private static bool MatchesAvailabilityDirection(
+        string actualFrom,
+        string actualTo,
+        string requestedFrom,
+        string requestedTo)
+        => actualFrom == requestedFrom && actualTo == requestedTo;
+
+    private static List<FlightDto> BuildAvailabilityJourneyFlights(List<FlightDto> flights, FlightSearchRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.ReturnDate))
+        {
+            return flights;
+        }
+
+        var requestedFrom = (req.From ?? string.Empty).Trim().ToUpperInvariant();
+        var requestedTo = (req.To ?? string.Empty).Trim().ToUpperInvariant();
+        var outboundFlights = flights
+            .Where(flight => MatchesAvailabilityDirection(flight, requestedFrom, requestedTo))
+            .ToList();
+        var inboundFlights = flights
+            .Where(flight => MatchesAvailabilityDirection(flight, requestedTo, requestedFrom))
+            .ToList();
+
+        if (outboundFlights.Count == 0 || inboundFlights.Count == 0)
+        {
+            return flights;
+        }
+
+        var combinedFlights = new List<FlightDto>();
+
+        foreach (var outbound in outboundFlights)
+        {
+            foreach (var inbound in inboundFlights)
+            {
+                combinedFlights.Add(CombineAvailabilityFlights(outbound, inbound));
+            }
+        }
+
+        return combinedFlights
+            .OrderBy(flight => ParseAvailabilityDateTime(flight.Departure))
+            .ThenBy(flight => ParseAvailabilityDateTime(flight.Arrival))
+            .ToList();
+    }
+
+    private static FlightDto CombineAvailabilityFlights(FlightDto outbound, FlightDto inbound)
+    {
+        var outboundSegments = GetAvailabilitySegments(outbound);
+        var inboundSegments = GetAvailabilitySegments(inbound);
+
+        return new FlightDto
+        {
+            Id = $"{outbound.Id}::{inbound.Id}",
+            Carrier = outbound.Carrier,
+            FlightNumber = outbound.FlightNumber,
+            From = outbound.From,
+            To = outbound.To,
+            Departure = outbound.Departure,
+            Arrival = inbound.Arrival,
+            Price = 0m,
+            BasePrice = 0m,
+            MarkupAmount = 0m,
+            Currency = !string.IsNullOrWhiteSpace(outbound.Currency)
+                ? outbound.Currency
+                : !string.IsNullOrWhiteSpace(inbound.Currency)
+                    ? inbound.Currency
+                    : "USD",
+            CabinClass = !string.IsNullOrWhiteSpace(outbound.CabinClass) ? outbound.CabinClass : inbound.CabinClass,
+            CarryOnAllowance = MergeAvailabilityText(outbound.CarryOnAllowance, inbound.CarryOnAllowance),
+            CheckedBaggageAllowance = MergeAvailabilityText(outbound.CheckedBaggageAllowance, inbound.CheckedBaggageAllowance),
+            BaggageOfferTexts = outbound.BaggageOfferTexts
+                .Concat(inbound.BaggageOfferTexts)
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            AirPricingSolutionXml = string.Empty,
+            AirPricingContextXml = !string.IsNullOrWhiteSpace(outbound.AirPricingContextXml)
+                ? outbound.AirPricingContextXml
+                : inbound.AirPricingContextXml,
+            AirSegmentXml = outbound.AirSegmentXml,
+            AirSegmentXmls = outbound.AirSegmentXmls
+                .Concat(inbound.AirSegmentXmls)
+                .Where(segmentXml => !string.IsNullOrWhiteSpace(segmentXml))
+                .ToList(),
+            ItinerarySegments = outboundSegments
+                .Concat(inboundSegments)
+                .Select(segment => new FlightSegmentDto
+                {
+                    Carrier = segment.Carrier,
+                    FlightNumber = segment.FlightNumber,
+                    From = segment.From,
+                    To = segment.To,
+                    Departure = segment.Departure,
+                    Arrival = segment.Arrival
+                })
+                .ToList()
+        };
+    }
+
+    private static List<FlightSegmentDto> GetAvailabilitySegments(FlightDto flight)
+    {
+        if (flight.ItinerarySegments.Count > 0)
+        {
+            return flight.ItinerarySegments
+                .Select(segment => new FlightSegmentDto
+                {
+                    Carrier = segment.Carrier,
+                    FlightNumber = segment.FlightNumber,
+                    From = segment.From,
+                    To = segment.To,
+                    Departure = segment.Departure,
+                    Arrival = segment.Arrival
+                })
+                .ToList();
+        }
+
+        return
+        [
+            new FlightSegmentDto
+            {
+                Carrier = flight.Carrier,
+                FlightNumber = flight.FlightNumber,
+                From = flight.From,
+                To = flight.To,
+                Departure = flight.Departure,
+                Arrival = flight.Arrival
+            }
+        ];
+    }
+
+    private static string MergeAvailabilityText(string primary, string secondary)
+    {
+        var values = new[] { primary, secondary }
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return values.Count switch
+        {
+            0 => string.Empty,
+            1 => values[0],
+            _ => string.Join(" • ", values)
+        };
+    }
+
+    private static DateTime ParseAvailabilityDateTime(string value)
+        => DateTime.TryParse(value, out var parsed) ? parsed : DateTime.MaxValue;
+
+    private static string BuildAvailabilityDiagnosticMessage(List<FlightDto> flights, bool isReturnSearch)
+    {
+        if (flights.Count == 0)
+        {
+            return isReturnSearch
+                ? "No return air-availability schedules matched this route, date, and cabin request."
+                : "No air-availability schedules matched this route, date, and cabin request.";
+        }
+
+        var pricedCount = flights.Count(flight => !string.IsNullOrWhiteSpace(flight.AirPricingSolutionXml) && flight.Price > 0);
+        var routeLabel = isReturnSearch ? "Return air-availability results" : "Air-availability results";
+
+        if (pricedCount == 0)
+        {
+            return $"{routeLabel} are shown below. Use Price & Book on a result to request the live fare before booking.";
+        }
+
+        if (pricedCount == flights.Count)
+        {
+            return $"{routeLabel} are shown below with live fares.";
+        }
+
+        return $"{routeLabel} are shown below. Live fares were attached where pricing succeeded, and the remaining options can still be repriced before booking.";
     }
 
     private static bool SupportsRequestedCabin(FlightDto flight, string normalizedCabin)
@@ -854,19 +1030,50 @@ public class FlightsController : ControllerBase
         FlightSearchRequest req,
         bool includeMarkup)
     {
-        const int maxPriceAttempts = 6;
-        var priceableFlights = new List<FlightDto>();
+        var availabilityFlights = new List<FlightDto>();
 
-        foreach (var flight in flights.Take(maxPriceAttempts))
+        foreach (var flight in flights)
         {
             var priced = await TryPriceAvailabilityFlightAsync(flight, req, includeMarkup);
-            if (priced is not null)
-            {
-                priceableFlights.Add(priced);
-            }
+            availabilityFlights.Add(priced is not null
+                ? MergePricedAvailabilityFlight(priced, flight)
+                : _markup.ApplyForRole(flight, includeMarkup));
         }
 
-        return priceableFlights;
+        return availabilityFlights;
+    }
+
+    private static FlightDto MergePricedAvailabilityFlight(FlightDto priced, FlightDto source)
+    {
+        priced.Id = source.Id;
+        priced.Carrier = source.Carrier;
+        priced.FlightNumber = source.FlightNumber;
+        priced.From = source.From;
+        priced.To = source.To;
+        priced.Departure = source.Departure;
+        priced.Arrival = source.Arrival;
+        priced.CabinClass = !string.IsNullOrWhiteSpace(source.CabinClass) ? source.CabinClass : priced.CabinClass;
+        priced.CarryOnAllowance = string.IsNullOrWhiteSpace(priced.CarryOnAllowance) ? source.CarryOnAllowance : priced.CarryOnAllowance;
+        priced.CheckedBaggageAllowance = string.IsNullOrWhiteSpace(priced.CheckedBaggageAllowance) ? source.CheckedBaggageAllowance : priced.CheckedBaggageAllowance;
+
+        if (priced.BaggageOfferTexts.Count == 0 && source.BaggageOfferTexts.Count > 0)
+        {
+            priced.BaggageOfferTexts = source.BaggageOfferTexts
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        priced.AirPricingContextXml = string.IsNullOrWhiteSpace(priced.AirPricingContextXml)
+            ? source.AirPricingContextXml
+            : priced.AirPricingContextXml;
+        priced.AirSegmentXml = source.AirSegmentXml;
+        priced.AirSegmentXmls = source.AirSegmentXmls
+            .Where(segmentXml => !string.IsNullOrWhiteSpace(segmentXml))
+            .ToList();
+        priced.ItinerarySegments = GetAvailabilitySegments(source);
+
+        return priced;
     }
 
     private async Task<FlightDto?> TryPriceAvailabilityFlightAsync(

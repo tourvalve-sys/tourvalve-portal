@@ -355,7 +355,7 @@ export default function BookingPage() {
             ...(selectedFlight.baggageOfferTexts ?? []).map((item) => item.trim()),
         ].filter(Boolean) as string[];
 
-        return Array.from(new Set(items)).slice(0, 4);
+        return Array.from(new Set(items));
     }, [selectedFlight]);
     const normalizedSeatRows = useMemo(
         () => normalizeSeatRows(seatMap),
