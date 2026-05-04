@@ -150,7 +150,7 @@ export default function AirTicketingWorkspacePage() {
     }
 
     const walletEnough = (walletSummary?.availableBalance ?? 0) >= booking.amount;
-    const pnr = booking.airlineLocator || booking.providerLocator || booking.universalRecordLocator || "-";
+    const pnr = booking.airlineLocator || "-";
 
     return (
         <div className="space-y-6 fade-in">

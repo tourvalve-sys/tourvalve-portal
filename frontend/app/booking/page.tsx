@@ -97,6 +97,64 @@ function buildSegmentLabel(segment: {
     return `${segment.from} -> ${segment.to}${flightLabel ? ` (${flightLabel})` : ""}`;
 }
 
+function deriveJourneyEndpoints(
+    segments: Array<{ from: string; to: string }>,
+    fallbackFrom: string,
+    fallbackTo: string
+) {
+    const itineraryPath = segments.reduce<string[]>((current, segment, index) => {
+        const fromCode = segment.from.trim().toUpperCase();
+        const toCode = segment.to.trim().toUpperCase();
+
+        if (!fromCode || !toCode) {
+            return current;
+        }
+
+        if (index === 0) {
+            current.push(fromCode);
+        } else if (current[current.length - 1] !== fromCode) {
+            current.push(fromCode);
+        }
+
+        current.push(toCode);
+        return current;
+    }, []);
+
+    if (itineraryPath.length < 2) {
+        return {
+            from: fallbackFrom,
+            to: fallbackTo,
+        };
+    }
+
+    const origin = itineraryPath[0] ?? fallbackFrom;
+    const finalStop = itineraryPath[itineraryPath.length - 1] ?? fallbackTo;
+
+    if (finalStop !== origin) {
+        return {
+            from: origin,
+            to: finalStop,
+        };
+    }
+
+    for (let pivot = 1; pivot < itineraryPath.length - 1; pivot++) {
+        const outboundPath = itineraryPath.slice(0, pivot + 1);
+        const inboundPath = itineraryPath.slice(pivot).slice().reverse();
+
+        if (outboundPath.length === inboundPath.length && outboundPath.every((code, index) => code === inboundPath[index])) {
+            return {
+                from: origin,
+                to: itineraryPath[pivot] ?? fallbackTo,
+            };
+        }
+    }
+
+    return {
+        from: origin,
+        to: itineraryPath[Math.floor((itineraryPath.length - 1) / 2)] ?? fallbackTo,
+    };
+}
+
 function isSeatSelectable(seat: {
     code: string;
     availability: string;
@@ -243,30 +301,47 @@ export default function BookingPage() {
         [selectedFlight?.carrier]
     );
 
-    const itinerarySegments = selectedFlight?.itinerarySegments?.length
-        ? selectedFlight.itinerarySegments
-        : selectedFlight
-            ? [{
-                carrier: selectedFlight.carrier,
-                flightNumber: selectedFlight.flightNumber,
-                from: selectedFlight.from,
-                to: selectedFlight.to,
-                departure: selectedFlight.departure,
-                arrival: selectedFlight.arrival,
-            }]
-            : [];
+    const itinerarySegments = useMemo(
+        () =>
+            selectedFlight?.itinerarySegments?.length
+                ? selectedFlight.itinerarySegments
+                : selectedFlight
+                    ? [{
+                        carrier: selectedFlight.carrier,
+                        flightNumber: selectedFlight.flightNumber,
+                        from: selectedFlight.from,
+                        to: selectedFlight.to,
+                        departure: selectedFlight.departure,
+                        arrival: selectedFlight.arrival,
+                    }]
+                    : [],
+        [selectedFlight]
+    );
 
-    const itinerarySegmentXmls = selectedFlight?.airSegmentXmls?.length
-        ? selectedFlight.airSegmentXmls
-        : selectedFlight?.airSegmentXml
-            ? [selectedFlight.airSegmentXml]
-            : [];
+    const itinerarySegmentXmls = useMemo(
+        () =>
+            selectedFlight?.airSegmentXmls?.length
+                ? selectedFlight.airSegmentXmls
+                : selectedFlight?.airSegmentXml
+                    ? [selectedFlight.airSegmentXml]
+                    : [],
+        [selectedFlight]
+    );
 
     const seatMapSegments = itinerarySegments.map((segment, index) => ({
         ...segment,
         airSegmentXml: itinerarySegmentXmls[index] ?? itinerarySegmentXmls[0] ?? "",
         label: buildSegmentLabel(segment),
     }));
+    const journeyEndpoints = useMemo(
+        () =>
+            deriveJourneyEndpoints(
+                itinerarySegments,
+                selectedFlight?.from ?? "",
+                selectedFlight?.to ?? ""
+            ),
+        [itinerarySegments, selectedFlight?.from, selectedFlight?.to]
+    );
 
     const activeSeatSegment = seatMapSegments[activeSeatSegmentIndex] ?? null;
     const baggageHighlights = useMemo(() => {
@@ -397,8 +472,8 @@ export default function BookingPage() {
         currency: selectedFlight?.currency ?? "MYR",
         carrier: selectedFlight?.carrier ?? "",
         flightNumber: selectedFlight?.flightNumber ?? "",
-        from: selectedFlight?.from ?? "",
-        to: selectedFlight?.to ?? "",
+        from: journeyEndpoints.from,
+        to: journeyEndpoints.to,
         departure: selectedFlight?.departure ?? new Date().toISOString(),
         arrival: selectedFlight?.arrival ?? new Date().toISOString(),
         contactEmail,
@@ -513,8 +588,8 @@ export default function BookingPage() {
             reservation = await bookFlight({
                 carrier: selectedFlight.carrier,
                 flightNumber: selectedFlight.flightNumber,
-                from: selectedFlight.from,
-                to: selectedFlight.to,
+                from: journeyEndpoints.from,
+                to: journeyEndpoints.to,
                 departure: selectedFlight.departure,
                 arrival: selectedFlight.arrival,
                 price: selectedFlight.price,
@@ -535,8 +610,8 @@ export default function BookingPage() {
                     clientRequestId: requestId,
                     carrier: selectedFlight.carrier,
                     flightNumber: selectedFlight.flightNumber,
-                    from: selectedFlight.from,
-                    to: selectedFlight.to,
+                    from: journeyEndpoints.from,
+                    to: journeyEndpoints.to,
                     departureTime: selectedFlight.departure,
                     arrivalTime: selectedFlight.arrival,
                     amount: selectedFlight.price,
@@ -1044,7 +1119,7 @@ export default function BookingPage() {
                                     <div className="min-w-0">
                                         <div className="subtle-kicker mb-2">Flight Summary</div>
                                         <h2 className="text-[2rem] font-semibold leading-none text-[var(--ink)] sm:text-[2.7rem]">
-                                            {selectedFlight.from} {"->"} {selectedFlight.to}
+                                            {journeyEndpoints.from} {"->"} {journeyEndpoints.to}
                                         </h2>
                                         <p className="mt-3 max-w-sm text-sm leading-7 text-slate-500">
                                             {itinerarySegments.length > 1

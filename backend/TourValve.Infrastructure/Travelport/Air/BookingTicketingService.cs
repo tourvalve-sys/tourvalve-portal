@@ -78,6 +78,7 @@ public class BookingTicketingService
             return new BookingTicketingSnapshot(
                 booking.UniversalRecordLocator?.Trim() ?? string.Empty,
                 booking.ProviderLocator?.Trim() ?? string.Empty,
+                booking.ProviderLocator?.Trim() ?? string.Empty,
                 booking.AirlineLocator?.Trim() ?? string.Empty,
                 booking.ProviderCode?.Trim() ?? string.Empty);
         }
@@ -101,12 +102,29 @@ public class BookingTicketingService
         var firstSegment = doc.Descendants()
             .FirstOrDefault(x => x.Name.LocalName == "AirSegment");
 
+        var supplierLocator = doc.Descendants()
+            .Where(x => x.Name.LocalName == "SupplierLocator")
+            .Select(x =>
+                x.Attribute("LocatorCode")?.Value?.Trim()
+                ?? x.Attribute("SupplierLocatorCode")?.Value?.Trim()
+                ?? x.Value?.Trim())
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
         var providerLocator = providerReservation?.Attribute("LocatorCode")?.Value?.Trim()
             ?? booking.ProviderLocator?.Trim()
             ?? string.Empty;
 
         var airReservationLocator = airReservation?.Attribute("LocatorCode")?.Value?.Trim()
             ?? firstSegment?.Attribute("ReservationLocatorCode")?.Value?.Trim()
+            ?? booking.ProviderLocator?.Trim()
+            ?? providerLocator;
+
+        var airlineLocator = supplierLocator
+            ?? firstSegment?.Attribute("ProviderLocatorCode")?.Value?.Trim()
+            ?? doc.Descendants()
+                .Where(x => x.Name.LocalName == "FlightDetails")
+                .Select(x => x.Attribute("ProviderLocatorCode")?.Value?.Trim())
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
             ?? booking.AirlineLocator?.Trim()
             ?? providerLocator;
 
@@ -120,6 +138,7 @@ public class BookingTicketingService
             universalLocator,
             providerLocator,
             airReservationLocator,
+            airlineLocator,
             providerCode);
     }
 
@@ -253,4 +272,5 @@ public sealed record BookingTicketingSnapshot(
     string UniversalRecordLocator,
     string ProviderLocator,
     string AirReservationLocator,
+    string AirlineLocator,
     string ProviderCode);

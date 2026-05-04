@@ -466,8 +466,8 @@ public class AirTicketingWorkflowService
         if (!string.IsNullOrWhiteSpace(snapshot.ProviderLocator))
             booking.ProviderLocator = snapshot.ProviderLocator;
 
-        if (!string.IsNullOrWhiteSpace(snapshot.AirReservationLocator))
-            booking.AirlineLocator = snapshot.AirReservationLocator;
+        if (!string.IsNullOrWhiteSpace(snapshot.AirlineLocator))
+            booking.AirlineLocator = snapshot.AirlineLocator;
 
         if (!string.IsNullOrWhiteSpace(snapshot.ProviderCode))
             booking.ProviderCode = snapshot.ProviderCode;

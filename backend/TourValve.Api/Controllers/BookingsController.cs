@@ -146,6 +146,8 @@ public class BookingsController : ControllerBase
         if (booking == null)
             return NotFound(new { error = "Booking not found." });
 
+        await RefreshAirlineLocatorIfNeededAsync(booking);
+
         var agentEmail = await _db.Agents
             .Where(x => x.Id == booking.AgentId)
             .Select(x => x.Email)
@@ -964,6 +966,54 @@ public class BookingsController : ControllerBase
         return booking;
     }
 
+    private async Task RefreshAirlineLocatorIfNeededAsync(TourValve.Domain.Booking booking)
+    {
+        if (!NeedsAirlineLocatorRefresh(booking) || string.IsNullOrWhiteSpace(booking.UniversalRecordLocator))
+            return;
+
+        try
+        {
+            var retrieveXml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
+            var snapshot = BookingTicketingService.ExtractSnapshot(retrieveXml, booking);
+            var hasChanges = false;
+
+            if (!string.IsNullOrWhiteSpace(snapshot.UniversalRecordLocator) &&
+                !string.Equals(booking.UniversalRecordLocator, snapshot.UniversalRecordLocator, StringComparison.Ordinal))
+            {
+                booking.UniversalRecordLocator = snapshot.UniversalRecordLocator;
+                hasChanges = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.ProviderLocator) &&
+                !string.Equals(booking.ProviderLocator, snapshot.ProviderLocator, StringComparison.Ordinal))
+            {
+                booking.ProviderLocator = snapshot.ProviderLocator;
+                hasChanges = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.AirlineLocator) &&
+                !string.Equals(booking.AirlineLocator, snapshot.AirlineLocator, StringComparison.Ordinal))
+            {
+                booking.AirlineLocator = snapshot.AirlineLocator;
+                hasChanges = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.ProviderCode) &&
+                !string.Equals(booking.ProviderCode, snapshot.ProviderCode, StringComparison.Ordinal))
+            {
+                booking.ProviderCode = snapshot.ProviderCode;
+                hasChanges = true;
+            }
+
+            if (hasChanges)
+                await _db.SaveChangesAsync();
+        }
+        catch
+        {
+            // Keep the booking detail available even if a live locator refresh cannot be completed right now.
+        }
+    }
+
     private async Task<IActionResult> ExecuteTravelportAction(
         TourValve.Domain.Booking booking,
         string action,
@@ -1181,6 +1231,22 @@ public class BookingsController : ControllerBase
         }
 
         return message;
+    }
+
+    private static bool NeedsAirlineLocatorRefresh(TourValve.Domain.Booking booking)
+    {
+        if (string.IsNullOrWhiteSpace(booking.AirlineLocator))
+            return true;
+
+        if (string.Equals(booking.AirlineLocator, booking.ProviderLocator, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (string.Equals(booking.AirlineLocator, booking.UniversalRecordLocator, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return booking.TicketedAt.HasValue ||
+               string.Equals(booking.Status, "TICKETED", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(booking.AirTicketingStatus, AirTicketingWorkflowService.WorkflowIssued, StringComparison.OrdinalIgnoreCase);
     }
 
     private static byte[] BuildSimpleBookingPdf(TourValve.Domain.Booking booking)

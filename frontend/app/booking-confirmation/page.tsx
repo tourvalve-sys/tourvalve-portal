@@ -64,11 +64,7 @@ function BookingConfirmationPageContent() {
         );
     }
 
-    const primaryLocator =
-        confirmation.universalRecordLocator ||
-        confirmation.providerLocator ||
-        confirmation.airlineLocator ||
-        confirmation.locatorCode;
+    const airlinePnr = confirmation.airlineLocator || "";
 
     return (
         <div className="min-h-screen px-3 py-4 sm:px-4 md:p-6 fade-in">
@@ -131,8 +127,8 @@ function BookingConfirmationPageContent() {
                                     <div className="mt-1 text-lg font-semibold text-[var(--ink)]">{confirmation.bookingReference}</div>
                                 </div>
                                 <div>
-                                    <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Primary locator / PNR</div>
-                                    <div className="mt-1 text-lg font-semibold text-[var(--ink)]">{primaryLocator || "Pending"}</div>
+                                    <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Airline PNR</div>
+                                    <div className="mt-1 text-lg font-semibold text-[var(--ink)]">{airlinePnr || "Pending"}</div>
                                 </div>
                                 <div>
                                     <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Universal record locator</div>
