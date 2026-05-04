@@ -679,7 +679,7 @@ export default function BookingPage() {
     }
 
     return (
-        <div className="min-h-screen px-2 py-3 sm:px-4 md:p-6 fade-in">
+        <>
             {loading ? (
                 <PageLoader
                     label="We are securing your reservation"
@@ -687,6 +687,7 @@ export default function BookingPage() {
                     captions={BOOKING_CONFIRM_CAPTIONS}
                 />
             ) : null}
+        <div className="min-h-screen px-2 py-3 sm:px-4 md:p-6 fade-in">
             <div className="mb-6 sm:mb-8">
                 <div className="subtle-kicker mb-2 sm:mb-3">Booking Review</div>
                 <h1 className="hero-title mb-2 sm:mb-3">Complete your booking.</h1>
@@ -1241,5 +1242,6 @@ export default function BookingPage() {
                 </div>
             </div>
         </div>
+        </>
     );
 }
