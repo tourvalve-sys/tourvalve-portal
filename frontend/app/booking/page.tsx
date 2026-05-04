@@ -66,6 +66,14 @@ const frequentFlyerPrograms: Record<string, string[]> = {
     EK: ["Skywards"],
     QR: ["Privilege Club"],
 };
+const BOOKING_PREPARE_CAPTIONS = [
+    "Loading your selected itinerary, traveler mix, and booking session.",
+];
+const BOOKING_CONFIRM_CAPTIONS = [
+    "Securing wallet balance before the live booking request is submitted.",
+    "Sending the reservation request and waiting for airline confirmation.",
+    "Preparing your locator and booking confirmation for the next step.",
+];
 
 function createPassenger(type: string): PassengerForm {
     return {
@@ -572,8 +580,9 @@ export default function BookingPage() {
     if (!isHydrated) {
         return (
             <PageLoader
-                label="Preparing Booking"
+                label="Preparing your booking workspace"
                 detail="Loading the selected itinerary and traveler session."
+                captions={BOOKING_PREPARE_CAPTIONS}
             />
         );
     }
@@ -598,8 +607,9 @@ export default function BookingPage() {
         <div className="min-h-screen px-2 py-3 sm:px-4 md:p-6 fade-in">
             {loading ? (
                 <PageLoader
-                    label="Confirming Booking"
+                    label="We are securing your reservation"
                     detail="Securing wallet hold, sending the live booking request, and preparing your confirmation."
+                    captions={BOOKING_CONFIRM_CAPTIONS}
                 />
             ) : null}
             <div className="mb-6 sm:mb-8">

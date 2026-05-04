@@ -41,6 +41,16 @@ type SearchMode = "lowfare" | "availability";
 
 const FLIGHT_SEARCH_STATE_KEY = "flightSearchState";
 const FLIGHT_SEARCH_STATE_VERSION = 3;
+const SEARCH_LOADING_CAPTIONS = [
+    "Checking live inventory, cabin availability, and current fares.",
+    "Comparing route options so you get the cleanest results first.",
+    "Matching airline responses before we show the best options.",
+];
+const PRICING_LOADING_CAPTIONS = [
+    "Reconfirming the selected itinerary with the latest live fare.",
+    "Preparing the reservation handoff so booking details stay aligned.",
+    "Finalizing the pricing response before you move into booking.",
+];
 
 type FlightSearchUiState = {
     tripType: "oneway" | "return" | "multicity";
@@ -1318,10 +1328,13 @@ export default function FlightSearch() {
 
     const isAvailabilitySearch = searchMode === "availability";
     const showPageLoader = loading || pricingFlightId !== null;
-    const loaderLabel = loading ? "Searching Flights" : "Preparing Booking";
+    const loaderLabel = loading
+        ? "We are getting the best results for you"
+        : "We are preparing your reservation";
     const loaderDetail = loading
         ? "Checking live inventory, pricing, and cabin availability for your selected route."
         : "Pricing the selected itinerary and preparing the booking handoff.";
+    const loaderCaptions = loading ? SEARCH_LOADING_CAPTIONS : PRICING_LOADING_CAPTIONS;
 
     return (
         <>
@@ -1329,6 +1342,7 @@ export default function FlightSearch() {
                 <PageLoader
                     label={loaderLabel}
                     detail={loaderDetail}
+                    captions={loaderCaptions}
                 />
             ) : null}
             <div className="relative min-h-screen fade-in">

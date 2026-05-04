@@ -31,6 +31,12 @@
   --loader-card-start: rgba(255, 255, 255, 0.96);
   --loader-card-end: rgba(244, 249, 255, 0.9);
   --loader-card-shadow: 0 24px 60px rgba(18, 44, 77, 0.16);
+  --loader-detail: rgba(20, 33, 61, 0.72);
+  --loader-track: rgba(15, 110, 207, 0.12);
+  --loader-track-strong: rgba(15, 110, 207, 0.24);
+  --loader-cloud: rgba(143, 183, 232, 0.22);
+  --loader-progress: rgba(15, 110, 207, 0.16);
+  --loader-progress-active: #0c5cc0;
   --topbar-button-bg: rgba(255, 255, 255, 0.7);
   --topbar-button-hover: rgba(255, 255, 255, 1);
   --topbar-button-text: #475569;
@@ -68,6 +74,12 @@ html[data-theme="dark"] {
   --loader-card-start: rgba(16, 30, 47, 0.96);
   --loader-card-end: rgba(10, 21, 34, 0.92);
   --loader-card-shadow: 0 24px 60px rgba(2, 10, 20, 0.42);
+  --loader-detail: rgba(220, 233, 251, 0.76);
+  --loader-track: rgba(99, 179, 255, 0.18);
+  --loader-track-strong: rgba(99, 179, 255, 0.34);
+  --loader-cloud: rgba(99, 179, 255, 0.18);
+  --loader-progress: rgba(99, 179, 255, 0.18);
+  --loader-progress-active: #9bd0ff;
   --topbar-button-bg: rgba(17, 33, 51, 0.92);
   --topbar-button-hover: rgba(24, 45, 68, 1);
   --topbar-button-text: #d4e4f8;
@@ -376,13 +388,13 @@ h4,
 
 .page-loader-card {
   display: flex;
-  min-width: min(22rem, 100%);
+  width: min(28rem, 100%);
   flex-direction: column;
   align-items: center;
-  gap: 0.9rem;
+  gap: 1rem;
   border: 1px solid rgba(50, 93, 147, 0.14);
-  border-radius: 1.75rem;
-  padding: 1.75rem 1.5rem;
+  border-radius: 2rem;
+  padding: 2rem 1.6rem 1.75rem;
   background: linear-gradient(180deg, var(--loader-card-start), var(--loader-card-end));
   box-shadow: var(--loader-card-shadow);
 }
@@ -390,43 +402,175 @@ h4,
 .page-loader-label {
   color: var(--ink);
   font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  font-size: 1.3rem;
+  font-size: clamp(1.35rem, 1.1rem + 0.65vw, 1.8rem);
   font-weight: 700;
+  line-height: 1.1;
   text-align: center;
 }
 
 .page-loader-detail {
   max-width: 24rem;
-  color: rgba(20, 33, 61, 0.72);
-  font-size: 0.95rem;
-  line-height: 1.6;
+  min-height: 3rem;
+  color: var(--loader-detail);
+  font-size: 0.96rem;
+  line-height: 1.7;
   text-align: center;
+  animation: fadeInUp 260ms ease both;
 }
 
-.loader {
-  width: 50px;
-  aspect-ratio: 1;
-  display: grid;
-  color: #0c5cc0;
-  background: radial-gradient(farthest-side, currentColor calc(100% - 6px), #0000 calc(100% - 5px) 0);
-  -webkit-mask: radial-gradient(farthest-side, #0000 calc(100% - 13px), #000 calc(100% - 12px));
-  border-radius: 50%;
-  animation: l19 2s infinite linear;
+.plane-loader {
+  position: relative;
+  width: min(20rem, 100%);
+  height: 5.5rem;
+  overflow: hidden;
 }
 
-.loader::before,
-.loader::after {
+.plane-loader-track,
+.plane-loader-trail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 9999px;
+}
+
+.plane-loader-track {
+  top: 2.8rem;
+  height: 0.5rem;
+  background: linear-gradient(90deg, transparent, var(--loader-track), var(--loader-track-strong), var(--loader-track));
+}
+
+.plane-loader-trail {
+  top: 2.95rem;
+  width: 38%;
+  height: 0.2rem;
+  background: linear-gradient(90deg, transparent, rgba(126, 167, 220, 0.75));
+  animation: planeTrail 2.8s ease-in-out infinite;
+}
+
+.plane-loader-icon {
+  position: absolute;
+  top: 1.4rem;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  color: white;
+  background: linear-gradient(135deg, #1e7df0, #0b58b6);
+  box-shadow: 0 16px 30px rgba(12, 78, 163, 0.24);
+  animation: planeCruise 2.8s ease-in-out infinite;
+}
+
+.plane-loader-cloud {
+  position: absolute;
+  border-radius: 9999px;
+  background: var(--loader-cloud);
+  filter: blur(0.2px);
+}
+
+.plane-loader-cloud::before,
+.plane-loader-cloud::after {
   content: "";
-  grid-area: 1 / 1;
-  background:
-    linear-gradient(currentColor 0 0) center,
-    linear-gradient(currentColor 0 0) center;
-  background-size: 100% 10px, 10px 100%;
-  background-repeat: no-repeat;
+  position: absolute;
+  border-radius: 9999px;
+  background: inherit;
 }
 
-.loader::after {
-  transform: rotate(45deg);
+.plane-loader-cloud-one {
+  top: 1.15rem;
+  left: 1.2rem;
+  width: 2.4rem;
+  height: 0.8rem;
+  animation: cloudDrift 4.8s ease-in-out infinite;
+}
+
+.plane-loader-cloud-one::before {
+  width: 1rem;
+  height: 1rem;
+  top: -0.35rem;
+  left: 0.3rem;
+}
+
+.plane-loader-cloud-one::after {
+  width: 1.2rem;
+  height: 1.2rem;
+  top: -0.5rem;
+  right: 0.25rem;
+}
+
+.plane-loader-cloud-two {
+  top: 0.75rem;
+  right: 3rem;
+  width: 2rem;
+  height: 0.72rem;
+  opacity: 0.82;
+  animation: cloudDrift 5.4s ease-in-out infinite reverse;
+}
+
+.plane-loader-cloud-two::before {
+  width: 0.9rem;
+  height: 0.9rem;
+  top: -0.3rem;
+  left: 0.25rem;
+}
+
+.plane-loader-cloud-two::after {
+  width: 1rem;
+  height: 1rem;
+  top: -0.35rem;
+  right: 0.2rem;
+}
+
+.plane-loader-cloud-three {
+  right: 1rem;
+  bottom: 0.85rem;
+  width: 2.8rem;
+  height: 0.86rem;
+  opacity: 0.78;
+  animation: cloudDrift 4.2s ease-in-out infinite;
+}
+
+.plane-loader-cloud-three::before {
+  width: 1rem;
+  height: 1rem;
+  top: -0.34rem;
+  left: 0.35rem;
+}
+
+.plane-loader-cloud-three::after {
+  width: 1.3rem;
+  height: 1.3rem;
+  top: -0.5rem;
+  right: 0.3rem;
+}
+
+.page-loader-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.page-loader-progress-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--loader-progress);
+  transition: transform 180ms ease, background-color 180ms ease, width 180ms ease;
+}
+
+.page-loader-progress-dot.is-active {
+  width: 1.55rem;
+  background: linear-gradient(90deg, var(--loader-progress-active), rgba(155, 208, 255, 0.94));
+}
+
+html[data-theme="dark"] .plane-loader-icon {
+  color: #07111c;
+}
+
+html[data-theme="dark"] .plane-loader-trail {
+  background: linear-gradient(90deg, transparent, rgba(155, 208, 255, 0.75));
 }
 
 @keyframes fadeInUp {
@@ -458,9 +602,51 @@ h4,
   }
 }
 
-@keyframes l19 {
+@keyframes planeCruise {
+  0% {
+    left: 0.2rem;
+    transform: translateY(0.15rem) rotate(-10deg);
+  }
+
+  50% {
+    left: calc(100% - 3.2rem);
+    transform: translateY(-0.35rem) rotate(2deg);
+  }
+
   100% {
-    transform: rotate(1turn);
+    left: 0.2rem;
+    transform: translateY(0.15rem) rotate(-10deg);
+  }
+}
+
+@keyframes planeTrail {
+  0% {
+    transform: translateX(1rem);
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  85% {
+    opacity: 0.45;
+  }
+
+  100% {
+    transform: translateX(12.4rem);
+    opacity: 0;
+  }
+}
+
+@keyframes cloudDrift {
+  0%,
+  100% {
+    transform: translateX(0) translateY(0);
+  }
+
+  50% {
+    transform: translateX(0.5rem) translateY(-0.2rem);
   }
 }
 
