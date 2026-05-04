@@ -7,6 +7,8 @@ namespace TourValve.Infrastructure.Travelport.Air;
 
 public class BookingTicketingService
 {
+    private const int RetrieveRetryCount = 4;
+    private static readonly TimeSpan RetrieveRetryDelay = TimeSpan.FromSeconds(2);
     private const string AirNamespace = "http://www.travelport.com/schema/air_v51_0";
     private const string CommonNamespace = "http://www.travelport.com/schema/common_v51_0";
     private const string TicketSoapAction = "http://www.travelport.com/schema/air_v51_0/AirTicketingReq";
@@ -38,10 +40,15 @@ public class BookingTicketingService
         var ticketNumbers = ExtractTicketNumbers(ticketingResponseXml);
         var refreshedRecordXml = string.Empty;
 
-        if (ticketNumbers.Count == 0)
+        for (var attempt = 0; attempt < RetrieveRetryCount && ticketNumbers.Count == 0; attempt += 1)
         {
             refreshedRecordXml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
             ticketNumbers = ExtractTicketNumbers(refreshedRecordXml);
+
+            if (ticketNumbers.Count > 0 || attempt == RetrieveRetryCount - 1)
+                break;
+
+            await Task.Delay(RetrieveRetryDelay);
         }
 
         return new BookingTicketingResult(
@@ -246,6 +253,21 @@ public class BookingTicketingService
         }
     }
 
+    public static string ExtractTicketingFailureDetail(params string?[] xmlPayloads)
+    {
+        var messages = xmlPayloads
+            .Where(payload => !string.IsNullOrWhiteSpace(payload))
+            .SelectMany(payload => ExtractTicketingMessages(payload!))
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (messages.Count > 0)
+            return string.Join(" ", messages.Take(3));
+
+        return "Travelport did not return any valid e-ticket numbers after ticket issuance. The booking should remain confirmed until live e-ticket numbers are present.";
+    }
+
     public static string? ResolvePreferredSupplierLocator(
         XDocument doc,
         params string?[] preferredSupplierCodes)
@@ -288,6 +310,39 @@ public class BookingTicketingService
             .Replace(">", "&gt;")
             .Replace("\"", "&quot;")
             .Replace("'", "&apos;");
+
+    private static IReadOnlyList<string> ExtractTicketingMessages(string xml)
+    {
+        try
+        {
+            var doc = XDocument.Parse(xml);
+
+            return doc.Descendants()
+                .Where(x =>
+                    x.Name.LocalName.Equals("ResponseMessage", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("TicketFailureInfo", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("ErrorInfo", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("Description", StringComparison.OrdinalIgnoreCase))
+                .SelectMany(x => new[]
+                {
+                    x.Attribute("Text")?.Value?.Trim(),
+                    x.Attribute("Code")?.Value?.Trim(),
+                    x.Value?.Trim()
+                })
+                .Where(value =>
+                    !string.IsNullOrWhiteSpace(value) &&
+                    value!.Length > 2 &&
+                    !Regex.IsMatch(value, @"^\d{10,14}$") &&
+                    !value.StartsWith("TV-", StringComparison.OrdinalIgnoreCase))
+                .Select(value => value!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+    }
 }
 
 public sealed record BookingTicketingResult(

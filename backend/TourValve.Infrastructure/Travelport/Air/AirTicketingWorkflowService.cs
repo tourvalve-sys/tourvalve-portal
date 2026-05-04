@@ -139,6 +139,8 @@ public class AirTicketingWorkflowService
 
         booking.AirTicketingStatus = WorkflowInProgress;
         booking.AirTicketingLastError = string.Empty;
+        booking.TicketNumbersJson = "[]";
+        booking.TicketedAt = null;
         await _db.SaveChangesAsync(cancellationToken);
 
         try
@@ -155,6 +157,19 @@ public class AirTicketingWorkflowService
             }
 
             var result = await _ticketing.IssueAsync(booking);
+            booking.TicketingResponseXml = string.IsNullOrWhiteSpace(result.RefreshedRecordXml)
+                ? result.ResponseXml
+                : result.RefreshedRecordXml;
+
+            if (result.TicketNumbers.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    BookingTicketingService.ExtractTicketingFailureDetail(
+                        result.ResponseXml,
+                        result.RefreshedRecordXml,
+                        booking.TicketingResponseXml));
+            }
+
             var issuedAt = DateTime.UtcNow;
 
             var paymentWarning = string.Empty;
@@ -181,9 +196,6 @@ public class AirTicketingWorkflowService
 
             booking.TicketNumbersJson = JsonSerializer.Serialize(result.TicketNumbers);
             booking.TicketedAt = issuedAt;
-            booking.TicketingResponseXml = string.IsNullOrWhiteSpace(result.RefreshedRecordXml)
-                ? result.ResponseXml
-                : result.RefreshedRecordXml;
             booking.Status = "TICKETED";
             booking.AirTicketingStatus = WorkflowIssued;
             booking.AirTicketingLastError = paymentWarning;
