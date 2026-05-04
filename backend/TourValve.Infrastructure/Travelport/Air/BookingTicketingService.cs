@@ -225,33 +225,44 @@ public class BookingTicketingService
         if (string.IsNullOrWhiteSpace(xml))
             return new List<string>();
 
-        var matches = Regex.Matches(xml, @"(?<!\d)\d{10,14}(?!\d)")
-            .Select(x => x.Value)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-
-        if (matches.Count > 0)
-            return matches;
-
         try
         {
             var doc = XDocument.Parse(xml);
 
-            return doc.Descendants()
+            var scopedMatches = doc.Descendants()
                 .Where(x =>
                     x.Name.LocalName.Contains("Ticket", StringComparison.OrdinalIgnoreCase) ||
                     x.Name.LocalName.Contains("Document", StringComparison.OrdinalIgnoreCase) ||
-                    x.Name.LocalName.Contains("ETR", StringComparison.OrdinalIgnoreCase))
+                    x.Name.LocalName.Contains("ETR", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Contains("Coupon", StringComparison.OrdinalIgnoreCase))
                 .SelectMany(x => x.Attributes().Select(a => a.Value).Concat(new[] { x.Value }))
-                .SelectMany(value => Regex.Matches(value ?? string.Empty, @"(?<!\d)\d{10,14}(?!\d)").Select(m => m.Value))
+                .SelectMany(ExtractTicketNumberCandidates)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            if (scopedMatches.Count > 0)
+                return scopedMatches;
+
+            if (!ContainsTicketingKeywords(xml))
+                return new List<string>();
+
+            return ExtractTicketNumberCandidates(xml)
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
         }
         catch
         {
-            return new List<string>();
+            if (!ContainsTicketingKeywords(xml))
+                return new List<string>();
+
+            return ExtractTicketNumberCandidates(xml)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
         }
     }
+
+    public static bool IsLikelyTicketNumber(string? value)
+        => !string.IsNullOrWhiteSpace(NormalizeTicketNumber(value));
 
     public static string ExtractTicketingFailureDetail(params string?[] xmlPayloads)
     {
@@ -310,6 +321,33 @@ public class BookingTicketingService
             .Replace(">", "&gt;")
             .Replace("\"", "&quot;")
             .Replace("'", "&apos;");
+
+    private static IEnumerable<string> ExtractTicketNumberCandidates(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Array.Empty<string>();
+
+        return Regex.Matches(value, @"(?<!\d)(\d{3}-?\d{10})(?!\d)")
+            .Select(match => NormalizeTicketNumber(match.Value))
+            .Where(number => !string.IsNullOrWhiteSpace(number))
+            .Select(number => number!)
+            .Distinct(StringComparer.Ordinal);
+    }
+
+    private static string? NormalizeTicketNumber(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        return digits.Length == 13 ? digits : null;
+    }
+
+    private static bool ContainsTicketingKeywords(string xml)
+        => xml.Contains("ticket", StringComparison.OrdinalIgnoreCase) ||
+            xml.Contains("document", StringComparison.OrdinalIgnoreCase) ||
+            xml.Contains("etr", StringComparison.OrdinalIgnoreCase) ||
+            xml.Contains("electronic", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<string> ExtractTicketingMessages(string xml)
     {

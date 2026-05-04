@@ -1293,7 +1293,7 @@ public class BookingsController : ControllerBase
     private static bool LooksTicketedButHasNoEvidence(TourValve.Domain.Booking booking)
     {
         var storedTicketNumbers = DeserializeStringList(booking.TicketNumbersJson);
-        if (storedTicketNumbers.Count > 0)
+        if (storedTicketNumbers.Any(BookingTicketingService.IsLikelyTicketNumber))
             return false;
 
         return booking.TicketedAt.HasValue ||
