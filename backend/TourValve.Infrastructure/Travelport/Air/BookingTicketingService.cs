@@ -9,6 +9,7 @@ public class BookingTicketingService
 {
     private const int RetrieveRetryCount = 4;
     private static readonly TimeSpan RetrieveRetryDelay = TimeSpan.FromSeconds(2);
+    public const string MissingStoredPricingMessage = "This booking does not contain stored fare pricing in Travelport, so it cannot be ticketed. Reprice and rebook the itinerary before issuing the ticket.";
     private const string AirNamespace = "http://www.travelport.com/schema/air_v51_0";
     private const string CommonNamespace = "http://www.travelport.com/schema/common_v51_0";
     private const string TicketSoapAction = "http://www.travelport.com/schema/air_v51_0/AirTicketingReq";
@@ -38,6 +39,10 @@ public class BookingTicketingService
             booking.UniversalRecordLocator,
             booking.ProviderCode,
             booking.ProviderLocator);
+
+        if (!HasStoredPricingInfo(retrieveXml))
+            throw new InvalidOperationException(MissingStoredPricingMessage);
+
         var snapshot = ExtractSnapshot(retrieveXml, booking);
         var requestXml = BuildTicketingRequestXml(booking, retrieveXml);
         var ticketingResponseXml = await _air.PostToAirServiceAsync(requestXml, TicketSoapAction);
@@ -298,6 +303,13 @@ public class BookingTicketingService
 
     public static string ExtractTicketingFailureDetail(params string?[] xmlPayloads)
     {
+        if (xmlPayloads.Any(payload =>
+                !string.IsNullOrWhiteSpace(payload) &&
+                payload.Contains("Unable to ticket without pricing information", StringComparison.OrdinalIgnoreCase)))
+        {
+            return MissingStoredPricingMessage;
+        }
+
         var messages = xmlPayloads
             .Where(payload => !string.IsNullOrWhiteSpace(payload))
             .SelectMany(payload => ExtractTicketingMessages(payload!))
@@ -391,6 +403,30 @@ public class BookingTicketingService
         catch
         {
             return new List<string>();
+        }
+    }
+
+    public static bool HasStoredPricingInfo(string xml)
+    {
+        if (string.IsNullOrWhiteSpace(xml))
+            return false;
+
+        try
+        {
+            var doc = XDocument.Parse(xml);
+
+            return doc.Descendants()
+                .Where(x => x.Name.LocalName.Equals("AirPricingInfo", StringComparison.OrdinalIgnoreCase))
+                .Any(x =>
+                    x.Attributes().Any(attr =>
+                        attr.Name.LocalName is "TotalPrice" or "BasePrice" or "ApproximateTotalPrice" or "ApproximateBasePrice") ||
+                    x.Descendants().Any(child =>
+                        child.Name.LocalName.Equals("FareInfo", StringComparison.OrdinalIgnoreCase) ||
+                        child.Name.LocalName.Equals("BookingInfo", StringComparison.OrdinalIgnoreCase)));
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -535,13 +571,14 @@ public class BookingTicketingService
                 .SelectMany(x => new[]
                 {
                     x.Attribute("Text")?.Value?.Trim(),
-                    x.Attribute("Code")?.Value?.Trim(),
                     x.Value?.Trim()
                 })
                 .Where(value =>
                     !string.IsNullOrWhiteSpace(value) &&
                     value!.Length > 2 &&
                     !Regex.IsMatch(value, @"^\d{10,14}$") &&
+                    !Regex.IsMatch(value, @"^[A-F0-9]{16,}$", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(value, @"^[A-Z0-9\-]{14,}$", RegexOptions.IgnoreCase) &&
                     !value.StartsWith("TV-", StringComparison.OrdinalIgnoreCase))
                 .Select(value => value!)
                 .Distinct(StringComparer.OrdinalIgnoreCase)

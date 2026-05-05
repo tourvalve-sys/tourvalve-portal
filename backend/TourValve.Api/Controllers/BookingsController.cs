@@ -1015,6 +1015,14 @@ public class BookingsController : ControllerBase
                 hasChanges = true;
             }
 
+            if (!BookingTicketingService.HasStoredPricingInfo(retrieveXml) &&
+                !booking.TicketedAt.HasValue &&
+                !string.Equals(booking.AirTicketingLastError, BookingTicketingService.MissingStoredPricingMessage, StringComparison.Ordinal))
+            {
+                booking.AirTicketingLastError = BookingTicketingService.MissingStoredPricingMessage;
+                hasChanges = true;
+            }
+
             if (needsTicketRefresh)
             {
                 var verifiedTicketNumbers = BookingTicketingService.ExtractVerifiedTicketNumbers(retrieveXml);
