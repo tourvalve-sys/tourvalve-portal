@@ -9,6 +9,7 @@ using TourValve.Api.Models;
 using TourValve.Infrastructure.Services;
 using TourValve.Infrastructure.Travelport.Air;
 using TourValve.Infrastructure.Travelport.Common;
+using TourValve.Infrastructure.Travelport.Parser;
 
 namespace TourValve.Api.Controllers;
 
@@ -77,7 +78,8 @@ public sealed class AirBookingController : ControllerBase
             return BadRequest(new { error = "Live Travelport credentials are missing. Update Travelport settings before booking." });
 
         var providerCode = ResolveProviderCode(request.AirPricingSolutionXml, request.AirPricingContextXml);
-        var xml = BuildReservationRequest(request, providerCode);
+        var refreshedPricing = await RefreshPricingForBookingAsync(request, providerCode);
+        var xml = BuildReservationRequest(request, providerCode, refreshedPricing.PricingSolutionXml, refreshedPricing.PricingContextXml);
         WriteBookingDebugSnapshot("REQUEST_PREPARED", xml, null, null);
 
         try
@@ -143,9 +145,13 @@ public sealed class AirBookingController : ControllerBase
         }
     }
 
-    private string BuildReservationRequest(AirBookingRequest request, string providerCode)
+    private string BuildReservationRequest(
+        AirBookingRequest request,
+        string providerCode,
+        string pricingSolutionXml,
+        string pricingContextXml)
     {
-        var pricingPayload = BuildPricingPayload(request.AirPricingSolutionXml, request.AirPricingContextXml);
+        var pricingPayload = BuildPricingPayload(pricingSolutionXml, pricingContextXml);
 
         var passengersXml = string.Join(
             Environment.NewLine,
@@ -485,6 +491,243 @@ public sealed class AirBookingController : ControllerBase
 
     private static string Escape(string value) => SecurityElement.Escape(value) ?? string.Empty;
 
+    private async Task<BookingPricingRefreshResult> RefreshPricingForBookingAsync(AirBookingRequest request, string providerCode)
+    {
+        if (string.IsNullOrWhiteSpace(request.AirPricingSolutionXml))
+            throw new InvalidOperationException("The selected itinerary is missing Travelport pricing information. Search again and choose a priced result before booking.");
+
+        if (string.IsNullOrWhiteSpace(request.AirPricingContextXml))
+        {
+            return new BookingPricingRefreshResult(request.AirPricingSolutionXml, request.AirPricingSolutionXml);
+        }
+
+        try
+        {
+            var priceRequestXml = BuildBookingPriceXml(request, providerCode);
+            var pricedResponse = await _airClient.PostToAirServiceAsync(
+                priceRequestXml,
+                "http://www.travelport.com/schema/air_v51_0/AirPriceReq");
+
+            var pricedFlights = TravelportFlightParser.Parse(pricedResponse);
+            var priced = pricedFlights.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.AirPricingSolutionXml) && x.Price > 0m);
+            if (priced is not null)
+            {
+                return new BookingPricingRefreshResult(priced.AirPricingSolutionXml, priced.AirPricingContextXml);
+            }
+
+            var pricedDoc = XDocument.Parse(pricedResponse);
+            var firstSolution = pricedDoc.Descendants().FirstOrDefault(x => x.Name.LocalName == "AirPricingSolution");
+            if (firstSolution is not null)
+            {
+                return new BookingPricingRefreshResult(
+                    firstSolution.ToString(SaveOptions.DisableFormatting),
+                    pricedDoc.Root?.ToString(SaveOptions.DisableFormatting) ?? pricedResponse);
+            }
+        }
+        catch
+        {
+            // Fall back to the original pricing payload if live repricing is unavailable.
+        }
+
+        return new BookingPricingRefreshResult(request.AirPricingSolutionXml, request.AirPricingContextXml);
+    }
+
+    private string BuildBookingPriceXml(AirBookingRequest request, string providerCode)
+    {
+        var authorizedBy = _config.Username.Replace("Universal API/", "", StringComparison.OrdinalIgnoreCase);
+        var contextXml = !string.IsNullOrWhiteSpace(request.AirPricingContextXml)
+            ? request.AirPricingContextXml
+            : request.AirPricingSolutionXml;
+        var segmentXml = BuildBookingPriceSegmentsXml(request.AirPricingSolutionXml, contextXml);
+        var hostTokensXml = ExtractHostTokensXml(contextXml);
+
+        return $@"
+<air:AirPriceReq
+        xmlns:air=""http://www.travelport.com/schema/air_v51_0""
+        xmlns:com=""http://www.travelport.com/schema/common_v51_0""
+        AuthorizedBy=""{authorizedBy}""
+        TargetBranch=""{Escape(_config.TargetBranch)}""
+        TraceId=""TV-BOOK-PRICE-{DateTime.UtcNow:yyyyMMddHHmmss}""
+        ProviderCode=""{Escape(providerCode)}"">
+  <com:BillingPointOfSaleInfo OriginApplication=""UAPI""/>
+  <air:AirItinerary>
+    {segmentXml}
+  </air:AirItinerary>
+  {hostTokensXml}
+  <air:AirPricingModifiers FaresIndicator=""PublicFaresOnly"" ReturnFareAttributes=""true"" />
+  {BuildBookingSearchPassengersXml(request.Passengers)}
+</air:AirPriceReq>".Trim();
+    }
+
+    private static string BuildBookingPriceSegmentsXml(string airPricingSolutionXml, string contextXml)
+    {
+        var solution = XElement.Parse(airPricingSolutionXml);
+        var contextDoc = XDocument.Parse(contextXml);
+
+        var rawSegments = solution.Elements()
+            .Where(x => x.Name.LocalName == "AirSegment")
+            .Select(x => x.ToString(SaveOptions.DisableFormatting))
+            .ToList();
+
+        if (rawSegments.Count == 0)
+        {
+            var segmentNodes = ResolveSegmentNodesForPricing(solution, contextDoc);
+            rawSegments.AddRange(segmentNodes.Select(segment => segment.ToString(SaveOptions.DisableFormatting)));
+        }
+
+        return string.Join(
+            Environment.NewLine + "    ",
+            rawSegments.Select(segmentXml => NormalizeBookingSegmentXml(segmentXml, contextXml)));
+    }
+
+    private static List<XElement> ResolveSegmentNodesForPricing(XElement pricingSolution, XDocument contextDoc)
+    {
+        var segmentRefs = pricingSolution.Descendants()
+            .Where(x => x.Name.LocalName == "AirSegmentRef")
+            .Select(x => x.Attribute("Key")?.Value)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return segmentRefs
+            .Select(segmentRef => contextDoc.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "AirSegment" && x.Attribute("Key")?.Value == segmentRef))
+            .Where(x => x is not null)
+            .Select(x => new XElement(x!))
+            .ToList();
+    }
+
+    private static string NormalizeBookingSegmentXml(string rawSegmentXml, string? contextXml)
+    {
+        var segment = XElement.Parse(rawSegmentXml);
+        segment.Name = XName.Get("AirSegment", "http://www.travelport.com/schema/air_v51_0");
+        var providerCode = segment.Attribute("ProviderCode")?.Value;
+        var classOfService = segment.Attribute("ClassOfService")?.Value;
+
+        var flightDetailsRefs = segment.Elements().Where(x => x.Name.LocalName == "FlightDetailsRef").ToList();
+        if (flightDetailsRefs.Count > 0 && !string.IsNullOrWhiteSpace(contextXml))
+        {
+            var contextDoc = XDocument.Parse(contextXml);
+
+            foreach (var flightDetailsRef in flightDetailsRefs)
+            {
+                var key = flightDetailsRef.Attribute("Key")?.Value;
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    flightDetailsRef.Remove();
+                    continue;
+                }
+
+                var flightDetails = contextDoc.Descendants()
+                    .FirstOrDefault(x =>
+                        x.Name.LocalName == "FlightDetails" &&
+                        string.Equals(x.Attribute("Key")?.Value, key, StringComparison.Ordinal));
+
+                if (flightDetails is null)
+                {
+                    flightDetailsRef.Remove();
+                    continue;
+                }
+
+                flightDetailsRef.ReplaceWith(new XElement(flightDetails));
+            }
+
+            if (string.IsNullOrWhiteSpace(providerCode))
+            {
+                providerCode = segment.Elements()
+                    .FirstOrDefault(x => x.Name.LocalName == "AirAvailInfo")
+                    ?.Attribute("ProviderCode")?.Value
+                    ?? contextDoc.Descendants()
+                        .FirstOrDefault(x =>
+                            x.Name.LocalName == "AirAvailInfo" &&
+                            !string.IsNullOrWhiteSpace(x.Attribute("ProviderCode")?.Value))
+                        ?.Attribute("ProviderCode")?.Value;
+            }
+
+            if (string.IsNullOrWhiteSpace(classOfService))
+            {
+                var contextSegment = contextDoc.Descendants()
+                    .FirstOrDefault(x =>
+                        x.Name.LocalName == "AirSegment" &&
+                        x.Attribute("Key")?.Value == segment.Attribute("Key")?.Value);
+
+                classOfService = ResolveStandaloneClassOfService(segment)
+                    ?? (contextSegment is null ? null : ResolveStandaloneClassOfService(contextSegment))
+                    ?? string.Empty;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(providerCode))
+            segment.SetAttributeValue("ProviderCode", providerCode);
+
+        if (!string.IsNullOrWhiteSpace(classOfService))
+            segment.SetAttributeValue("ClassOfService", classOfService);
+
+        return segment.ToString(SaveOptions.DisableFormatting);
+    }
+
+    private static string BuildBookingSearchPassengersXml(IReadOnlyCollection<AirBookingPassengerRequest> passengers)
+    {
+        var adultCount = passengers.Count(passenger => NormalizeTravelerType(passenger.TravelerType) == "ADT");
+        var childCount = passengers.Count(passenger => NormalizeTravelerType(passenger.TravelerType) == "CNN");
+        var infantCount = passengers.Count(passenger => NormalizeTravelerType(passenger.TravelerType) == "INF");
+
+        var parts = new List<string>();
+
+        for (var index = 0; index < adultCount; index++)
+            parts.Add($@"<com:SearchPassenger Key=""PAX-ADT-{index + 1}"" Code=""ADT""/>");
+
+        for (var index = 0; index < childCount; index++)
+            parts.Add($@"<com:SearchPassenger Key=""PAX-CNN-{index + 1}"" Code=""CNN"" Age=""8""/>");
+
+        for (var index = 0; index < infantCount; index++)
+            parts.Add($@"<com:SearchPassenger Key=""PAX-INF-{index + 1}"" Code=""INF"" Age=""1""/>");
+
+        return string.Join(Environment.NewLine + "  ", parts);
+    }
+
+    private static string ExtractHostTokensXml(string sourceXml)
+    {
+        if (string.IsNullOrWhiteSpace(sourceXml))
+            return string.Empty;
+
+        try
+        {
+            var source = XElement.Parse(sourceXml);
+            var hostTokens = source
+                .Descendants()
+                .Where(x => x.Name.LocalName == "HostToken")
+                .Select(token =>
+                {
+                    token.Name = XName.Get("HostToken", "http://www.travelport.com/schema/common_v51_0");
+                    return token.ToString(SaveOptions.DisableFormatting);
+                })
+                .Distinct()
+                .ToList();
+
+            return string.Join(Environment.NewLine, hostTokens);
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string? ResolveStandaloneClassOfService(XElement segment)
+    {
+        return segment.Attribute("ClassOfService")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo" && !string.IsNullOrWhiteSpace(x.Attribute("BookingCode")?.Value))
+                ?.Attribute("BookingCode")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo" && !string.IsNullOrWhiteSpace(x.Attribute("CabinClass")?.Value))
+                ?.Attribute("CabinClass")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "AirAvailInfo" && !string.IsNullOrWhiteSpace(x.Attribute("ClassOfService")?.Value))
+                ?.Attribute("ClassOfService")?.Value;
+    }
+
     private async Task TrySendBookingConfirmationAsync(
         AirBookingRequest request,
         (string? UniversalRecordLocator, string? ProviderLocator, string? AirlineLocator) refs)
@@ -638,6 +881,10 @@ public sealed class AirBookingController : ControllerBase
         public string? ResponseXml { get; set; }
         public string? Error { get; set; }
     }
+
+    private sealed record BookingPricingRefreshResult(
+        string PricingSolutionXml,
+        string PricingContextXml);
 
     private sealed class XElementStringComparer : IEqualityComparer<XElement>
     {
