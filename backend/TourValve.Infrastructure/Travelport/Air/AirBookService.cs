@@ -24,7 +24,7 @@ namespace TourValve.Infrastructure.Travelport.Air
         public async Task<string> CreateReservationAsync(string xml)
         {
             return await _client.SendAsync(
-                _config.AirEndpoint,
+                _config.UniversalEndpoint,
                 xml
             );
         }

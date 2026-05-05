@@ -84,9 +84,9 @@ public sealed class AirBookingController : ControllerBase
 
         try
         {
-            var rawResponse = await _airClient.PostToAirServiceAsync(
+            var rawResponse = await _airClient.PostToUniversalServiceAsync(
                 xml,
-                "http://www.travelport.com/schema/air_v51_0/AirCreateReservationReq"
+                "http://www.travelport.com/schema/universal_v51_0/AirCreateReservationReq"
             );
             WriteBookingDebugSnapshot("RESPONSE_RECEIVED", xml, rawResponse, null);
 
@@ -172,6 +172,7 @@ public sealed class AirBookingController : ControllerBase
     AuthorizedBy=""{Escape(authorizedBy)}""
     TargetBranch=""{Escape(_config.TargetBranch)}""
     ProviderCode=""{Escape(providerCode)}""
+    RetrieveProviderReservationDetails=""true""
     RetainReservation=""Both""
     RestrictWaitlist=""true""
     ReturnRecord=""true""
@@ -179,7 +180,6 @@ public sealed class AirBookingController : ControllerBase
   <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
   {passengersXml}
   <com:EmailNotification Recipients=""Default"" />
-  <com:FormOfPayment Type=""Cash"" />
   {pricingPayload}
   <com:ActionStatus Type=""TAW"" TicketDate=""{DateTime.UtcNow:yyyy-MM-dd}T23:59:00"" ProviderCode=""{Escape(providerCode)}"" />
 </univ:AirCreateReservationReq>".Trim();
@@ -198,6 +198,7 @@ public sealed class AirBookingController : ControllerBase
         {
             var contextDoc = XDocument.Parse(airPricingContextXml);
             var pricingSolution = new XElement(solution);
+            var hostTokenRefs = ExtractHostTokenRefKeys(solution);
             var allowedChildren = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "AirSegment",
@@ -233,6 +234,24 @@ public sealed class AirBookingController : ControllerBase
                          .Distinct(new XElementStringComparer()))
             {
                 pricingSolution.Add(segmentNode);
+            }
+
+            if (!pricingSolution.Elements().Any(x => x.Name.LocalName == "HostToken"))
+            {
+                var hostTokens = contextDoc.Descendants()
+                    .Where(x => x.Name.LocalName == "HostToken")
+                    .Where(x =>
+                    {
+                        var key = x.Attribute("Key")?.Value;
+                        return hostTokenRefs.Count == 0 || (!string.IsNullOrWhiteSpace(key) && hostTokenRefs.Contains(key));
+                    })
+                    .Select(token => EnsureCommonNamespace(new XElement(token)))
+                    .Distinct(new XElementStringComparer());
+
+                foreach (var hostToken in hostTokens)
+                {
+                    pricingSolution.Add(hostToken);
+                }
             }
 
             return pricingSolution.ToString(SaveOptions.DisableFormatting);
@@ -496,6 +515,15 @@ public sealed class AirBookingController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.AirPricingSolutionXml))
             throw new InvalidOperationException("The selected itinerary is missing Travelport pricing information. Search again and choose a priced result before booking.");
 
+        if (HasReservationPricingInfo(request.AirPricingSolutionXml))
+        {
+            return new BookingPricingRefreshResult(
+                request.AirPricingSolutionXml,
+                string.IsNullOrWhiteSpace(request.AirPricingContextXml)
+                    ? request.AirPricingSolutionXml
+                    : request.AirPricingContextXml);
+        }
+
         if (string.IsNullOrWhiteSpace(request.AirPricingContextXml))
         {
             return new BookingPricingRefreshResult(request.AirPricingSolutionXml, request.AirPricingSolutionXml);
@@ -523,13 +551,22 @@ public sealed class AirBookingController : ControllerBase
                     firstSolution.ToString(SaveOptions.DisableFormatting),
                     pricedDoc.Root?.ToString(SaveOptions.DisableFormatting) ?? pricedResponse);
             }
-        }
-        catch
-        {
-            // Fall back to the original pricing payload if live repricing is unavailable.
-        }
 
-        return new BookingPricingRefreshResult(request.AirPricingSolutionXml, request.AirPricingContextXml);
+            throw new InvalidOperationException("Travelport repricing did not return a usable fare for this itinerary. Please search again and choose another result.");
+        }
+        catch (Exception ex)
+        {
+            if (HasReservationPricingInfo(request.AirPricingSolutionXml))
+            {
+                return new BookingPricingRefreshResult(
+                    request.AirPricingSolutionXml,
+                    string.IsNullOrWhiteSpace(request.AirPricingContextXml)
+                        ? request.AirPricingSolutionXml
+                        : request.AirPricingContextXml);
+            }
+
+            throw new InvalidOperationException(ExtractTravelportMessage(ex), ex);
+        }
     }
 
     private string BuildBookingPriceXml(AirBookingRequest request, string providerCode)
@@ -539,7 +576,10 @@ public sealed class AirBookingController : ControllerBase
             ? request.AirPricingContextXml
             : request.AirPricingSolutionXml;
         var segmentXml = BuildBookingPriceSegmentsXml(request.AirPricingSolutionXml, contextXml);
-        var hostTokensXml = ExtractHostTokensXml(contextXml);
+        var hostTokensXml = ExtractHostTokensXml(contextXml, request.AirPricingSolutionXml);
+        var faresIndicator = IsAvailabilityPricingContext(contextXml)
+            ? "AllFares"
+            : "PublicFaresOnly";
 
         return $@"
 <air:AirPriceReq
@@ -547,14 +587,13 @@ public sealed class AirBookingController : ControllerBase
         xmlns:com=""http://www.travelport.com/schema/common_v51_0""
         AuthorizedBy=""{authorizedBy}""
         TargetBranch=""{Escape(_config.TargetBranch)}""
-        TraceId=""TV-BOOK-PRICE-{DateTime.UtcNow:yyyyMMddHHmmss}""
-        ProviderCode=""{Escape(providerCode)}"">
+        TraceId=""TV-BOOK-PRICE-{DateTime.UtcNow:yyyyMMddHHmmss}"">
   <com:BillingPointOfSaleInfo OriginApplication=""UAPI""/>
   <air:AirItinerary>
     {segmentXml}
   </air:AirItinerary>
   {hostTokensXml}
-  <air:AirPricingModifiers FaresIndicator=""PublicFaresOnly"" ReturnFareAttributes=""true"" />
+  <air:AirPricingModifiers FaresIndicator=""{faresIndicator}"" ReturnFareAttributes=""true"" />
   {BuildBookingSearchPassengersXml(request.Passengers)}
 </air:AirPriceReq>".Trim();
     }
@@ -687,17 +726,23 @@ public sealed class AirBookingController : ControllerBase
         return string.Join(Environment.NewLine + "  ", parts);
     }
 
-    private static string ExtractHostTokensXml(string sourceXml)
+    private static string ExtractHostTokensXml(string sourceXml, string? referenceXml = null)
     {
         if (string.IsNullOrWhiteSpace(sourceXml))
             return string.Empty;
 
         try
         {
+            var referencedKeys = ExtractHostTokenRefKeys(referenceXml);
             var source = XElement.Parse(sourceXml);
             var hostTokens = source
                 .Descendants()
                 .Where(x => x.Name.LocalName == "HostToken")
+                .Where(token =>
+                {
+                    var key = token.Attribute("Key")?.Value;
+                    return referencedKeys.Count == 0 || (!string.IsNullOrWhiteSpace(key) && referencedKeys.Contains(key));
+                })
                 .Select(token =>
                 {
                     token.Name = XName.Get("HostToken", "http://www.travelport.com/schema/common_v51_0");
@@ -714,6 +759,49 @@ public sealed class AirBookingController : ControllerBase
         }
     }
 
+    private static HashSet<string> ExtractHostTokenRefKeys(string? xml)
+    {
+        if (string.IsNullOrWhiteSpace(xml))
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var root = XElement.Parse(xml);
+            return ExtractHostTokenRefKeys(root);
+        }
+        catch
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static HashSet<string> ExtractHostTokenRefKeys(XElement root)
+    {
+        return root
+            .DescendantsAndSelf()
+            .Select(x => x.Attribute("HostTokenRef")?.Value)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Cast<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool HasReservationPricingInfo(string solutionXml)
+    {
+        if (string.IsNullOrWhiteSpace(solutionXml))
+            return false;
+
+        try
+        {
+            var solution = XElement.Parse(solutionXml);
+            return solution.DescendantsAndSelf().Any(x => x.Name.LocalName == "AirPricingInfo")
+                && solution.Descendants().Any(x => x.Name.LocalName == "BookingInfo");
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static string? ResolveStandaloneClassOfService(XElement segment)
     {
         return segment.Attribute("ClassOfService")?.Value
@@ -726,6 +814,26 @@ public sealed class AirBookingController : ControllerBase
             ?? segment.Descendants()
                 .FirstOrDefault(x => x.Name.LocalName == "AirAvailInfo" && !string.IsNullOrWhiteSpace(x.Attribute("ClassOfService")?.Value))
                 ?.Attribute("ClassOfService")?.Value;
+    }
+
+    private static bool IsAvailabilityPricingContext(string contextXml)
+    {
+        if (string.IsNullOrWhiteSpace(contextXml))
+            return false;
+
+        try
+        {
+            var doc = XDocument.Parse(contextXml);
+            var rootName = doc.Root?.Name.LocalName ?? string.Empty;
+
+            return string.Equals(rootName, "AvailabilitySearchRsp", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(rootName, "AirAvailabilitySearchRsp", StringComparison.OrdinalIgnoreCase)
+                || doc.Descendants().Any(x => x.Name.LocalName == "AirItinerarySolution");
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task TrySendBookingConfirmationAsync(
@@ -813,7 +921,41 @@ public sealed class AirBookingController : ControllerBase
     {
         var message = ex.Message;
         if (string.IsNullOrWhiteSpace(message))
-            return "Travelport returned an unexpected booking error.";
+            return "The live provider returned an unexpected booking response.";
+
+        return BuildProviderFriendlyBookingDetail(
+            ExtractTravelportStructuredMessage(message) ?? message);
+    }
+
+    private static string BuildProviderFriendlyBookingDetail(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "The live provider returned an unexpected booking response.";
+
+        if (raw.Contains("Gateway Time-out", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+            return "The live provider took too long to respond during booking. Please try again.";
+
+        if (raw.Contains("form of payment", StringComparison.OrdinalIgnoreCase))
+            return "The airline rejected a payment form during reservation creation. Please retry the booking after the latest booking-request update is deployed.";
+
+        if (raw.Contains("No valid e-tickets", StringComparison.OrdinalIgnoreCase))
+            return "The provider created the booking record, but no valid e-ticket exists yet for airline retrieval.";
+
+        if (raw.Contains("travelport.com/schema", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("faultstring", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("Error unmarshalling message body", StringComparison.OrdinalIgnoreCase))
+            return "The live provider returned an unexpected booking response. Please try another itinerary or search again.";
+
+        return raw.Length > 320
+            ? raw[..320]
+            : raw;
+    }
+
+    private static string? ExtractTravelportStructuredMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return null;
 
         if (message.Contains("<faultstring>", StringComparison.OrdinalIgnoreCase))
         {
@@ -826,7 +968,39 @@ public sealed class AirBookingController : ControllerBase
             }
         }
 
-        return message;
+        var xmlStart = message.IndexOf('<');
+        if (xmlStart < 0)
+            return message;
+
+        try
+        {
+            var xml = message[xmlStart..];
+            var doc = XDocument.Parse(xml);
+            var candidates = doc.Descendants()
+                .Where(x =>
+                    x.Name.LocalName.Equals("faultstring", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("ResponseMessage", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("ErrorInfo", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("Description", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("Message", StringComparison.OrdinalIgnoreCase))
+                .SelectMany(x => new[]
+                {
+                    x.Attribute("Text")?.Value?.Trim(),
+                    x.Attribute("Message")?.Value?.Trim(),
+                    x.Attribute("Description")?.Value?.Trim(),
+                    x.Value?.Trim()
+                })
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return candidates.FirstOrDefault();
+        }
+        catch
+        {
+            return message;
+        }
     }
 
     private static void WriteBookingDebugSnapshot(string stage, string requestXml, string? responseXml, string? error)

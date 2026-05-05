@@ -55,9 +55,9 @@ public class TravelportTestController : ControllerBase
     [HttpPost("book")]
     public async Task<IActionResult> Book([FromBody] RawSoapRequest req)
     {
-        var result = await _air.PostToAirServiceAsync(
+        var result = await _air.PostToUniversalServiceAsync(
             req.Xml,
-            "http://www.travelport.com/schema/air_v51_0/AirCreateReservationReq"
+            "http://www.travelport.com/schema/universal_v51_0/AirCreateReservationReq"
         );
 
         return Ok(result);
