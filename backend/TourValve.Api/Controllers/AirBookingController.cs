@@ -192,6 +192,17 @@ public sealed class AirBookingController : ControllerBase
         {
             var contextDoc = XDocument.Parse(airPricingContextXml);
             var pricingSolution = new XElement(solution);
+            var allowedChildren = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "AirSegment",
+                "AirPricingInfo",
+                "FareNote",
+                "HostToken"
+            };
+
+            pricingSolution.Elements()
+                .Where(x => !allowedChildren.Contains(x.Name.LocalName))
+                .Remove();
 
             var segmentRefs = solution.Descendants()
                 .Where(x => x.Name.LocalName == "AirSegmentRef")
