@@ -158,7 +158,8 @@ public class AirTicketingWorkflowService
             }
 
             var result = await _ticketing.IssueAsync(booking);
-            booking.TicketingResponseXml = !string.IsNullOrWhiteSpace(result.DocumentRetrieveXml)
+            var documentVerifiedTicketNumbers = BookingTicketingService.ExtractVerifiedTicketNumbers(result.DocumentRetrieveXml);
+            booking.TicketingResponseXml = documentVerifiedTicketNumbers.Count > 0
                 ? result.DocumentRetrieveXml
                 : string.IsNullOrWhiteSpace(result.RefreshedRecordXml)
                     ? result.ResponseXml

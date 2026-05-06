@@ -192,6 +192,34 @@ public class BookingTicketingService
         if (string.IsNullOrWhiteSpace(airReservationLocator))
             throw new InvalidOperationException("Air reservation locator could not be resolved for ticket issuance.");
 
+        var providerCode = (snapshot.ProviderCode ?? string.Empty).Trim().ToUpperInvariant();
+        var pricingInfoKeys = ExtractTicketingAirPricingInfoKeys(retrieveXml);
+
+        var pricingInfoRefsXml = pricingInfoKeys.Count == 0
+            ? string.Empty
+            : Environment.NewLine + string.Join(
+                Environment.NewLine,
+                pricingInfoKeys.Select(key => $@"  <air:AirPricingInfoRef Key=""{Escape(key)}"" />"));
+
+        var ticketingModifiersXml = string.Empty;
+        if (providerCode == "1G" || providerCode == "1P")
+        {
+            var modifierPricingRefs = pricingInfoKeys.Count == 0
+                ? string.Empty
+                : string.Join(
+                    Environment.NewLine,
+                    pricingInfoKeys.Select(key => $@"    <air:AirPricingInfoRef Key=""{Escape(key)}"" />")) + Environment.NewLine;
+
+            ticketingModifiersXml = $@"
+
+  <air:AirTicketingModifiers>
+{modifierPricingRefs}
+    <com:FormOfPayment Type=""Cash"">
+      <com:ProviderReservationInfoRef ProviderReservationLevel=""true"" />
+    </com:FormOfPayment>
+  </air:AirTicketingModifiers>";
+        }
+
         return $@"
 <air:AirTicketingReq xmlns:air=""{AirNamespace}""
                      xmlns:com=""{CommonNamespace}""
@@ -201,6 +229,7 @@ public class BookingTicketingService
                      ReturnInfoOnFail=""true"">
   <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
   <air:AirReservationLocatorCode>{Escape(airReservationLocator)}</air:AirReservationLocatorCode>
+{pricingInfoRefsXml}{ticketingModifiersXml}
 </air:AirTicketingReq>".Trim();
     }
 
@@ -562,17 +591,38 @@ public class BookingTicketingService
         {
             var doc = XDocument.Parse(xml);
 
-            return doc.Descendants()
-                .Where(x =>
-                    x.Name.LocalName.Equals("ResponseMessage", StringComparison.OrdinalIgnoreCase) ||
-                    x.Name.LocalName.Equals("TicketFailureInfo", StringComparison.OrdinalIgnoreCase) ||
-                    x.Name.LocalName.Equals("ErrorInfo", StringComparison.OrdinalIgnoreCase) ||
-                    x.Name.LocalName.Equals("Description", StringComparison.OrdinalIgnoreCase))
+            var values = new List<string?>();
+
+            values.AddRange(doc.Descendants()
+                .Where(x => x.Name.LocalName.Equals("faultstring", StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Value?.Trim()));
+
+            values.AddRange(doc.Descendants()
+                .Where(x => x.Name.LocalName.Equals("ResponseMessage", StringComparison.OrdinalIgnoreCase))
                 .SelectMany(x => new[]
                 {
                     x.Attribute("Text")?.Value?.Trim(),
                     x.Value?.Trim()
-                })
+                }));
+
+            values.AddRange(doc.Descendants()
+                .Where(x => x.Name.LocalName.Equals("TicketFailureInfo", StringComparison.OrdinalIgnoreCase))
+                .SelectMany(x => new[]
+                {
+                    x.Attribute("Message")?.Value?.Trim(),
+                    x.Attribute("Text")?.Value?.Trim(),
+                    x.Value?.Trim()
+                }));
+
+            values.AddRange(doc.Descendants()
+                .Where(x => x.Name.LocalName.Equals("ErrorInfo", StringComparison.OrdinalIgnoreCase))
+                .SelectMany(errorInfo => new[]
+                {
+                    errorInfo.Descendants().FirstOrDefault(child => child.Name.LocalName.Equals("Description", StringComparison.OrdinalIgnoreCase))?.Value?.Trim(),
+                    errorInfo.Attribute("Description")?.Value?.Trim()
+                }));
+
+            return values
                 .Where(value =>
                     !string.IsNullOrWhiteSpace(value) &&
                     value!.Length > 2 &&
@@ -582,6 +632,29 @@ public class BookingTicketingService
                     !value.StartsWith("TV-", StringComparison.OrdinalIgnoreCase))
                 .Select(value => value!)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    private static IReadOnlyList<string> ExtractTicketingAirPricingInfoKeys(string retrieveXml)
+    {
+        if (string.IsNullOrWhiteSpace(retrieveXml))
+            return Array.Empty<string>();
+
+        try
+        {
+            var doc = XDocument.Parse(retrieveXml);
+
+            return doc.Descendants()
+                .Where(x => x.Name.LocalName.Equals("AirPricingInfo", StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Attribute("Key")?.Value?.Trim())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Cast<string>()
+                .Distinct(StringComparer.Ordinal)
                 .ToList();
         }
         catch
