@@ -60,6 +60,7 @@ export default function AirTicketingWorkspacePage() {
     const minDate = getTodayString();
     const maxDate = addDays(minDate, 5);
     const showWalletSummary = !!booking && currentUser?.id === booking.agentId;
+    const isAdmin = currentUser?.role?.toUpperCase() === "ADMIN";
     const hasSavedWorkflow = !!booking?.airTicketingFormOfPayment && !!booking?.airTicketingDate;
     const isTicketed = booking?.status === "TICKETED";
     const isVoided = booking?.status === "VOIDED" || booking?.airTicketingStatus === "VOIDED";
@@ -151,6 +152,7 @@ export default function AirTicketingWorkspacePage() {
 
     const walletEnough = (walletSummary?.availableBalance ?? 0) >= booking.amount;
     const pnr = booking.airlineLocator || "-";
+    const debugInfo = booking.debug;
 
     return (
         <div className="space-y-6 fade-in">
@@ -401,6 +403,64 @@ export default function AirTicketingWorkspacePage() {
                             </div>
                         )}
                     </div>
+
+                    {isAdmin && debugInfo ? (
+                        <div className="premium-panel rounded-[2rem] p-6">
+                            <div className="flex items-center gap-3">
+                                <AlertTriangle size={18} className="text-slate-500" />
+                                <div className="subtle-kicker">Admin debug panel</div>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-[1.5rem] bg-white/80 px-4 py-3">
+                                    <div className="subtle-kicker">Provider type</div>
+                                    <div className="mt-2 text-sm font-semibold text-[var(--ink)]">{debugInfo.providerType}</div>
+                                </div>
+                                <div className="rounded-[1.5rem] bg-white/80 px-4 py-3">
+                                    <div className="subtle-kicker">Workflow assessment</div>
+                                    <div className="mt-2 text-sm font-semibold text-[var(--ink)]">{debugInfo.workflow}</div>
+                                </div>
+                                <div className="rounded-[1.5rem] bg-white/80 px-4 py-3">
+                                    <div className="subtle-kicker">Stored pricing</div>
+                                    <div className={`mt-2 inline-flex status-pill ${debugInfo.hasStoredPricing ? "status-success" : "status-danger"}`}>
+                                        {debugInfo.hasStoredPricing ? "PRESENT" : "MISSING"}
+                                    </div>
+                                </div>
+                                <div className="rounded-[1.5rem] bg-white/80 px-4 py-3">
+                                    <div className="subtle-kicker">Portal auto-ticketing</div>
+                                    <div className={`mt-2 inline-flex status-pill ${debugInfo.supportsPortalAutoIssue ? "status-success" : "status-danger"}`}>
+                                        {debugInfo.supportsPortalAutoIssue ? "ELIGIBLE" : "BLOCKED"}
+                                    </div>
+                                </div>
+                                <div className="rounded-[1.5rem] bg-white/80 px-4 py-3">
+                                    <div className="subtle-kicker">Ticket evidence</div>
+                                    <div className={`mt-2 inline-flex status-pill ${debugInfo.hasTicketEvidence ? "status-success" : "status-danger"}`}>
+                                        {debugInfo.hasTicketEvidence
+                                            ? `${debugInfo.ticketEvidenceCount} FOUND (${debugInfo.ticketEvidenceSource})`
+                                            : "NONE"}
+                                    </div>
+                                </div>
+                                <div className="rounded-[1.5rem] bg-white/80 px-4 py-3">
+                                    <div className="subtle-kicker">Wallet hold</div>
+                                    <div className={`mt-2 inline-flex status-pill ${debugInfo.walletHoldActive ? "" : "status-success"}`}>
+                                        {debugInfo.walletHoldActive ? "ACTIVE" : "CLEAR"}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 rounded-[1.5rem] bg-[rgba(239,246,255,0.92)] px-4 py-3 text-sm leading-7 text-[var(--ink)]">
+                                <div className="subtle-kicker">Recommendation</div>
+                                <div className="mt-2">{debugInfo.recommendation}</div>
+                            </div>
+
+                            {debugInfo.lastFailureSummary ? (
+                                <div className="mt-4 rounded-[1.5rem] bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                                    <div className="subtle-kicker">Last Travelport failure summary</div>
+                                    <div className="mt-2 leading-7">{debugInfo.lastFailureSummary}</div>
+                                </div>
+                            ) : null}
+                        </div>
+                    ) : null}
                 </div>
             </section>
         </div>

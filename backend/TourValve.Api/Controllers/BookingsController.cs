@@ -155,6 +155,7 @@ public class BookingsController : ControllerBase
             .Where(x => x.Id == booking.AgentId)
             .Select(x => x.Email)
             .FirstOrDefaultAsync() ?? string.Empty;
+        var debugInfo = BuildTicketingDebugInfo(booking);
 
         return Ok(new
         {
@@ -189,6 +190,7 @@ public class BookingsController : ControllerBase
             booking.TicketVoidedAt,
             booking.Status,
             booking.CreatedAt,
+            debug = debugInfo,
             ancillaries = await _db.BookingAncillaryOrders
                 .AsNoTracking()
                 .Where(x => x.BookingId == booking.Id)
@@ -1306,6 +1308,84 @@ public class BookingsController : ControllerBase
         }
 
         return message;
+    }
+
+    private static object BuildTicketingDebugInfo(TourValve.Domain.Booking booking)
+    {
+        var storedTicketNumbers = DeserializeStringList(booking.TicketNumbersJson)
+            .Where(BookingTicketingService.IsLikelyTicketNumber)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var verifiedTicketNumbers = BookingTicketingService.ExtractVerifiedTicketNumbers(booking.TicketingResponseXml)
+            .Where(BookingTicketingService.IsLikelyTicketNumber)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var ticketEvidence = storedTicketNumbers.Count > 0
+            ? storedTicketNumbers
+            : verifiedTicketNumbers;
+        var ticketEvidenceSource = storedTicketNumbers.Count > 0
+            ? "BOOKING_RECORD"
+            : verifiedTicketNumbers.Count > 0
+                ? "TRAVELPORT_RECORD"
+                : "NONE";
+
+        var analysis = TravelportBookingSupportInspector.Analyze(
+            booking.TicketingResponseXml,
+            booking.TicketingResponseXml);
+        var providerType = ResolveProviderType(booking.ProviderCode);
+        var hasStoredPricing = TravelportBookingSupportInspector.HasReservationPricingInfo(booking.TicketingResponseXml);
+        var walletHoldActive = booking.AirTicketingWalletHoldId.HasValue &&
+            !string.Equals(booking.AirTicketingPaymentStatus, AirTicketingWorkflowService.PaymentPaid, StringComparison.OrdinalIgnoreCase);
+
+        return new
+        {
+            providerType,
+            workflow = analysis.Workflow,
+            supportsPortalCheckout = analysis.SupportsPortalCheckout,
+            supportsPortalAutoIssue = analysis.SupportsPortalAutoIssue,
+            requiresSupplierPayment = analysis.RequiresSupplierPayment,
+            hasStoredPricing,
+            hasTicketEvidence = ticketEvidence.Count > 0,
+            ticketEvidenceCount = ticketEvidence.Count,
+            ticketEvidenceSource,
+            walletHoldActive,
+            lastFailureSummary = booking.AirTicketingLastError ?? string.Empty,
+            recommendation = BuildDebugRecommendation(booking, providerType, hasStoredPricing, analysis, ticketEvidence.Count > 0)
+        };
+    }
+
+    private static string ResolveProviderType(string? providerCode)
+    {
+        var normalized = (providerCode ?? string.Empty).Trim().ToUpperInvariant();
+        return normalized switch
+        {
+            "1G" or "1V" or "1P" => "HOST_GDS",
+            "ACH" or "RCH" => "SUPPLIER_DIRECT",
+            _ when string.IsNullOrWhiteSpace(normalized) => "UNKNOWN",
+            _ => "OTHER"
+        };
+    }
+
+    private static string BuildDebugRecommendation(
+        TourValve.Domain.Booking booking,
+        string providerType,
+        bool hasStoredPricing,
+        TravelportBookingSupportAnalysis analysis,
+        bool hasTicketEvidence)
+    {
+        if (providerType == "SUPPLIER_DIRECT" || analysis.RequiresSupplierPayment)
+            return "Keep this itinerary out of portal auto-ticketing. Supplier-direct content should stay on manual or supplier payment servicing.";
+
+        if (!hasStoredPricing)
+            return "Travelport does not show reservation-ready stored pricing in the current record. Reprice and rebook from fresh live search before issuing.";
+
+        if (hasTicketEvidence)
+            return "Ticket evidence is present. Use the airline PNR with the passenger surname on the airline portal.";
+
+        if (string.Equals(booking.AirTicketingStatus, AirTicketingWorkflowService.WorkflowFailed, StringComparison.OrdinalIgnoreCase))
+            return "Auto-ticketing failed without valid ticket evidence. Check the last failure summary, then reprice/rebook or rerun issue from AirTicketing.";
+
+        return "Reservation is portal-checkout ready, but ticket evidence is not present yet. Refresh the AirTicketing workspace before using the airline portal.";
     }
 
     private static bool NeedsAirlineLocatorRefresh(TourValve.Domain.Booking booking)

@@ -344,6 +344,20 @@ export type BookingRecord = {
 export type BookingDetail = BookingRecord & {
     agentEmail: string;
     ancillaries?: BookingAncillaryOrder[];
+    debug?: {
+        providerType: string;
+        workflow: string;
+        supportsPortalCheckout: boolean;
+        supportsPortalAutoIssue: boolean;
+        requiresSupplierPayment: boolean;
+        hasStoredPricing: boolean;
+        hasTicketEvidence: boolean;
+        ticketEvidenceCount: number;
+        ticketEvidenceSource: string;
+        walletHoldActive: boolean;
+        lastFailureSummary: string;
+        recommendation: string;
+    };
 };
 
 export type BookingAncillaryOrder = {
