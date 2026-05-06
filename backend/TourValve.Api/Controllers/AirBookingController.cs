@@ -154,7 +154,7 @@ public sealed class AirBookingController : ControllerBase
                 refreshedPricing.PricingContextXml);
             WriteBookingDebugSnapshot("REQUEST_PREPARED", reservationRequestXml, null, null);
 
-            var rawResponse = await _airClient.PostToUniversalServiceAsync(
+            var rawResponse = await _airClient.PostToAirServiceAsync(
                 reservationRequestXml,
                 "http://www.travelport.com/schema/universal_v51_0/AirCreateReservationReq");
             WriteBookingDebugSnapshot("RESPONSE_RECEIVED", reservationRequestXml, rawResponse, null);
