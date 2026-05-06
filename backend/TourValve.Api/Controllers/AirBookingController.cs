@@ -318,9 +318,11 @@ public sealed class AirBookingController : ControllerBase
     {
         var pricingPayload = BuildPricingPayload(pricingSolutionXml, pricingContextXml);
         var providerCode = bookingSupport.ProviderCode;
-        var actionStatusXml = request.AutoIssueTicket
-            ? string.Empty
-            : $"{Environment.NewLine}  <com:ActionStatus Type=\"TAW\" TicketDate=\"{DateTime.UtcNow:yyyy-MM-dd}T23:59:00\" ProviderCode=\"{Escape(providerCode)}\" />";
+        // Travelport may reject AirCreateReservationReq without at least one ActionStatus (Error 7228).
+        // Use a safe end-of-day ticketing time-limit to keep the record consistent whether we auto-issue
+        // immediately or ticket later via workflow.
+        var actionStatusXml =
+            $"{Environment.NewLine}  <com:ActionStatus Type=\"TAW\" TicketDate=\"{DateTime.UtcNow:yyyy-MM-dd}T23:59:00.000\" ProviderCode=\"{Escape(providerCode)}\" />";
 
         var passengersXml = string.Join(
             Environment.NewLine,
