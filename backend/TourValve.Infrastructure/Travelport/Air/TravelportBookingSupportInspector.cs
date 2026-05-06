@@ -21,6 +21,19 @@ public static class TravelportBookingSupportInspector
         "RCH"
     };
 
+    private static readonly string[] BlockingProviderMarkers =
+    {
+        "NO FARES",
+        "SECURED SELL NOT AVAILABLE",
+        "UNABLE TO SELL",
+        "NO VALIDATING CARRIER",
+        "NO TICKETS YET",
+        "NO VALID E-TICKETS",
+        "UNABLE TO TICKET",
+        "SELL CHECK FAILED",
+        "CLASS NOT AVAILABLE"
+    };
+
     public static TravelportBookingSupportAnalysis Analyze(string? airPricingSolutionXml, string? airPricingContextXml)
     {
         var providerCode = ResolveProviderCode(airPricingSolutionXml, airPricingContextXml);
@@ -36,6 +49,10 @@ public static class TravelportBookingSupportInspector
             ContainsMarker(combinedXml, "BSPPayment") ||
             ContainsMarker(combinedXml, "ARCPayment") ||
             ContainsMarker(combinedXml, "Ticketless");
+        var providerIsHosted = HostProviders.Contains(providerCode);
+        var hasBlockingProviderStatus = ContainsAnyMarker(combinedXml, BlockingProviderMarkers);
+        var hasNonTicketableSegment = ContainsMarker(combinedXml, "ETicketability=\"No\"") ||
+            ContainsMarker(combinedXml, "ETicketability='No'");
 
         if (!hasStoredPricing)
         {
@@ -61,13 +78,37 @@ public static class TravelportBookingSupportInspector
                 "This itinerary uses supplier-direct payment content, so it cannot go through TourValve wallet auto-ticketing yet. Choose a GDS-hosted fare or service this carrier manually through the supplier payment workflow.");
         }
 
+        if (!providerIsHosted)
+        {
+            return new TravelportBookingSupportAnalysis(
+                providerCode,
+                WorkflowNotReady,
+                false,
+                false,
+                false,
+                false,
+                "This itinerary is not returning hosted Travelport reservation content for portal checkout yet. Search again or choose another GDS-hosted fare.");
+        }
+
+        if (hasNonTicketableSegment || hasBlockingProviderStatus)
+        {
+            return new TravelportBookingSupportAnalysis(
+                providerCode,
+                WorkflowNotReady,
+                false,
+                false,
+                false,
+                false,
+                "This itinerary is returning a non-ticketable provider status from Travelport, so it cannot complete portal reservation and auto-issuance safely. Search again or choose another fare.");
+        }
+
         return new TravelportBookingSupportAnalysis(
             providerCode,
             WorkflowAutoTicketing,
             true,
             true,
             false,
-            HostProviders.Contains(providerCode),
+            false,
             string.Empty);
     }
 
@@ -126,6 +167,9 @@ public static class TravelportBookingSupportInspector
     private static bool ContainsMarker(string xml, string marker) =>
         !string.IsNullOrWhiteSpace(xml) &&
         xml.Contains(marker, StringComparison.OrdinalIgnoreCase);
+
+    private static bool ContainsAnyMarker(string xml, IEnumerable<string> markers) =>
+        markers.Any(marker => ContainsMarker(xml, marker));
 }
 
 public sealed record TravelportBookingSupportAnalysis(

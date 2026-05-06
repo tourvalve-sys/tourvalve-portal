@@ -2,6 +2,16 @@ import type { FlightResult } from "@/lib/api";
 
 const HOST_PROVIDERS = new Set(["1G", "1V", "1P"]);
 const SUPPLIER_DIRECT_PROVIDERS = new Set(["ACH", "RCH"]);
+const BLOCKING_PROVIDER_MARKERS = [
+    "NO FARES",
+    "SECURED SELL NOT AVAILABLE",
+    "UNABLE TO SELL",
+    "SELL CHECK FAILED",
+    "NO VALIDATING CARRIER",
+    "CLASS NOT AVAILABLE",
+    "NO VALID E-TICKETS",
+    "UNABLE TO TICKET",
+];
 
 type BookingWorkflowMetadata = Pick<
     FlightResult,
@@ -33,8 +43,20 @@ export function inferPortalBookingSupport(input: BookingWorkflowInput): BookingW
     const requiresSupplierPayment =
         SUPPLIER_DIRECT_PROVIDERS.has(derivedProviderCode.toUpperCase()) ||
         /AgencyPayment|BSPPayment|ARCPayment|Ticketless/i.test(combinedXml);
+    const hasNonTicketableSegment = /ETicketability\s*=\s*["']No["']/i.test(combinedXml);
+    const hasBlockingProviderStatus = BLOCKING_PROVIDER_MARKERS.some((marker) =>
+        combinedXml.toUpperCase().includes(marker)
+    );
+    const providerIsHosted = HOST_PROVIDERS.has(derivedProviderCode.toUpperCase());
 
-    const inferredCheckoutSupport = hasStoredPricing && !requiresSupplierPayment && price > 0 && !!solutionXml;
+    const inferredCheckoutSupport =
+        hasStoredPricing &&
+        providerIsHosted &&
+        !requiresSupplierPayment &&
+        !hasNonTicketableSegment &&
+        !hasBlockingProviderStatus &&
+        price > 0 &&
+        !!solutionXml;
     const explicitCheckoutSupport = typeof input.supportsPortalCheckout === "boolean"
         ? input.supportsPortalCheckout
         : inferredCheckoutSupport;
@@ -48,6 +70,8 @@ export function inferPortalBookingSupport(input: BookingWorkflowInput): BookingW
         ? "BOOKING_NOT_READY"
         : requiresSupplierPayment
             ? "SUPPLIER_PAYMENT_REQUIRED"
+            : !providerIsHosted || hasNonTicketableSegment || hasBlockingProviderStatus
+                ? "BOOKING_NOT_READY"
             : "AUTO_TICKETING_READY";
 
     const explicitWorkflow = typeof input.bookingWorkflow === "string" ? input.bookingWorkflow.trim() : "";
@@ -55,7 +79,13 @@ export function inferPortalBookingSupport(input: BookingWorkflowInput): BookingW
     const explicitNotice = typeof input.bookingNotice === "string" ? input.bookingNotice.trim() : "";
     const bookingNotice = supportsPortalCheckout
         ? ""
-        : explicitNotice || buildFallbackNotice(hasStoredPricing, requiresSupplierPayment, derivedProviderCode);
+        : explicitNotice || buildFallbackNotice(
+            hasStoredPricing,
+            requiresSupplierPayment,
+            providerIsHosted,
+            hasNonTicketableSegment || hasBlockingProviderStatus,
+            derivedProviderCode
+        );
 
     return {
         providerCode: derivedProviderCode,
@@ -89,7 +119,13 @@ function hasReservationPricingInfo(xml: string): boolean {
         /(FareInfo\b|BookingInfo\b)/i.test(xml);
 }
 
-function buildFallbackNotice(hasStoredPricing: boolean, requiresSupplierPayment: boolean, providerCode: string): string {
+function buildFallbackNotice(
+    hasStoredPricing: boolean,
+    requiresSupplierPayment: boolean,
+    providerIsHosted: boolean,
+    hasNonTicketableStatus: boolean,
+    providerCode: string
+): string {
     if (!hasStoredPricing) {
         return "This itinerary does not include reservation-ready stored pricing yet. Search again and choose a fully priced fare before confirming the booking.";
     }
@@ -100,6 +136,14 @@ function buildFallbackNotice(hasStoredPricing: boolean, requiresSupplierPayment:
             : "supplier-direct content";
 
         return `This itinerary uses ${providerLabel}, so TourValve cannot auto-ticket it through wallet checkout yet. Please choose a GDS-hosted fare for instant portal issuance.`;
+    }
+
+    if (!providerIsHosted) {
+        return "This itinerary is not returning hosted Travelport reservation content for portal checkout yet. Please choose another fare.";
+    }
+
+    if (hasNonTicketableStatus) {
+        return "This itinerary is returning a non-ticketable provider status from Travelport, so it cannot be reserved safely from the portal. Please search again or choose another fare.";
     }
 
     return "This itinerary is not ready for the TourValve portal checkout flow yet. Search again or choose another fare.";

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TourValve.Api.Models;
+using TourValve.Application.Flights.DTO;
 using TourValve.Application.Bookings.Commands;
 using TourValve.Application.Wallet;
 using TourValve.Domain;
@@ -164,11 +165,18 @@ public sealed class AirBookingController : ControllerBase
                 throw new InvalidOperationException("Travelport returned an HTTP 404 page for this booking request. The reservation call was routed to an endpoint that does not serve this payload.");
             }
 
+            var reservationIssue = ExtractReservationResponseIssue(rawResponse);
             var refs = ExtractReservationReferences(rawResponse, request.Carrier);
             var primaryLocator = refs.UniversalRecordLocator
                 ?? refs.ProviderLocator
                 ?? refs.AirlineLocator
                 ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(reservationIssue))
+            {
+                WriteBookingDebugSnapshot("RESERVATION_RESPONSE_BLOCKED", reservationRequestXml, rawResponse, reservationIssue);
+                throw new InvalidOperationException(reservationIssue);
+            }
 
             if (string.IsNullOrWhiteSpace(primaryLocator))
             {
@@ -310,9 +318,6 @@ public sealed class AirBookingController : ControllerBase
     {
         var pricingPayload = BuildPricingPayload(pricingSolutionXml, pricingContextXml);
         var providerCode = bookingSupport.ProviderCode;
-        var formOfPaymentXml = request.AutoIssueTicket && bookingSupport.ShouldAttachCashFormOfPayment
-            ? $"{Environment.NewLine}  <com:FormOfPayment Type=\"Cash\" />"
-            : string.Empty;
         var actionStatusXml = request.AutoIssueTicket
             ? string.Empty
             : $"{Environment.NewLine}  <com:ActionStatus Type=\"TAW\" TicketDate=\"{DateTime.UtcNow:yyyy-MM-dd}T23:59:00\" ProviderCode=\"{Escape(providerCode)}\" />";
@@ -344,7 +349,6 @@ public sealed class AirBookingController : ControllerBase
   <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
   {passengersXml}
   <com:EmailNotification Recipients=""Default"" />
-  {formOfPaymentXml}
   {pricingPayload}
   {actionStatusXml}
 </univ:AirCreateReservationReq>".Trim();
@@ -714,6 +718,86 @@ public sealed class AirBookingController : ControllerBase
         );
     }
 
+    private static string? ExtractReservationResponseIssue(string rawResponse)
+    {
+        if (string.IsNullOrWhiteSpace(rawResponse) || !rawResponse.Contains('<'))
+            return null;
+
+        try
+        {
+            var doc = XDocument.Parse(rawResponse);
+
+            var faultText = doc.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName.Equals("faultstring", StringComparison.OrdinalIgnoreCase))
+                ?.Value
+                ?.Trim();
+            if (!string.IsNullOrWhiteSpace(faultText))
+                return BuildProviderFriendlyBookingDetail(faultText);
+
+            var responseMessages = doc.Descendants()
+                .Where(x => x.Name.LocalName.Equals("ResponseMessage", StringComparison.OrdinalIgnoreCase))
+                .Select(x => new
+                {
+                    Type = x.Attribute("Type")?.Value?.Trim() ?? string.Empty,
+                    Text = x.Value?.Trim() ?? string.Empty
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.Text))
+                .ToList();
+
+            var sellMessages = doc.Descendants()
+                .Where(x => x.Name.LocalName.Equals("SellMessage", StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Value?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Cast<string>()
+                .ToList();
+
+            var blockingProviderMessage = responseMessages
+                .Where(message =>
+                    message.Type.Equals("Error", StringComparison.OrdinalIgnoreCase) ||
+                    LooksLikeBlockingReservationMessage(message.Text))
+                .Select(message => message.Text)
+                .Concat(sellMessages.Where(LooksLikeBlockingReservationMessage))
+                .FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(blockingProviderMessage))
+                return BuildProviderFriendlyBookingDetail(blockingProviderMessage);
+
+            var segmentStatuses = doc.Descendants()
+                .Where(x => x.Name.LocalName.Equals("AirSegment", StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Attribute("Status")?.Value?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Cast<string>()
+                .ToList();
+
+            var hasPendingSegmentStatus = segmentStatuses.Any(status =>
+                status.Equals("PN", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("UC", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("UN", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("NO", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("WL", StringComparison.OrdinalIgnoreCase));
+
+            var hasNonTicketableSegment = doc.Descendants()
+                .Where(x => x.Name.LocalName.Equals("AirSegment", StringComparison.OrdinalIgnoreCase))
+                .Any(x => string.Equals(x.Attribute("ETicketability")?.Value?.Trim(), "No", StringComparison.OrdinalIgnoreCase));
+
+            if (hasPendingSegmentStatus && sellMessages.Count > 0)
+            {
+                return BuildProviderFriendlyBookingDetail(sellMessages[0]);
+            }
+
+            if (hasNonTicketableSegment)
+            {
+                return "Travelport returned a non-ticketable reservation status for this itinerary, so the portal stopped before saving a broken booking. Please search again or choose another fare.";
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string? FirstValue(XDocument doc, params (string ElementName, string? AttributeName)[] probes)
     {
         foreach (var (elementName, attributeName) in probes)
@@ -784,15 +868,6 @@ public sealed class AirBookingController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.AirPricingSolutionXml))
             throw new InvalidOperationException("The selected itinerary is missing Travelport pricing information. Search again and choose a priced result before booking.");
 
-        if (HasReservationPricingInfo(request.AirPricingSolutionXml))
-        {
-            return new BookingPricingRefreshResult(
-                request.AirPricingSolutionXml,
-                string.IsNullOrWhiteSpace(request.AirPricingContextXml)
-                    ? request.AirPricingSolutionXml
-                    : request.AirPricingContextXml);
-        }
-
         if (string.IsNullOrWhiteSpace(request.AirPricingContextXml))
         {
             return new BookingPricingRefreshResult(request.AirPricingSolutionXml, request.AirPricingSolutionXml);
@@ -806,14 +881,14 @@ public sealed class AirBookingController : ControllerBase
                 "http://www.travelport.com/schema/air_v51_0/AirPriceReq");
 
             var pricedFlights = TravelportFlightParser.Parse(pricedResponse);
-            var priced = pricedFlights.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.AirPricingSolutionXml) && x.Price > 0m);
+            var priced = SelectMatchingPricedFlight(pricedFlights, request);
             if (priced is not null)
             {
                 return new BookingPricingRefreshResult(priced.AirPricingSolutionXml, priced.AirPricingContextXml);
             }
 
             var pricedDoc = XDocument.Parse(pricedResponse);
-            var firstSolution = pricedDoc.Descendants().FirstOrDefault(x => x.Name.LocalName == "AirPricingSolution");
+            var firstSolution = ExtractMatchingPricingSolution(pricedDoc, request);
             if (firstSolution is not null)
             {
                 return new BookingPricingRefreshResult(
@@ -821,19 +896,10 @@ public sealed class AirBookingController : ControllerBase
                     pricedDoc.Root?.ToString(SaveOptions.DisableFormatting) ?? pricedResponse);
             }
 
-            throw new InvalidOperationException("Travelport repricing did not return a usable fare for this itinerary. Please search again and choose another result.");
+            throw new InvalidOperationException("Travelport repricing did not return a matching reservation-ready fare for this itinerary. Search again and choose another result.");
         }
         catch (Exception ex)
         {
-            if (HasReservationPricingInfo(request.AirPricingSolutionXml))
-            {
-                return new BookingPricingRefreshResult(
-                    request.AirPricingSolutionXml,
-                    string.IsNullOrWhiteSpace(request.AirPricingContextXml)
-                        ? request.AirPricingSolutionXml
-                        : request.AirPricingContextXml);
-            }
-
             throw new InvalidOperationException(ExtractTravelportMessage(ex), ex);
         }
     }
@@ -993,6 +1059,168 @@ public sealed class AirBookingController : ControllerBase
             parts.Add($@"<com:SearchPassenger Key=""PAX-INF-{index + 1}"" Code=""INF"" Age=""1""/>");
 
         return string.Join(Environment.NewLine + "  ", parts);
+    }
+
+    private static FlightDto? SelectMatchingPricedFlight(IEnumerable<FlightDto> pricedFlights, AirBookingRequest request)
+    {
+        var requestedSegments = GetRequestedSegments(request);
+        var candidates = pricedFlights
+            .Where(flight => !string.IsNullOrWhiteSpace(flight.AirPricingSolutionXml) && flight.Price > 0m)
+            .ToList();
+
+        var exactMatch = candidates.FirstOrDefault(flight => MatchesRequestedItinerary(flight.ItinerarySegments, requestedSegments));
+        if (exactMatch is not null)
+            return exactMatch;
+
+        if (requestedSegments.Count == 1)
+        {
+            var requested = requestedSegments[0];
+            var broadMatch = candidates.FirstOrDefault(flight =>
+                string.Equals(flight.Carrier, requested.Carrier, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(flight.FlightNumber, requested.FlightNumber, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(flight.From, requested.From, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(flight.To, requested.To, StringComparison.OrdinalIgnoreCase) &&
+                SameScheduledTime(flight.Departure, requested.Departure));
+
+            if (broadMatch is not null)
+                return broadMatch;
+        }
+
+        return candidates.Count == 1 ? candidates[0] : null;
+    }
+
+    private static XElement? ExtractMatchingPricingSolution(XDocument pricedDoc, AirBookingRequest request)
+    {
+        var solutions = pricedDoc.Descendants()
+            .Where(x => x.Name.LocalName == "AirPricingSolution")
+            .Select(solution => new XElement(solution))
+            .ToList();
+
+        if (solutions.Count == 0)
+            return null;
+
+        var requestedSegments = GetRequestedSegments(request);
+        var exactMatch = solutions.FirstOrDefault(solution =>
+            MatchesRequestedItinerary(
+                ExtractSolutionSegments(solution, pricedDoc),
+                requestedSegments));
+
+        return exactMatch ?? (solutions.Count == 1 ? solutions[0] : null);
+    }
+
+    private static List<FlightSegmentDto> ExtractSolutionSegments(XElement solution, XDocument contextDoc)
+    {
+        var segments = solution.Elements()
+            .Where(x => x.Name.LocalName == "AirSegment")
+            .Select(MapSegment)
+            .Where(segment => segment is not null)
+            .Cast<FlightSegmentDto>()
+            .ToList();
+
+        if (segments.Count > 0)
+            return segments;
+
+        var refs = solution.Descendants()
+            .Where(x => x.Name.LocalName == "AirSegmentRef")
+            .Select(x => x.Attribute("Key")?.Value)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return refs
+            .Select(segmentRef => contextDoc.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "AirSegment" && x.Attribute("Key")?.Value == segmentRef))
+            .Where(segment => segment is not null)
+            .Select(MapSegment)
+            .Where(segment => segment is not null)
+            .Cast<FlightSegmentDto>()
+            .ToList();
+    }
+
+    private static FlightSegmentDto? MapSegment(XElement? segment)
+    {
+        if (segment is null)
+            return null;
+
+        return new FlightSegmentDto
+        {
+            Carrier = segment.Attribute("Carrier")?.Value ?? string.Empty,
+            FlightNumber = segment.Attribute("FlightNumber")?.Value ?? string.Empty,
+            From = segment.Attribute("Origin")?.Value ?? string.Empty,
+            To = segment.Attribute("Destination")?.Value ?? string.Empty,
+            Departure = segment.Attribute("DepartureTime")?.Value ?? string.Empty,
+            Arrival = segment.Attribute("ArrivalTime")?.Value ?? string.Empty
+        };
+    }
+
+    private static List<FlightSegmentDto> GetRequestedSegments(AirBookingRequest request)
+    {
+        if (request.ItinerarySegments.Count > 0)
+        {
+            return request.ItinerarySegments.Select(segment => new FlightSegmentDto
+            {
+                Carrier = segment.Carrier,
+                FlightNumber = segment.FlightNumber,
+                From = segment.From,
+                To = segment.To,
+                Departure = segment.Departure,
+                Arrival = segment.Arrival
+            }).ToList();
+        }
+
+        return new List<FlightSegmentDto>
+        {
+            new()
+            {
+                Carrier = request.Carrier,
+                FlightNumber = request.FlightNumber,
+                From = request.From,
+                To = request.To,
+                Departure = request.Departure,
+                Arrival = request.Arrival
+            }
+        };
+    }
+
+    private static bool MatchesRequestedItinerary(
+        IReadOnlyList<FlightSegmentDto>? candidateSegments,
+        IReadOnlyList<FlightSegmentDto> requestedSegments)
+    {
+        if (candidateSegments is null || candidateSegments.Count != requestedSegments.Count)
+            return false;
+
+        for (var index = 0; index < requestedSegments.Count; index++)
+        {
+            var candidate = candidateSegments[index];
+            var requested = requestedSegments[index];
+
+            if (!string.Equals(candidate.Carrier, requested.Carrier, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(candidate.FlightNumber, requested.FlightNumber, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(candidate.From, requested.From, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(candidate.To, requested.To, StringComparison.OrdinalIgnoreCase) ||
+                !SameScheduledTime(candidate.Departure, requested.Departure))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool SameScheduledTime(string? left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+            return false;
+
+        if (DateTimeOffset.TryParse(left, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var leftValue) &&
+            DateTimeOffset.TryParse(right, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var rightValue))
+        {
+            return leftValue.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture) ==
+                   rightValue.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
+        }
+
+        return string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ExtractHostTokensXml(string sourceXml, string? referenceXml = null)
@@ -1172,6 +1400,21 @@ public sealed class AirBookingController : ControllerBase
         return normalized.All(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_');
     }
 
+    private static bool LooksLikeBlockingReservationMessage(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        return value.Contains("NO FARES", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("SECURED SELL NOT AVAILABLE", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("UNABLE TO SELL", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("SELL CHECK FAILED", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("NO VALIDATING CARRIER", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("CLASS NOT AVAILABLE", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("unable to ticket", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("ticketless", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string ExtractTravelportMessage(Exception ex)
     {
         var message = ex.Message;
@@ -1200,6 +1443,17 @@ public sealed class AirBookingController : ControllerBase
         if (raw.Contains("supplier-direct payment", StringComparison.OrdinalIgnoreCase) ||
             raw.Contains("ACH", StringComparison.OrdinalIgnoreCase) && raw.Contains("payment", StringComparison.OrdinalIgnoreCase))
             return "This itinerary needs supplier-direct payment handling, so it cannot complete the TourValve wallet auto-ticketing flow yet.";
+
+        if (raw.Contains("NO FARES", StringComparison.OrdinalIgnoreCase))
+            return "Travelport could not keep a live fare attached to this itinerary during reservation creation. Search again and choose a newly priced fare before booking.";
+
+        if (raw.Contains("SECURED SELL NOT AVAILABLE", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("UNABLE TO SELL", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("SELL CHECK FAILED", StringComparison.OrdinalIgnoreCase))
+            return "The carrier did not return a secure-sell reservation for this itinerary, so TourValve stopped before creating a broken booking. Search again or choose another fare.";
+
+        if (raw.Contains("NO VALIDATING CARRIER", StringComparison.OrdinalIgnoreCase))
+            return "Travelport could not assign a validating carrier to this itinerary, so the reservation cannot complete from the portal right now. Search again or choose another fare.";
 
         if (raw.Contains("stored fare pricing", StringComparison.OrdinalIgnoreCase) ||
             raw.Contains("pricing information", StringComparison.OrdinalIgnoreCase))
@@ -1244,6 +1498,7 @@ public sealed class AirBookingController : ControllerBase
                     x.Name.LocalName.Equals("faultstring", StringComparison.OrdinalIgnoreCase) ||
                     x.Name.LocalName.Equals("ResponseMessage", StringComparison.OrdinalIgnoreCase) ||
                     x.Name.LocalName.Equals("ErrorInfo", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("SellMessage", StringComparison.OrdinalIgnoreCase) ||
                     x.Name.LocalName.Equals("Description", StringComparison.OrdinalIgnoreCase) ||
                     x.Name.LocalName.Equals("Message", StringComparison.OrdinalIgnoreCase))
                 .SelectMany(x => new[]
