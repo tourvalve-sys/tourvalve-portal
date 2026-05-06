@@ -39,7 +39,12 @@ public class AirTicketingWorker : BackgroundService
 
             try
             {
-                await workflow.IssueAsync(booking, null, "system@tourvalve.com", true, cancellationToken);
+                await workflow.IssueAsync(
+                    booking,
+                    null,
+                    "system@tourvalve.com",
+                    backgroundTriggered: true,
+                    cancellationToken: cancellationToken);
             }
             catch (Exception ex)
             {

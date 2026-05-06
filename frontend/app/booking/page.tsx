@@ -12,16 +12,12 @@ import {
 } from "lucide-react";
 import {
     bookFlight,
-    captureWalletHold,
-    createBookingRecord,
-    createWalletHold,
     getFlightSeatMap,
-    getMyWallet,
-    releaseWalletHold,
     type FlightSeatMapResponse,
 } from "@/lib/api";
 import AirlineBrand from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
+import { inferPortalBookingSupport } from "@/lib/bookingWorkflow";
 import {
     LATEST_BOOKING_CONFIRMATION_KEY,
     type BookingConfirmationState,
@@ -70,9 +66,9 @@ const BOOKING_PREPARE_CAPTIONS = [
     "Loading your selected itinerary, traveler mix, and booking session.",
 ];
 const BOOKING_CONFIRM_CAPTIONS = [
-    "Securing wallet balance before the live booking request is submitted.",
-    "Sending the reservation request and waiting for airline confirmation.",
-    "Preparing your locator and booking confirmation for the next step.",
+    "Checking wallet coverage and preparing the live reservation request.",
+    "Creating the PNR and syncing the booking record inside TourValve.",
+    "Issuing the ticket automatically when the reservation is ready.",
 ];
 
 function createPassenger(type: string): PassengerForm {
@@ -252,11 +248,33 @@ export default function BookingPage() {
             return null;
         }
 
+        const bookingSupport = inferPortalBookingSupport({
+            providerCode: typeof rawSelectedFlight.providerCode === "string" ? rawSelectedFlight.providerCode : "",
+            bookingWorkflow: typeof rawSelectedFlight.bookingWorkflow === "string" ? rawSelectedFlight.bookingWorkflow : "",
+            supportsPortalCheckout:
+                typeof rawSelectedFlight.supportsPortalCheckout === "boolean"
+                    ? rawSelectedFlight.supportsPortalCheckout
+                    : undefined,
+            supportsPortalAutoIssue:
+                typeof rawSelectedFlight.supportsPortalAutoIssue === "boolean"
+                    ? rawSelectedFlight.supportsPortalAutoIssue
+                    : undefined,
+            bookingNotice: typeof rawSelectedFlight.bookingNotice === "string" ? rawSelectedFlight.bookingNotice : "",
+            airPricingSolutionXml: typeof rawSelectedFlight.airPricingSolutionXml === "string" ? rawSelectedFlight.airPricingSolutionXml : "",
+            airPricingContextXml: typeof rawSelectedFlight.airPricingContextXml === "string" ? rawSelectedFlight.airPricingContextXml : "",
+            price: Number.isFinite(rawSelectedFlight.price) ? rawSelectedFlight.price : 0,
+        });
+
         return {
             ...rawSelectedFlight,
             price: Number.isFinite(rawSelectedFlight.price) ? rawSelectedFlight.price : 0,
             basePrice: Number.isFinite(rawSelectedFlight.basePrice) ? rawSelectedFlight.basePrice : 0,
             markupAmount: Number.isFinite(rawSelectedFlight.markupAmount) ? rawSelectedFlight.markupAmount : 0,
+            providerCode: bookingSupport.providerCode,
+            bookingWorkflow: bookingSupport.bookingWorkflow,
+            supportsPortalCheckout: bookingSupport.supportsPortalCheckout,
+            supportsPortalAutoIssue: bookingSupport.supportsPortalAutoIssue,
+            bookingNotice: bookingSupport.bookingNotice,
             baggageOfferTexts: Array.isArray(rawSelectedFlight.baggageOfferTexts)
                 ? rawSelectedFlight.baggageOfferTexts.filter((item): item is string => typeof item === "string")
                 : [],
@@ -357,6 +375,17 @@ export default function BookingPage() {
 
         return Array.from(new Set(items));
     }, [selectedFlight]);
+    const bookingBlockedMessage = useMemo(() => {
+        if (!selectedFlight) {
+            return "";
+        }
+
+        if (selectedFlight.supportsPortalCheckout) {
+            return "";
+        }
+
+        return selectedFlight.bookingNotice || "This itinerary is not ready for the TourValve portal checkout flow yet. Search again or choose another fare.";
+    }, [selectedFlight]);
     const normalizedSeatRows = useMemo(
         () => normalizeSeatRows(seatMap),
         [seatMap]
@@ -451,13 +480,11 @@ export default function BookingPage() {
         .join(" | ");
 
     const buildConfirmationState = (
-        reservation: Awaited<ReturnType<typeof bookFlight>>,
-        bookingRecord?: { bookingId: string; bookingReference: string } | null,
-        portalSyncPending = false
+        reservation: Awaited<ReturnType<typeof bookFlight>>
     ): BookingConfirmationState => ({
-        bookingId: bookingRecord?.bookingId ?? "",
+        bookingId: reservation.bookingId ?? "",
         bookingReference:
-            bookingRecord?.bookingReference ||
+            reservation.bookingReference ||
             reservation.universalRecordLocator ||
             reservation.providerLocator ||
             reservation.airlineLocator ||
@@ -468,6 +495,11 @@ export default function BookingPage() {
         providerLocator: reservation.providerLocator || reservation.locatorCode,
         airlineLocator: reservation.airlineLocator || reservation.locatorCode,
         status: reservation.status || "CONFIRMED",
+        ticketedAt: reservation.ticketedAt ?? null,
+        ticketNumbers: reservation.ticketNumbers ?? [],
+        airTicketingStatus: reservation.airTicketingStatus || "",
+        airlinePortalReady: reservation.airlinePortalReady,
+        ticketingMessage: reservation.ticketingMessage || reservation.message,
         amount: selectedFlight?.price ?? 0,
         currency: selectedFlight?.currency ?? "MYR",
         carrier: selectedFlight?.carrier ?? "",
@@ -478,7 +510,7 @@ export default function BookingPage() {
         arrival: selectedFlight?.arrival ?? new Date().toISOString(),
         contactEmail,
         createdAt: new Date().toISOString(),
-        portalSyncPending,
+        portalSyncPending: reservation.portalSyncPending,
     });
 
     const loadSeatMap = async () => {
@@ -549,103 +581,67 @@ export default function BookingPage() {
             return;
         }
 
+        if (bookingBlockedMessage) {
+            setError(bookingBlockedMessage);
+            return;
+        }
+
         const expiredPassengerIndex = passengers.findIndex((passenger) => passenger.passportExpiryDate < todayDate);
         if (expiredPassengerIndex >= 0) {
             setError(`Passport expiry date for ${travelerLabel(passengers[expiredPassengerIndex].travelerType)} ${expiredPassengerIndex + 1} must be today or later before booking.`);
             return;
         }
 
-        let holdId: string | null = null;
-        let holdCaptured = false;
-        let reservation: Awaited<ReturnType<typeof bookFlight>> | null = null;
-
         try {
             setLoading(true);
             setError("");
 
-            const walletResponse = await getMyWallet();
-            if (!walletResponse.wallet) {
-                throw new Error("No wallet found for this account.");
-            }
-
-            if (!walletResponse.wallet.walletIsActive) {
-                throw new Error("Your wallet is inactive. Activate the wallet before making a booking.");
-            }
-
-            if (!walletResponse.wallet.agentIsActive) {
-                throw new Error("Your agent account is inactive. Contact admin before making a booking.");
-            }
-
             const requestId = `BOOK-${Date.now()}`;
-
-                            const hold = await createWalletHold(
-                                walletResponse.wallet.walletAccountId,
-                                selectedFlight.price,
-                                requestId
-                            );
-            holdId = hold.holdId;
-
-            reservation = await bookFlight({
-                carrier: selectedFlight.carrier,
-                flightNumber: selectedFlight.flightNumber,
+            const primarySegment = itinerarySegments[0];
+            const finalSegment = itinerarySegments[itinerarySegments.length - 1] ?? primarySegment;
+            const reservation = await bookFlight({
+                clientRequestId: requestId,
+                carrier: primarySegment?.carrier || selectedFlight.carrier,
+                flightNumber: primarySegment?.flightNumber || selectedFlight.flightNumber,
                 from: journeyEndpoints.from,
                 to: journeyEndpoints.to,
-                departure: selectedFlight.departure,
-                arrival: selectedFlight.arrival,
+                departure: primarySegment?.departure || selectedFlight.departure,
+                arrival: finalSegment?.arrival || selectedFlight.arrival,
                 price: selectedFlight.price,
+                basePrice: selectedFlight.basePrice || selectedFlight.price,
+                markupAmount: selectedFlight.markupAmount || 0,
                 currency: selectedFlight.currency,
                 airPricingSolutionXml: selectedFlight.airPricingSolutionXml,
                 airPricingContextXml: selectedFlight.airPricingContextXml,
-                contactEmail,
-                contactPhone,
+                contactEmail: contactEmail.trim(),
+                contactPhone: contactPhone.trim(),
+                autoIssueTicket: true,
+                formOfPayment: "TOURVALVE_WALLET",
+                itinerarySegments: itinerarySegments.map((segment) => ({
+                    carrier: segment.carrier,
+                    flightNumber: segment.flightNumber,
+                    from: segment.from,
+                    to: segment.to,
+                    departure: segment.departure,
+                    arrival: segment.arrival,
+                })),
                 servicePreferences,
                 passengers,
             });
 
-            await captureWalletHold(holdId, `${requestId}-CAPTURE`);
-            holdCaptured = true;
+            const confirmation = buildConfirmationState(reservation);
+            sessionStorage.setItem(LATEST_BOOKING_CONFIRMATION_KEY, JSON.stringify(confirmation));
 
-            try {
-                const bookingRecord = await createBookingRecord({
-                    clientRequestId: requestId,
-                    carrier: selectedFlight.carrier,
-                    flightNumber: selectedFlight.flightNumber,
-                    from: journeyEndpoints.from,
-                    to: journeyEndpoints.to,
-                    departureTime: selectedFlight.departure,
-                    arrivalTime: selectedFlight.arrival,
-                    amount: selectedFlight.price,
-                    itinerarySegments,
-                    baseAmount: selectedFlight.basePrice || selectedFlight.price,
-                    markupAmount: selectedFlight.markupAmount || 0,
-                    universalRecordLocator: reservation.universalRecordLocator || reservation.locatorCode,
-                    providerLocator: reservation.providerLocator || reservation.locatorCode,
-                    airlineLocator: reservation.airlineLocator || reservation.locatorCode,
-                    providerCode: reservation.providerCode || "",
-                    status: reservation.status || "CONFIRMED",
-                });
+            const fallbackNextStep = reservation.ticketIssued && reservation.bookingId
+                ? `/booking-confirmation?bookingId=${encodeURIComponent(reservation.bookingId)}`
+                : reservation.bookingId
+                    ? `/air-ticketing/${encodeURIComponent(reservation.bookingId)}`
+                    : "/booking-confirmation";
 
-                const confirmation = buildConfirmationState(reservation, bookingRecord, false);
-                sessionStorage.setItem(LATEST_BOOKING_CONFIRMATION_KEY, JSON.stringify(confirmation));
-                setSelectedFlight(null);
-                router.push(`/booking-confirmation?bookingId=${encodeURIComponent(bookingRecord.bookingId)}`);
-                return;
-            } catch {
-                const confirmation = buildConfirmationState(reservation, null, true);
-                sessionStorage.setItem(LATEST_BOOKING_CONFIRMATION_KEY, JSON.stringify(confirmation));
-                setSelectedFlight(null);
-                router.push("/booking-confirmation");
-                return;
-            }
+            setSelectedFlight(null);
+            router.push(reservation.nextActionUrl || fallbackNextStep);
+            return;
         } catch (value: unknown) {
-            if (holdId && !holdCaptured) {
-                try {
-                    await releaseWalletHold(holdId, `RELEASE-${Date.now()}`);
-                } catch {
-                    // Keep the original booking error as the primary failure.
-                }
-            }
-
             setError(getErrorMessage(value));
         } finally {
             setLoading(false);
@@ -1224,6 +1220,12 @@ export default function BookingPage() {
                                 </div>
                             </div>
 
+                            {bookingBlockedMessage && (
+                                <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                    {bookingBlockedMessage}
+                                </div>
+                            )}
+
                             {error && (
                                 <div className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
                                     {error}
@@ -1232,10 +1234,10 @@ export default function BookingPage() {
 
                             <button
                                 onClick={handleBooking}
-                                disabled={loading}
+                                disabled={loading || Boolean(bookingBlockedMessage)}
                                 className="gold-button mt-5 w-full rounded-[1.35rem] py-4 text-base font-semibold disabled:opacity-60 sm:mt-6 sm:rounded-2xl"
                             >
-                                {loading ? "Booking..." : "Confirm Booking"}
+                                {loading ? "Booking..." : bookingBlockedMessage ? "Search Another Fare" : "Confirm Booking"}
                             </button>
                         </div>
                     </div>

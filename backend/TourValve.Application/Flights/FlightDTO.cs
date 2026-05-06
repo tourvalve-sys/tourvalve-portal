@@ -33,6 +33,11 @@ public class FlightDto
     public string CarryOnAllowance { get; set; } = string.Empty;
     public string CheckedBaggageAllowance { get; set; } = string.Empty;
     public List<string> BaggageOfferTexts { get; set; } = new();
+    public string ProviderCode { get; set; } = string.Empty;
+    public string BookingWorkflow { get; set; } = string.Empty;
+    public bool SupportsPortalCheckout { get; set; }
+    public bool SupportsPortalAutoIssue { get; set; }
+    public string BookingNotice { get; set; } = string.Empty;
     public string AirPricingSolutionXml { get; set; } = string.Empty;
     public string AirPricingContextXml { get; set; } = string.Empty;
     public string AirSegmentXml { get; set; } = string.Empty;

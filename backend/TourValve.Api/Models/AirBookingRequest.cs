@@ -2,6 +2,7 @@ namespace TourValve.Api.Models;
 
 public sealed class AirBookingRequest
 {
+    public string ClientRequestId { get; set; } = string.Empty;
     public string Carrier { get; set; } = string.Empty;
     public string FlightNumber { get; set; } = string.Empty;
     public string From { get; set; } = string.Empty;
@@ -9,13 +10,28 @@ public sealed class AirBookingRequest
     public string Departure { get; set; } = string.Empty;
     public string Arrival { get; set; } = string.Empty;
     public decimal Price { get; set; }
+    public decimal BasePrice { get; set; }
+    public decimal MarkupAmount { get; set; }
     public string Currency { get; set; } = "MYR";
     public string AirPricingSolutionXml { get; set; } = string.Empty;
     public string AirPricingContextXml { get; set; } = string.Empty;
     public string ContactEmail { get; set; } = string.Empty;
     public string ContactPhone { get; set; } = string.Empty;
+    public bool AutoIssueTicket { get; set; } = true;
+    public string FormOfPayment { get; set; } = "TOURVALVE_WALLET";
+    public List<AirBookingItinerarySegmentRequest> ItinerarySegments { get; set; } = new();
     public AirBookingServicePreferencesRequest ServicePreferences { get; set; } = new();
     public List<AirBookingPassengerRequest> Passengers { get; set; } = new();
+}
+
+public sealed class AirBookingItinerarySegmentRequest
+{
+    public string Carrier { get; set; } = string.Empty;
+    public string FlightNumber { get; set; } = string.Empty;
+    public string From { get; set; } = string.Empty;
+    public string To { get; set; } = string.Empty;
+    public string Departure { get; set; } = string.Empty;
+    public string Arrival { get; set; } = string.Empty;
 }
 
 public sealed class AirBookingServicePreferencesRequest

@@ -65,15 +65,26 @@ function BookingConfirmationPageContent() {
     }
 
     const airlinePnr = confirmation.airlineLocator || "";
+    const ticketNumbers = Array.isArray(confirmation.ticketNumbers)
+        ? confirmation.ticketNumbers.filter((ticketNumber) => typeof ticketNumber === "string" && ticketNumber.trim().length > 0)
+        : [];
+    const ticketIssued =
+        Boolean(confirmation.airlinePortalReady) ||
+        Boolean(confirmation.ticketedAt) ||
+        ticketNumbers.length > 0 ||
+        confirmation.airTicketingStatus === "ISSUED";
+    const headline = ticketIssued ? "Your ticket is issued." : "Your booking is confirmed.";
+    const intro = ticketIssued
+        ? "The reservation has been stored inside TourValve, automatic ticketing has completed, and the airline-facing record is ready for post-booking servicing."
+        : "The reservation has been stored inside TourValve. Automatic ticketing still needs review, so continue from the AirTicketing workspace before using the airline portal.";
 
     return (
         <div className="min-h-screen px-3 py-4 sm:px-4 md:p-6 fade-in">
             <div className="mb-8">
                 <div className="subtle-kicker mb-3">Reservation Confirmation</div>
-                <h1 className="hero-title mb-3">Your booking is confirmed.</h1>
+                <h1 className="hero-title mb-3">{headline}</h1>
                 <p className="max-w-3xl text-slate-600">
-                    The reservation has been stored inside TourValve, the booking reference is ready for servicing, and the
-                    confirmation email has been addressed to the contact email you entered.
+                    {intro}
                 </p>
             </div>
 
@@ -84,7 +95,7 @@ function BookingConfirmationPageContent() {
                             <div>
                                 <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[rgba(228,243,235,0.9)] px-4 py-2 text-sm font-semibold text-[var(--success)]">
                                     <CheckCircle2 size={18} />
-                                    Booking confirmed
+                                    {ticketIssued ? "Ticket issued" : "Booking confirmed"}
                                 </div>
                                 <div className="mb-3">
                                     <AirlineBrand
@@ -115,6 +126,12 @@ function BookingConfirmationPageContent() {
                         </div>
                     ) : null}
 
+                    {!ticketIssued && confirmation.ticketingMessage ? (
+                        <div className="rounded-[1.4rem] border border-[rgba(50,93,147,0.16)] bg-[rgba(239,246,255,0.88)] px-5 py-4 text-sm leading-7 text-[var(--ink)]">
+                            {confirmation.ticketingMessage}
+                        </div>
+                    ) : null}
+
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                         <div className="soft-panel rounded-[2rem] p-6">
                             <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
@@ -142,6 +159,12 @@ function BookingConfirmationPageContent() {
                                     <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Airline PNR</div>
                                     <div className="mt-1 font-medium text-[var(--ink)]">{confirmation.airlineLocator || "Pending"}</div>
                                 </div>
+                                {ticketNumbers.length > 0 ? (
+                                    <div>
+                                        <div className="text-xs uppercase tracking-[0.14em] text-slate-400">E-ticket numbers</div>
+                                        <div className="mt-1 font-medium text-[var(--ink)]">{ticketNumbers.join(", ")}</div>
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
 
@@ -172,6 +195,16 @@ function BookingConfirmationPageContent() {
                                 <div>
                                     <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Reservation status</div>
                                     <div className="mt-1 font-medium text-[var(--success)]">{confirmation.status}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Ticketing status</div>
+                                    <div className="mt-1 font-medium text-[var(--ink)]">{confirmation.airTicketingStatus || (ticketIssued ? "ISSUED" : "PENDING_REVIEW")}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs uppercase tracking-[0.14em] text-slate-400">Ticketed at</div>
+                                    <div className="mt-1 font-medium text-[var(--ink)]">
+                                        {confirmation.ticketedAt ? new Date(confirmation.ticketedAt).toLocaleString() : "Pending"}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -204,13 +237,15 @@ function BookingConfirmationPageContent() {
                         <div className="space-y-3">
                             <button
                                 onClick={() => router.push(
-                                    confirmation.bookingId
+                                    ticketIssued && confirmation.bookingId
                                         ? `/ancillaries?bookingId=${encodeURIComponent(confirmation.bookingId)}`
-                                        : "/bookings"
+                                        : confirmation.bookingId
+                                            ? `/air-ticketing/${encodeURIComponent(confirmation.bookingId)}`
+                                            : "/bookings"
                                 )}
                                 className="ghost-button w-full rounded-2xl px-5 py-3 font-semibold"
                             >
-                                Add Baggage, Meals & Seats
+                                {ticketIssued ? "Add Baggage, Meals & Seats" : "Open AirTicketing Workspace"}
                             </button>
                             <button
                                 onClick={() => router.push(`/bookings?created=${encodeURIComponent(confirmation.bookingReference)}`)}

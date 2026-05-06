@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using TourValve.Application.Flights.DTO;
+using TourValve.Infrastructure.Travelport.Air;
 
 namespace TourValve.Infrastructure.Travelport.Parser;
 
@@ -107,6 +108,7 @@ public static class TravelportFlightParser
 
             if (results.Count > 0)
             {
+                ApplyBookingWorkflowMetadata(results);
                 return results;
             }
 
@@ -198,7 +200,26 @@ public static class TravelportFlightParser
             }
         }
 
+        ApplyBookingWorkflowMetadata(results);
         return results;
+    }
+
+    private static void ApplyBookingWorkflowMetadata(IEnumerable<FlightDto> flights)
+    {
+        foreach (var flight in flights)
+        {
+            var analysis = TravelportBookingSupportInspector.Analyze(
+                flight.AirPricingSolutionXml,
+                flight.AirPricingContextXml);
+
+            flight.ProviderCode = analysis.ProviderCode;
+            flight.BookingWorkflow = analysis.Workflow;
+            flight.SupportsPortalCheckout = analysis.SupportsPortalCheckout && flight.Price > 0m && !string.IsNullOrWhiteSpace(flight.AirPricingSolutionXml);
+            flight.SupportsPortalAutoIssue = analysis.SupportsPortalAutoIssue && flight.Price > 0m && !string.IsNullOrWhiteSpace(flight.AirPricingSolutionXml);
+            flight.BookingNotice = analysis.SupportsPortalCheckout
+                ? string.Empty
+                : analysis.UserMessage;
+        }
     }
 
     private static List<FlightDto> ParseAirPricePoints(XDocument doc, string currencyType, ref int index, string xml)

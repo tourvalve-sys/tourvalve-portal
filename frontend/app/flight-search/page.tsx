@@ -21,6 +21,7 @@ import { findAirportMatches, type AirportOption } from "@/lib/airports";
 import AirlineBrand, { getAirlineDisplayName } from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
 import PromoCarousel from "@/components/PromoCarousel";
+import { inferPortalBookingSupport } from "@/lib/bookingWorkflow";
 import { flightSearchPromoSlides } from "@/lib/promotions";
 import { useBooking } from "../context/BookingContext";
 
@@ -296,6 +297,8 @@ function getBaggageHighlights(flight: FlightResult) {
 }
 
 function sanitizeFlightResult(flight: FlightResult): FlightResult {
+    const bookingSupport = inferPortalBookingSupport(flight);
+
     return {
         ...flight,
         price: typeof flight.price === "number" && Number.isFinite(flight.price) ? flight.price : 0,
@@ -308,6 +311,11 @@ function sanitizeFlightResult(flight: FlightResult): FlightResult {
         baggageOfferTexts: Array.isArray(flight.baggageOfferTexts)
             ? flight.baggageOfferTexts.filter((item): item is string => typeof item === "string")
             : [],
+        providerCode: bookingSupport.providerCode,
+        bookingWorkflow: bookingSupport.bookingWorkflow,
+        supportsPortalCheckout: bookingSupport.supportsPortalCheckout,
+        supportsPortalAutoIssue: bookingSupport.supportsPortalAutoIssue,
+        bookingNotice: bookingSupport.bookingNotice,
         airPricingSolutionXml: typeof flight.airPricingSolutionXml === "string" ? flight.airPricingSolutionXml : "",
         airPricingContextXml: typeof flight.airPricingContextXml === "string" ? flight.airPricingContextXml : "",
         airSegmentXml: typeof flight.airSegmentXml === "string" ? flight.airSegmentXml : "",
@@ -884,6 +892,12 @@ export default function FlightSearch() {
     }, [loadPrebookSeatMap, prebookActiveSegment?.airSegmentXml, prebookFlight]);
 
     const continueToBookingWithSelections = (flight: FlightResult) => {
+        if (!flight.supportsPortalCheckout) {
+            setError(flight.bookingNotice || "This itinerary is not ready for the TourValve portal checkout flow yet. Search again or choose another fare.");
+            closePrebookStudio();
+            return;
+        }
+
         setTravelerCounts({
             adults: form.adults,
             child: form.child,
@@ -2400,12 +2414,18 @@ export default function FlightSearch() {
                                                         </div>
                                                     </div>
                                                 </div>
+                                                {prebookFlight.bookingNotice ? (
+                                                    <div className="mt-4 rounded-[1rem] border border-[rgba(176,122,67,0.18)] bg-[rgba(255,247,236,0.9)] px-3 py-3 text-sm leading-6 text-[var(--ink)]">
+                                                        {prebookFlight.bookingNotice}
+                                                    </div>
+                                                ) : null}
                                                 <button
                                                     type="button"
                                                     onClick={() => continueToBookingWithSelections(prebookFlight)}
-                                                    className="mt-5 w-full rounded-2xl bg-[linear-gradient(135deg,#1e7df0,#0b58b6)] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(12,78,163,0.22)] transition hover:translate-y-[-1px]"
+                                                    disabled={!prebookFlight.supportsPortalCheckout}
+                                                    className="mt-5 w-full rounded-2xl bg-[linear-gradient(135deg,#1e7df0,#0b58b6)] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(12,78,163,0.22)] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                                                 >
-                                                    Continue To Booking
+                                                    {prebookFlight.supportsPortalCheckout ? "Continue To Booking" : "Portal Checkout Not Available"}
                                                 </button>
                                             </div>
                                         </aside>

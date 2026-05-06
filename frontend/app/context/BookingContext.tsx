@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState } from "react";
 import type { FlightResult } from "@/lib/api";
+import { inferPortalBookingSupport } from "@/lib/bookingWorkflow";
 
 type FlightSearchUiState = {
     tripType: "oneway" | "return" | "multicity";
@@ -66,6 +67,17 @@ function normalizeFlightResult(value: unknown): FlightResult | null {
         return null;
     }
 
+    const bookingSupport = inferPortalBookingSupport({
+        providerCode: coerceString(flight.providerCode),
+        bookingWorkflow: coerceString(flight.bookingWorkflow),
+        supportsPortalCheckout: typeof flight.supportsPortalCheckout === "boolean" ? flight.supportsPortalCheckout : undefined,
+        supportsPortalAutoIssue: typeof flight.supportsPortalAutoIssue === "boolean" ? flight.supportsPortalAutoIssue : undefined,
+        bookingNotice: coerceString(flight.bookingNotice),
+        airPricingSolutionXml: coerceString(flight.airPricingSolutionXml),
+        airPricingContextXml: coerceString(flight.airPricingContextXml),
+        price: coerceNumber(flight.price),
+    });
+
     return {
         id: coerceString(flight.id),
         carrier: coerceString(flight.carrier),
@@ -84,6 +96,11 @@ function normalizeFlightResult(value: unknown): FlightResult | null {
         baggageOfferTexts: Array.isArray(flight.baggageOfferTexts)
             ? flight.baggageOfferTexts.filter((item): item is string => typeof item === "string")
             : [],
+        providerCode: bookingSupport.providerCode,
+        bookingWorkflow: bookingSupport.bookingWorkflow,
+        supportsPortalCheckout: bookingSupport.supportsPortalCheckout,
+        supportsPortalAutoIssue: bookingSupport.supportsPortalAutoIssue,
+        bookingNotice: bookingSupport.bookingNotice,
         airPricingSolutionXml: coerceString(flight.airPricingSolutionXml),
         airPricingContextXml: coerceString(flight.airPricingContextXml),
         airSegmentXml: coerceString(flight.airSegmentXml),

@@ -133,6 +133,7 @@ public class AirTicketingWorkflowService
         Guid? actorId,
         string actorEmail,
         bool backgroundTriggered = false,
+        bool releaseWalletHoldOnFailure = false,
         CancellationToken cancellationToken = default)
     {
         EnsureIssueable(booking);
@@ -241,8 +242,34 @@ public class AirTicketingWorkflowService
         catch (Exception ex)
         {
             var detail = ExtractTravelportMessage(ex);
+            var holdReleaseWarning = string.Empty;
+
+            if (releaseWalletHoldOnFailure &&
+                string.Equals(booking.AirTicketingFormOfPayment, FormOfPaymentWallet, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var released = await ReleaseActiveHoldIfAnyAsync(
+                        booking,
+                        $"{booking.BookingReference}-AT-FAIL",
+                        cancellationToken);
+
+                    if (released)
+                    {
+                        booking.AirTicketingPaymentStatus = PaymentUnpaid;
+                        booking.AirTicketingWalletHoldId = null;
+                    }
+                }
+                catch (Exception releaseEx)
+                {
+                    holdReleaseWarning = $" Wallet hold release also failed: {ExtractTravelportMessage(releaseEx)}";
+                }
+            }
+
             booking.AirTicketingStatus = WorkflowFailed;
-            booking.AirTicketingLastError = detail;
+            booking.AirTicketingLastError = string.IsNullOrWhiteSpace(holdReleaseWarning)
+                ? detail
+                : $"{detail}{holdReleaseWarning}";
             await _db.SaveChangesAsync(cancellationToken);
 
             var normalizedActorEmail = NormalizeActorEmail(actorEmail);

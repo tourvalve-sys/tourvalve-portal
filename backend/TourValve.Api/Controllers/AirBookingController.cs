@@ -1,11 +1,18 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using System.Security;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
+using System.Text.Json;
 using System.Xml.Linq;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using TourValve.Api.Models;
+using TourValve.Application.Bookings.Commands;
+using TourValve.Application.Wallet;
+using TourValve.Domain;
+using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Services;
 using TourValve.Infrastructure.Travelport.Air;
 using TourValve.Infrastructure.Travelport.Common;
@@ -26,6 +33,10 @@ public sealed class AirBookingController : ControllerBase
     private readonly INotificationService _notifications;
     private readonly IEmailService _emailService;
     private readonly SmtpOptions _smtpOptions;
+    private readonly IMediator _mediator;
+    private readonly TourValveDbContext _db;
+    private readonly IWalletService _wallet;
+    private readonly AirTicketingWorkflowService _airTicketingWorkflow;
 
     public AirBookingController(
         TravelportAirClient airClient,
@@ -33,6 +44,10 @@ public sealed class AirBookingController : ControllerBase
         IAuditTrailService audit,
         INotificationService notifications,
         IEmailService emailService,
+        IMediator mediator,
+        TourValveDbContext db,
+        IWalletService wallet,
+        AirTicketingWorkflowService airTicketingWorkflow,
         Microsoft.Extensions.Options.IOptions<SmtpOptions> smtpOptions)
     {
         _airClient = airClient;
@@ -40,11 +55,15 @@ public sealed class AirBookingController : ControllerBase
         _audit = audit;
         _notifications = notifications;
         _emailService = emailService;
+        _mediator = mediator;
+        _db = db;
+        _wallet = wallet;
+        _airTicketingWorkflow = airTicketingWorkflow;
         _smtpOptions = smtpOptions.Value;
     }
 
     [HttpPost]
-    public async Task<ActionResult<AirBookingResponse>> Book([FromBody] AirBookingRequest request)
+    public async Task<ActionResult<AirBookingResponse>> Book([FromBody] AirBookingRequest request, CancellationToken cancellationToken)
     {
         if (request.Passengers.Count == 0)
             return BadRequest(new { error = "At least one passenger is required." });
@@ -77,18 +96,67 @@ public sealed class AirBookingController : ControllerBase
         if (!_config.HasLiveCredentials())
             return BadRequest(new { error = "Live Travelport credentials are missing. Update Travelport settings before booking." });
 
-        var providerCode = ResolveProviderCode(request.AirPricingSolutionXml, request.AirPricingContextXml);
-        var refreshedPricing = await RefreshPricingForBookingAsync(request, providerCode);
-        var xml = BuildReservationRequest(request, providerCode, refreshedPricing.PricingSolutionXml, refreshedPricing.PricingContextXml);
-        WriteBookingDebugSnapshot("REQUEST_PREPARED", xml, null, null);
+        var actorIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(actorIdValue, out var actorId))
+            return Unauthorized();
+
+        var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? request.ContactEmail ?? string.Empty;
+        var isAdmin = User.IsInRole("ADMIN");
+        var normalizedRequestId = string.IsNullOrWhiteSpace(request.ClientRequestId)
+            ? $"BOOK-{DateTime.UtcNow:yyyyMMddHHmmssfff}"
+            : request.ClientRequestId.Trim();
+
+        var bookingSupport = TravelportBookingSupportInspector.Analyze(
+            request.AirPricingSolutionXml,
+            request.AirPricingContextXml);
+
+        if (!bookingSupport.SupportsPortalCheckout)
+        {
+            return BadRequest(new
+            {
+                error = "This itinerary cannot complete the portal auto-ticketing flow.",
+                detail = bookingSupport.UserMessage
+            });
+        }
+
+        Guid? preAuthorizedHoldId = null;
+        string reservationRequestXml = string.Empty;
 
         try
         {
+            var normalizedFormOfPayment = NormalizeRequestedFormOfPayment(request.FormOfPayment);
+            if (request.AutoIssueTicket && string.Equals(normalizedFormOfPayment, AirTicketingWorkflowService.FormOfPaymentWallet, StringComparison.OrdinalIgnoreCase))
+            {
+                preAuthorizedHoldId = await CreatePreAuthorizedWalletHoldAsync(
+                    actorId,
+                    actorEmail,
+                    isAdmin,
+                    request.Price,
+                    normalizedRequestId,
+                    cancellationToken);
+            }
+
+            var refreshedPricing = await RefreshPricingForBookingAsync(request, bookingSupport.ProviderCode);
+            var refreshedSupport = TravelportBookingSupportInspector.Analyze(
+                refreshedPricing.PricingSolutionXml,
+                refreshedPricing.PricingContextXml);
+
+            if (!refreshedSupport.SupportsPortalCheckout)
+            {
+                throw new InvalidOperationException(refreshedSupport.UserMessage);
+            }
+
+            reservationRequestXml = BuildReservationRequest(
+                request,
+                refreshedSupport,
+                refreshedPricing.PricingSolutionXml,
+                refreshedPricing.PricingContextXml);
+            WriteBookingDebugSnapshot("REQUEST_PREPARED", reservationRequestXml, null, null);
+
             var rawResponse = await _airClient.PostToUniversalServiceAsync(
-                xml,
-                "http://www.travelport.com/schema/universal_v51_0/AirCreateReservationReq"
-            );
-            WriteBookingDebugSnapshot("RESPONSE_RECEIVED", xml, rawResponse, null);
+                reservationRequestXml,
+                "http://www.travelport.com/schema/universal_v51_0/AirCreateReservationReq");
+            WriteBookingDebugSnapshot("RESPONSE_RECEIVED", reservationRequestXml, rawResponse, null);
 
             if (rawResponse.Contains("<!doctype", StringComparison.OrdinalIgnoreCase) ||
                 rawResponse.Contains("<html", StringComparison.OrdinalIgnoreCase))
@@ -104,12 +172,78 @@ public sealed class AirBookingController : ControllerBase
 
             if (string.IsNullOrWhiteSpace(primaryLocator))
             {
-                WriteBookingDebugSnapshot("LOCATOR_MISSING", xml, rawResponse, "Travelport returned a reservation response, but no locator / PNR could be extracted from it.");
+                WriteBookingDebugSnapshot("LOCATOR_MISSING", reservationRequestXml, rawResponse, "Travelport returned a reservation response, but no locator / PNR could be extracted from it.");
                 throw new InvalidOperationException("Travelport returned a reservation response, but no locator / PNR could be extracted from it.");
             }
 
             await TrySendBookingConfirmationAsync(request, refs);
             await TrySendAdminBookingNoticeAsync(request, refs);
+
+            var portalBooking = await TryCreatePortalBookingAsync(
+                request,
+                normalizedRequestId,
+                refs,
+                refreshedSupport.ProviderCode,
+                cancellationToken);
+
+            if (portalBooking.Booking is not null && preAuthorizedHoldId.HasValue)
+            {
+                portalBooking.Booking.AirTicketingWalletHoldId = preAuthorizedHoldId.Value;
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+
+            AirTicketingIssueResult? issueResult = null;
+            var ticketingMessage = request.AutoIssueTicket
+                ? "Reservation created. Automatic ticket issuance has not started yet."
+                : "Reservation created successfully.";
+
+            if (portalBooking.Booking is not null && request.AutoIssueTicket)
+            {
+                await _airTicketingWorkflow.ScheduleAsync(
+                    portalBooking.Booking,
+                    normalizedFormOfPayment,
+                    DateOnly.FromDateTime(DateTime.UtcNow),
+                    actorId,
+                    actorEmail,
+                    isAdmin,
+                    cancellationToken);
+
+                try
+                {
+                    issueResult = await _airTicketingWorkflow.IssueAsync(
+                        portalBooking.Booking,
+                        actorId,
+                        actorEmail,
+                        releaseWalletHoldOnFailure: true,
+                        cancellationToken: cancellationToken);
+
+                    ticketingMessage = issueResult.TicketNumbers.Count > 0
+                        ? "Reservation created and ticket issued automatically."
+                        : "Reservation created. Review the refreshed AirTicketing record for ticket evidence.";
+                }
+                catch (Exception issueEx)
+                {
+                    ticketingMessage = ExtractTravelportMessage(issueEx);
+                }
+            }
+
+            if (portalBooking.Booking is null && preAuthorizedHoldId.HasValue)
+            {
+                await TryReleaseWalletHoldAsync(preAuthorizedHoldId.Value, $"{normalizedRequestId}-PORTAL-SYNC-FAIL");
+                preAuthorizedHoldId = null;
+            }
+
+            var booking = portalBooking.Booking;
+            var ticketNumbers = booking is null
+                ? new List<string>()
+                : DeserializeTicketNumbers(booking);
+            var ticketIssued = string.Equals(booking?.AirTicketingStatus, AirTicketingWorkflowService.WorkflowIssued, StringComparison.OrdinalIgnoreCase) &&
+                ticketNumbers.Count > 0;
+            var nextActionUrl = booking is null
+                ? "/booking-confirmation"
+                : ticketIssued
+                    ? $"/booking-confirmation?bookingId={Uri.EscapeDataString(booking.Id.ToString())}"
+                    : BuildWorkspacePath(booking.Id);
 
             return Ok(new AirBookingResponse
             {
@@ -118,23 +252,46 @@ public sealed class AirBookingController : ControllerBase
                 UniversalRecordLocator = refs.UniversalRecordLocator ?? primaryLocator,
                 ProviderLocator = refs.ProviderLocator ?? primaryLocator,
                 AirlineLocator = refs.AirlineLocator ?? primaryLocator,
-                ProviderCode = providerCode,
-                Status = "CONFIRMED",
-                Message = "Air booking created successfully.",
+                ProviderCode = refreshedSupport.ProviderCode,
+                BookingWorkflow = refreshedSupport.Workflow,
+                BookingId = booking?.Id,
+                BookingReference = portalBooking.BookingReference,
+                PortalSyncPending = portalBooking.PortalSyncPending,
+                AutoIssueRequested = request.AutoIssueTicket,
+                TicketIssued = ticketIssued,
+                AirlinePortalReady = ticketIssued,
+                AirTicketingStatus = booking?.AirTicketingStatus ?? string.Empty,
+                AirTicketingPaymentStatus = booking?.AirTicketingPaymentStatus ?? string.Empty,
+                TicketingMessage = portalBooking.PortalSyncPending
+                    ? "Reservation created, but the portal record is still syncing. The wallet hold has been released for safety."
+                    : ticketingMessage,
+                TicketedAt = booking?.TicketedAt,
+                TicketNumbers = ticketNumbers,
+                Status = booking?.Status ?? "CONFIRMED",
+                Message = ticketIssued
+                    ? "Air booking and ticket issuance completed successfully."
+                    : portalBooking.PortalSyncPending
+                        ? "Air booking created, but the portal record is still syncing."
+                        : request.AutoIssueTicket
+                            ? "Air booking created. Review the AirTicketing workspace for the latest issue status."
+                            : "Air booking created successfully.",
+                NextActionUrl = nextActionUrl,
                 RawResponse = rawResponse,
                 IsMock = false
             });
         }
         catch (Exception ex)
         {
-            WriteBookingDebugSnapshot("BOOKING_FAILED", xml, null, ex.ToString());
-            var actorId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? request.ContactEmail ?? string.Empty;
-            Guid? parsedAgentId = Guid.TryParse(actorId, out var tempAgentId) ? tempAgentId : null;
+            if (preAuthorizedHoldId.HasValue)
+            {
+                await TryReleaseWalletHoldAsync(preAuthorizedHoldId.Value, $"{normalizedRequestId}-BOOKING-FAIL");
+            }
+
+            WriteBookingDebugSnapshot("BOOKING_FAILED", reservationRequestXml, null, ex.ToString());
             var detail = ExtractTravelportMessage(ex);
 
-            await _audit.WriteAsync(parsedAgentId, actorEmail, "BOOKING", "CREATE_FAILED", "AirBooking", "LIVE", request.FlightNumber, detail, "WARN");
-            await _notifications.CreateAsync(parsedAgentId, "AGENT", "BOOKING", "Booking failed", $"We could not complete {request.Carrier} {request.FlightNumber}. {detail}", "WARN", "/booking");
+            await _audit.WriteAsync(actorId, actorEmail, "BOOKING", "CREATE_FAILED", "AirBooking", "LIVE", request.FlightNumber, detail, "WARN");
+            await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"We could not complete {request.Carrier} {request.FlightNumber}. {detail}", "WARN", "/booking");
             await _notifications.CreateAsync(null, "ADMIN", "TRAVELPORT", "Travelport error", $"Booking failed for {request.Carrier} {request.FlightNumber}. {detail}", "WARN", "/bookings");
 
             return BadRequest(new
@@ -147,11 +304,18 @@ public sealed class AirBookingController : ControllerBase
 
     private string BuildReservationRequest(
         AirBookingRequest request,
-        string providerCode,
+        TravelportBookingSupportAnalysis bookingSupport,
         string pricingSolutionXml,
         string pricingContextXml)
     {
         var pricingPayload = BuildPricingPayload(pricingSolutionXml, pricingContextXml);
+        var providerCode = bookingSupport.ProviderCode;
+        var formOfPaymentXml = request.AutoIssueTicket && bookingSupport.ShouldAttachCashFormOfPayment
+            ? $"{Environment.NewLine}  <com:FormOfPayment Type=\"Cash\" />"
+            : string.Empty;
+        var actionStatusXml = request.AutoIssueTicket
+            ? string.Empty
+            : $"{Environment.NewLine}  <com:ActionStatus Type=\"TAW\" TicketDate=\"{DateTime.UtcNow:yyyy-MM-dd}T23:59:00\" ProviderCode=\"{Escape(providerCode)}\" />";
 
         var passengersXml = string.Join(
             Environment.NewLine,
@@ -180,8 +344,9 @@ public sealed class AirBookingController : ControllerBase
   <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
   {passengersXml}
   <com:EmailNotification Recipients=""Default"" />
+  {formOfPaymentXml}
   {pricingPayload}
-  <com:ActionStatus Type=""TAW"" TicketDate=""{DateTime.UtcNow:yyyy-MM-dd}T23:59:00"" ProviderCode=""{Escape(providerCode)}"" />
+  {actionStatusXml}
 </univ:AirCreateReservationReq>".Trim();
     }
 
@@ -199,17 +364,6 @@ public sealed class AirBookingController : ControllerBase
             var contextDoc = XDocument.Parse(airPricingContextXml);
             var pricingSolution = new XElement(solution);
             var hostTokenRefs = ExtractHostTokenRefKeys(solution);
-            var allowedChildren = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "AirSegment",
-                "AirPricingInfo",
-                "FareNote",
-                "HostToken"
-            };
-
-            pricingSolution.Elements()
-                .Where(x => !allowedChildren.Contains(x.Name.LocalName))
-                .Remove();
 
             var segmentRefs = solution.Descendants()
                 .Where(x => x.Name.LocalName == "AirSegmentRef")
@@ -262,30 +416,145 @@ public sealed class AirBookingController : ControllerBase
         }
     }
 
-    private static string ResolveProviderCode(string airPricingSolutionXml, string airPricingContextXml)
+    private async Task<Guid> CreatePreAuthorizedWalletHoldAsync(
+        Guid actorId,
+        string actorEmail,
+        bool isAdmin,
+        decimal amount,
+        string requestId,
+        CancellationToken cancellationToken)
     {
-        foreach (var candidate in new[] { airPricingSolutionXml, airPricingContextXml })
+        var walletAccount = await _db.WalletAccounts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.AgentId == actorId && x.IsActive, cancellationToken);
+
+        if (walletAccount == null)
+            throw new InvalidOperationException("No active TourValve wallet was found for this account.");
+
+        return await _wallet.CreateHoldForUserAsync(
+            walletAccount.Id,
+            actorId,
+            isAdmin,
+            amount,
+            $"{requestId}-BOOK-HOLD");
+    }
+
+    private async Task<PortalBookingCreationResult> TryCreatePortalBookingAsync(
+        AirBookingRequest request,
+        string clientRequestId,
+        (string? UniversalRecordLocator, string? ProviderLocator, string? AirlineLocator) refs,
+        string providerCode,
+        CancellationToken cancellationToken)
+    {
+        try
         {
-            if (string.IsNullOrWhiteSpace(candidate))
-                continue;
+            var itinerarySegments = request.ItinerarySegments.Count > 0
+                ? request.ItinerarySegments
+                : new List<AirBookingItinerarySegmentRequest>
+                {
+                    new()
+                    {
+                        Carrier = request.Carrier,
+                        FlightNumber = request.FlightNumber,
+                        From = request.From,
+                        To = request.To,
+                        Departure = request.Departure,
+                        Arrival = request.Arrival
+                    }
+                };
 
-            try
-            {
-                var doc = XDocument.Parse(candidate);
-                var providerCode = doc.Descendants()
-                    .Select(x => x.Attribute("ProviderCode")?.Value)
-                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            var createResult = await _mediator.Send(
+                new CreateBookingCommand
+                {
+                    AgentId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!),
+                    ClientRequestId = clientRequestId,
+                    Carrier = request.Carrier,
+                    FlightNumber = request.FlightNumber,
+                    From = request.From,
+                    To = request.To,
+                    DepartureTime = DateTime.Parse(request.Departure, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
+                    ArrivalTime = DateTime.Parse(request.Arrival, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
+                    Amount = request.Price,
+                    BaseAmount = request.BasePrice > 0m ? request.BasePrice : request.Price,
+                    MarkupAmount = request.MarkupAmount,
+                    UniversalRecordLocator = refs.UniversalRecordLocator ?? string.Empty,
+                    ProviderLocator = refs.ProviderLocator ?? string.Empty,
+                    AirlineLocator = refs.AirlineLocator ?? string.Empty,
+                    ProviderCode = providerCode,
+                    Status = "CONFIRMED",
+                    ItinerarySegments = itinerarySegments.Select(segment => new BookingItinerarySegment
+                    {
+                        Carrier = segment.Carrier,
+                        FlightNumber = segment.FlightNumber,
+                        From = segment.From,
+                        To = segment.To,
+                        Departure = segment.Departure,
+                        Arrival = segment.Arrival
+                    }).ToList()
+                },
+                cancellationToken);
 
-                if (!string.IsNullOrWhiteSpace(providerCode))
-                    return providerCode;
-            }
-            catch
-            {
-                // Ignore malformed debug context and fall through to default.
-            }
+            var booking = await _db.Bookings.FirstOrDefaultAsync(x => x.Id == createResult.BookingId, cancellationToken);
+            return new PortalBookingCreationResult(
+                booking,
+                createResult.BookingReference,
+                PortalSyncPending: booking == null);
+        }
+        catch
+        {
+            return new PortalBookingCreationResult(
+                null,
+                string.Empty,
+                PortalSyncPending: true);
+        }
+    }
+
+    private async Task TryReleaseWalletHoldAsync(Guid holdId, string reference)
+    {
+        try
+        {
+            await _wallet.ReleaseHoldAsync(holdId, reference);
+        }
+        catch
+        {
+            // Keep the main provider error as the primary outcome if wallet hold cleanup also fails.
+        }
+    }
+
+    private static string NormalizeRequestedFormOfPayment(string formOfPayment) =>
+        (formOfPayment ?? string.Empty).Trim().ToUpperInvariant() switch
+        {
+            "TOURVALVE WALLET" => AirTicketingWorkflowService.FormOfPaymentWallet,
+            "TOURVALVE_WALLET" => AirTicketingWorkflowService.FormOfPaymentWallet,
+            "WALLET" => AirTicketingWorkflowService.FormOfPaymentWallet,
+            "CASH" => AirTicketingWorkflowService.FormOfPaymentCash,
+            _ => AirTicketingWorkflowService.FormOfPaymentWallet
+        };
+
+    private static string BuildWorkspacePath(Guid bookingId) => $"/air-ticketing/{bookingId}";
+
+    private static List<string> DeserializeTicketNumbers(Booking booking)
+    {
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<List<string>>(booking.TicketNumbersJson ?? "[]") ?? new List<string>();
+            if (parsed.Count > 0)
+                return parsed.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.Ordinal).ToList();
+        }
+        catch
+        {
         }
 
-        return "1G";
+        var verifiedFromXml = BookingTicketingService.ExtractVerifiedTicketNumbers(booking.TicketingResponseXml);
+        if (verifiedFromXml.Count > 0)
+            return verifiedFromXml;
+
+        return new List<string>();
+    }
+
+    private static string ResolveProviderCode(string airPricingSolutionXml, string airPricingContextXml)
+    {
+        return TravelportBookingSupportInspector.ResolveProviderCode(airPricingSolutionXml, airPricingContextXml);
     }
 
     private static string BuildTravelerKey(string travelerType, int index)
@@ -786,21 +1055,7 @@ public sealed class AirBookingController : ControllerBase
     }
 
     private static bool HasReservationPricingInfo(string solutionXml)
-    {
-        if (string.IsNullOrWhiteSpace(solutionXml))
-            return false;
-
-        try
-        {
-            var solution = XElement.Parse(solutionXml);
-            return solution.DescendantsAndSelf().Any(x => x.Name.LocalName == "AirPricingInfo")
-                && solution.Descendants().Any(x => x.Name.LocalName == "BookingInfo");
-        }
-        catch
-        {
-            return false;
-        }
-    }
+        => TravelportBookingSupportInspector.HasReservationPricingInfo(solutionXml);
 
     private static string? ResolveStandaloneClassOfService(XElement segment)
     {
@@ -942,6 +1197,14 @@ public sealed class AirBookingController : ControllerBase
         if (raw.Contains("No valid e-tickets", StringComparison.OrdinalIgnoreCase))
             return "The provider created the booking record, but no valid e-ticket exists yet for airline retrieval.";
 
+        if (raw.Contains("supplier-direct payment", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("ACH", StringComparison.OrdinalIgnoreCase) && raw.Contains("payment", StringComparison.OrdinalIgnoreCase))
+            return "This itinerary needs supplier-direct payment handling, so it cannot complete the TourValve wallet auto-ticketing flow yet.";
+
+        if (raw.Contains("stored fare pricing", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("pricing information", StringComparison.OrdinalIgnoreCase))
+            return "Travelport did not keep a ticketable stored fare on this booking. Reprice and rebook the itinerary before trying to issue a ticket.";
+
         if (raw.Contains("travelport.com/schema", StringComparison.OrdinalIgnoreCase) ||
             raw.Contains("faultstring", StringComparison.OrdinalIgnoreCase) ||
             raw.Contains("Error unmarshalling message body", StringComparison.OrdinalIgnoreCase))
@@ -1059,6 +1322,11 @@ public sealed class AirBookingController : ControllerBase
     private sealed record BookingPricingRefreshResult(
         string PricingSolutionXml,
         string PricingContextXml);
+
+    private sealed record PortalBookingCreationResult(
+        Booking? Booking,
+        string BookingReference,
+        bool PortalSyncPending);
 
     private sealed class XElementStringComparer : IEqualityComparer<XElement>
     {

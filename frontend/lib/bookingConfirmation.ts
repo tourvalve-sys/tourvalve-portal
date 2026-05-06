@@ -8,6 +8,11 @@ export type BookingConfirmationState = {
     providerLocator: string;
     airlineLocator: string;
     status: string;
+    ticketedAt?: string | null;
+    ticketNumbers?: string[];
+    airTicketingStatus?: string;
+    airlinePortalReady?: boolean;
+    ticketingMessage?: string;
     amount: number;
     currency: string;
     carrier: string;

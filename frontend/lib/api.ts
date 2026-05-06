@@ -33,6 +33,11 @@ export type FlightResult = {
     carryOnAllowance: string;
     checkedBaggageAllowance: string;
     baggageOfferTexts: string[];
+    providerCode: string;
+    bookingWorkflow: string;
+    supportsPortalCheckout: boolean;
+    supportsPortalAutoIssue: boolean;
+    bookingNotice: string;
     airPricingSolutionXml: string;
     airPricingContextXml: string;
     airSegmentXml: string;
@@ -170,6 +175,7 @@ export type BookingSeatMapPayload = {
 };
 
 export type AirBookingPayload = {
+    clientRequestId: string;
     carrier: string;
     flightNumber: string;
     from: string;
@@ -177,11 +183,23 @@ export type AirBookingPayload = {
     departure: string;
     arrival: string;
     price: number;
+    basePrice: number;
+    markupAmount: number;
     currency: string;
     airPricingSolutionXml: string;
     airPricingContextXml: string;
     contactEmail: string;
     contactPhone: string;
+    autoIssueTicket: boolean;
+    formOfPayment: string;
+    itinerarySegments: Array<{
+        carrier: string;
+        flightNumber: string;
+        from: string;
+        to: string;
+        departure: string;
+        arrival: string;
+    }>;
     servicePreferences: AirBookingServicePreferencesPayload;
     passengers: AirBookingPassengerPayload[];
 };
@@ -193,6 +211,19 @@ export type AirBookingResponse = {
     providerLocator: string;
     airlineLocator: string;
     providerCode: string;
+    bookingWorkflow: string;
+    bookingId?: string;
+    bookingReference: string;
+    portalSyncPending: boolean;
+    autoIssueRequested: boolean;
+    ticketIssued: boolean;
+    airlinePortalReady: boolean;
+    airTicketingStatus: string;
+    airTicketingPaymentStatus: string;
+    ticketingMessage: string;
+    ticketedAt?: string | null;
+    ticketNumbers: string[];
+    nextActionUrl: string;
     status: string;
     message: string;
     rawResponse: string;
