@@ -13,6 +13,9 @@ public sealed class AirBookingRequest
     public decimal BasePrice { get; set; }
     public decimal MarkupAmount { get; set; }
     public string Currency { get; set; } = "MYR";
+    public string AirSegmentXml { get; set; } = string.Empty;
+    public List<string> AirSegmentXmls { get; set; } = new();
+    public string RequestedCabin { get; set; } = string.Empty;
     public string AirPricingSolutionXml { get; set; } = string.Empty;
     public string AirPricingContextXml { get; set; } = string.Empty;
     public string ContactEmail { get; set; } = string.Empty;

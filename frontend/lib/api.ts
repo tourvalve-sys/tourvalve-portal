@@ -186,6 +186,9 @@ export type AirBookingPayload = {
     basePrice: number;
     markupAmount: number;
     currency: string;
+    airSegmentXml: string;
+    airSegmentXmls: string[];
+    requestedCabin: string;
     airPricingSolutionXml: string;
     airPricingContextXml: string;
     contactEmail: string;

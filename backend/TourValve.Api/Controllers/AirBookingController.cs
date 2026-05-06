@@ -910,7 +910,12 @@ public sealed class AirBookingController : ControllerBase
         var contextXml = !string.IsNullOrWhiteSpace(request.AirPricingContextXml)
             ? request.AirPricingContextXml
             : request.AirPricingSolutionXml;
-        var segmentXml = BuildBookingPriceSegmentsXml(request.AirPricingSolutionXml, contextXml);
+        var segmentXml = BuildBookingPriceSegmentsXml(
+            request.AirPricingSolutionXml,
+            contextXml,
+            request.AirSegmentXmls,
+            request.AirSegmentXml,
+            request.RequestedCabin);
         var hostTokensXml = ExtractHostTokensXml(contextXml, request.AirPricingSolutionXml);
         var faresIndicator = IsAvailabilityPricingContext(contextXml)
             ? "AllFares"
@@ -933,25 +938,42 @@ public sealed class AirBookingController : ControllerBase
 </air:AirPriceReq>".Trim();
     }
 
-    private static string BuildBookingPriceSegmentsXml(string airPricingSolutionXml, string contextXml)
+    private static string BuildBookingPriceSegmentsXml(
+        string airPricingSolutionXml,
+        string contextXml,
+        IReadOnlyCollection<string>? requestSegmentXmls,
+        string? requestSegmentXml,
+        string? requestedCabin)
     {
-        var solution = XElement.Parse(airPricingSolutionXml);
-        var contextDoc = XDocument.Parse(contextXml);
-
-        var rawSegments = solution.Elements()
-            .Where(x => x.Name.LocalName == "AirSegment")
-            .Select(x => x.ToString(SaveOptions.DisableFormatting))
+        var rawSegments = (requestSegmentXmls ?? Array.Empty<string>())
+            .Where(segmentXml => !string.IsNullOrWhiteSpace(segmentXml))
             .ToList();
+
+        if (rawSegments.Count == 0 && !string.IsNullOrWhiteSpace(requestSegmentXml))
+        {
+            rawSegments.Add(requestSegmentXml!);
+        }
 
         if (rawSegments.Count == 0)
         {
-            var segmentNodes = ResolveSegmentNodesForPricing(solution, contextDoc);
-            rawSegments.AddRange(segmentNodes.Select(segment => segment.ToString(SaveOptions.DisableFormatting)));
+            var solution = XElement.Parse(airPricingSolutionXml);
+            var contextDoc = XDocument.Parse(contextXml);
+
+            rawSegments = solution.Elements()
+                .Where(x => x.Name.LocalName == "AirSegment")
+                .Select(x => x.ToString(SaveOptions.DisableFormatting))
+                .ToList();
+
+            if (rawSegments.Count == 0)
+            {
+                var segmentNodes = ResolveSegmentNodesForPricing(solution, contextDoc);
+                rawSegments.AddRange(segmentNodes.Select(segment => segment.ToString(SaveOptions.DisableFormatting)));
+            }
         }
 
         return string.Join(
             Environment.NewLine + "    ",
-            rawSegments.Select(segmentXml => NormalizeBookingSegmentXml(segmentXml, contextXml)));
+            rawSegments.Select(segmentXml => NormalizeBookingSegmentXml(segmentXml, contextXml, requestedCabin)));
     }
 
     private static List<XElement> ResolveSegmentNodesForPricing(XElement pricingSolution, XDocument contextDoc)
@@ -972,7 +994,7 @@ public sealed class AirBookingController : ControllerBase
             .ToList();
     }
 
-    private static string NormalizeBookingSegmentXml(string rawSegmentXml, string? contextXml)
+    private static string NormalizeBookingSegmentXml(string rawSegmentXml, string? contextXml, string? requestedCabin)
     {
         var segment = XElement.Parse(rawSegmentXml);
         segment.Name = XName.Get("AirSegment", "http://www.travelport.com/schema/air_v51_0");
@@ -1026,7 +1048,9 @@ public sealed class AirBookingController : ControllerBase
                         x.Name.LocalName == "AirSegment" &&
                         x.Attribute("Key")?.Value == segment.Attribute("Key")?.Value);
 
-                classOfService = ResolveStandaloneClassOfService(segment)
+                classOfService = ResolveStandaloneClassOfService(segment, requestedCabin)
+                    ?? (contextSegment is null ? null : ResolveStandaloneClassOfService(contextSegment, requestedCabin))
+                    ?? ResolveStandaloneClassOfService(segment)
                     ?? (contextSegment is null ? null : ResolveStandaloneClassOfService(contextSegment))
                     ?? string.Empty;
             }
@@ -1285,11 +1309,31 @@ public sealed class AirBookingController : ControllerBase
     private static bool HasReservationPricingInfo(string solutionXml)
         => TravelportBookingSupportInspector.HasReservationPricingInfo(solutionXml);
 
-    private static string? ResolveStandaloneClassOfService(XElement segment)
+    private static string? ResolveStandaloneClassOfService(XElement segment, string? requestedCabin = null)
     {
+        var normalizedRequestedCabin = NormalizeRequestedCabin(requestedCabin);
+        if (!string.IsNullOrWhiteSpace(normalizedRequestedCabin))
+        {
+            var requestedCabinMatch = segment.Descendants()
+                .FirstOrDefault(x =>
+                    x.Name.LocalName == "BookingInfo" &&
+                    string.Equals(x.Attribute("CabinClass")?.Value, normalizedRequestedCabin, StringComparison.OrdinalIgnoreCase))
+                ?.Attribute("BookingCode")?.Value;
+
+            if (!string.IsNullOrWhiteSpace(requestedCabinMatch))
+                return requestedCabinMatch;
+        }
+
         return segment.Attribute("ClassOfService")?.Value
             ?? segment.Descendants()
                 .FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo" && !string.IsNullOrWhiteSpace(x.Attribute("BookingCode")?.Value))
+                ?.Attribute("BookingCode")?.Value
+            ?? segment.Descendants()
+                .FirstOrDefault(x =>
+                    x.Name.LocalName == "BookingInfo" &&
+                    !string.IsNullOrWhiteSpace(x.Attribute("BookingCode")?.Value) &&
+                    (string.IsNullOrWhiteSpace(normalizedRequestedCabin) ||
+                     string.Equals(x.Attribute("CabinClass")?.Value, normalizedRequestedCabin, StringComparison.OrdinalIgnoreCase)))
                 ?.Attribute("BookingCode")?.Value
             ?? segment.Descendants()
                 .FirstOrDefault(x => x.Name.LocalName == "BookingCodeInfo" && !string.IsNullOrWhiteSpace(x.Attribute("CabinClass")?.Value))
@@ -1297,6 +1341,20 @@ public sealed class AirBookingController : ControllerBase
             ?? segment.Descendants()
                 .FirstOrDefault(x => x.Name.LocalName == "AirAvailInfo" && !string.IsNullOrWhiteSpace(x.Attribute("ClassOfService")?.Value))
                 ?.Attribute("ClassOfService")?.Value;
+    }
+
+    private static string? NormalizeRequestedCabin(string? requestedCabin)
+    {
+        if (string.IsNullOrWhiteSpace(requestedCabin))
+            return null;
+
+        return requestedCabin.Trim().ToLowerInvariant() switch
+        {
+            "economy" => "Economy",
+            "business" => "Business",
+            "first" => "First",
+            _ => requestedCabin.Trim()
+        };
     }
 
     private static bool IsAvailabilityPricingContext(string contextXml)
