@@ -394,6 +394,16 @@ public sealed class AirBookingController : ControllerBase
                 pricingSolution.Add(segmentNode);
             }
 
+            // AirPrice / LowFareSearch responses frequently return AirSegmentRef nodes instead of fully formed AirSegment
+            // elements. AirCreateReservation does not accept AirSegmentRef nodes inside the pricing payload and will
+            // respond with a marshalling error (expects AirSegment nodes instead).
+            foreach (var segmentRef in pricingSolution.Descendants()
+                         .Where(x => x.Name.LocalName == "AirSegmentRef")
+                         .ToList())
+            {
+                segmentRef.Remove();
+            }
+
             if (!pricingSolution.Elements().Any(x => x.Name.LocalName == "HostToken"))
             {
                 var hostTokens = contextDoc.Descendants()
