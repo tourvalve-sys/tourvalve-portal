@@ -391,7 +391,14 @@ public sealed class AirBookingController : ControllerBase
                          .Select(node => EnsureAirNamespace(node))
                          .Distinct(new XElementStringComparer()))
             {
-                pricingSolution.Add(segmentNode);
+                var insertBefore = pricingSolution.Elements()
+                    .FirstOrDefault(x => x.Name.LocalName == "AirPricingInfo")
+                    ?? pricingSolution.Elements().FirstOrDefault();
+
+                if (insertBefore is not null)
+                    insertBefore.AddBeforeSelf(segmentNode);
+                else
+                    pricingSolution.Add(segmentNode);
             }
 
             // AirPrice / LowFareSearch responses frequently return AirSegmentRef nodes instead of fully formed AirSegment
