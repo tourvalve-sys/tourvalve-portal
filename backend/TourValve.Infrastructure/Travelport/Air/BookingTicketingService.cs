@@ -357,6 +357,15 @@ public class BookingTicketingService
         if (string.IsNullOrWhiteSpace(message))
             return false;
 
+        // Some failures (e.g. AAT authorization / plating carrier restrictions) are permanent until
+        // Travelport configuration changes. In those cases, a subsequent document retrieve will
+        // also show "has no tickets yet", but waiting will not help.
+        if (message.Contains("TICKETING NOT ALLOWED", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("CHECK AAT", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         return message.Contains("has no tickets yet", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -607,6 +616,15 @@ public class BookingTicketingService
 
             values.AddRange(doc.Descendants()
                 .Where(x => x.Name.LocalName.Equals("ResponseMessage", StringComparison.OrdinalIgnoreCase))
+                .Where(x =>
+                {
+                    var type = x.Attribute("Type")?.Value?.Trim();
+                    if (string.Equals(type, "Info", StringComparison.OrdinalIgnoreCase))
+                        return false;
+
+                    var code = x.Attribute("Code")?.Value?.Trim();
+                    return !string.Equals(code, "0", StringComparison.OrdinalIgnoreCase);
+                })
                 .SelectMany(x => new[]
                 {
                     x.Attribute("Text")?.Value?.Trim(),
