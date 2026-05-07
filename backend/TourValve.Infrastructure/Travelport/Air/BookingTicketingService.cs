@@ -622,6 +622,12 @@ public class BookingTicketingService
                     if (string.Equals(type, "Info", StringComparison.OrdinalIgnoreCase))
                         return false;
 
+                    if (string.Equals(type, "Warning", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(type, "Error", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+
                     var code = x.Attribute("Code")?.Value?.Trim();
                     return !string.Equals(code, "0", StringComparison.OrdinalIgnoreCase);
                 })
