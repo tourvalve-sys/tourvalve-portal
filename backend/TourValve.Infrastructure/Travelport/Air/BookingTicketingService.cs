@@ -352,6 +352,14 @@ public class BookingTicketingService
         return "Travelport did not return any valid e-ticket numbers after ticket issuance. The booking should remain confirmed until live e-ticket numbers are present.";
     }
 
+    public static bool IsTicketingEvidencePending(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        return message.Contains("has no tickets yet", StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task<string> RetrieveDocumentInfoAsync(BookingTicketingSnapshot snapshot, IReadOnlyCollection<string>? ticketNumbers = null)
     {
         if (string.IsNullOrWhiteSpace(snapshot.ProviderCode))
@@ -589,7 +597,7 @@ public class BookingTicketingService
     {
         try
         {
-            var doc = XDocument.Parse(xml);
+            var doc = XDocument.Parse(StripToXml(xml));
 
             var values = new List<string?>();
 
@@ -638,6 +646,16 @@ public class BookingTicketingService
         {
             return Array.Empty<string>();
         }
+    }
+
+    private static string StripToXml(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var trimmed = value.Trim();
+        var idx = trimmed.IndexOf('<');
+        return idx > 0 ? trimmed[idx..] : trimmed;
     }
 
     private static IReadOnlyList<string> ExtractTicketingAirPricingInfoKeys(string retrieveXml)

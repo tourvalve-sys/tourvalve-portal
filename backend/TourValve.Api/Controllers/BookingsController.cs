@@ -796,7 +796,9 @@ public class BookingsController : ControllerBase
             {
                 message = result.TicketNumbers.Count > 0
                     ? "Ticket issued successfully."
-                    : "Ticketing request completed. Verify ticket numbers from the refreshed live record.",
+                    : string.Equals(result.WorkflowStatus, AirTicketingWorkflowService.WorkflowAwaitingEvidence, StringComparison.OrdinalIgnoreCase)
+                        ? "Ticketing has been submitted to Travelport, but ticket numbers are not available yet. Refresh this workspace shortly to confirm e-ticket numbers."
+                        : "Ticketing request completed. Verify ticket numbers from the refreshed live record.",
                 ticketNumbers = result.TicketNumbers,
                 ticketedAt = result.TicketedAt,
                 result.Status,

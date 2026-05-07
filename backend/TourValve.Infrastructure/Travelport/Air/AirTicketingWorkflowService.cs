@@ -15,6 +15,7 @@ public class AirTicketingWorkflowService
     public const string WorkflowNotStarted = "NOT_STARTED";
     public const string WorkflowScheduled = "SCHEDULED";
     public const string WorkflowInProgress = "IN_PROGRESS";
+    public const string WorkflowAwaitingEvidence = "AWAITING_EVIDENCE";
     public const string WorkflowIssued = "ISSUED";
     public const string WorkflowFailed = "FAILED";
     public const string WorkflowVoided = "VOIDED";
@@ -138,6 +139,19 @@ public class AirTicketingWorkflowService
     {
         EnsureIssueable(booking);
 
+        if (string.Equals(booking.AirTicketingStatus, WorkflowAwaitingEvidence, StringComparison.OrdinalIgnoreCase) ||
+            (string.Equals(booking.AirTicketingStatus, WorkflowFailed, StringComparison.OrdinalIgnoreCase) &&
+             BookingTicketingService.IsTicketingEvidencePending(booking.AirTicketingLastError)))
+        {
+            booking.AirTicketingStatus = WorkflowAwaitingEvidence;
+            return await RefreshTicketEvidenceAsync(
+                booking,
+                actorId,
+                actorEmail,
+                backgroundTriggered,
+                cancellationToken);
+        }
+
         booking.AirTicketingStatus = WorkflowInProgress;
         booking.AirTicketingLastError = string.Empty;
         booking.TicketNumbersJson = "[]";
@@ -167,12 +181,49 @@ public class AirTicketingWorkflowService
 
             if (result.TicketNumbers.Count == 0)
             {
-                throw new InvalidOperationException(
-                    BookingTicketingService.ExtractTicketingFailureDetail(
+                var failureDetail = BookingTicketingService.ExtractTicketingFailureDetail(
+                    result.ResponseXml,
+                    result.RefreshedRecordXml,
+                    result.DocumentRetrieveXml,
+                    booking.TicketingResponseXml);
+
+                if (BookingTicketingService.IsTicketingEvidencePending(failureDetail))
+                {
+                    booking.Status = "CONFIRMED";
+                    booking.AirTicketingStatus = WorkflowAwaitingEvidence;
+                    booking.AirTicketingLastError = failureDetail;
+                    await _db.SaveChangesAsync(cancellationToken);
+
+                    var pendingActorEmail = NormalizeActorEmail(actorEmail);
+                    await _audit.WriteAsync(
+                        actorId,
+                        pendingActorEmail,
+                        "BOOKING",
+                        backgroundTriggered ? "AIR_TICKETING_AUTO_EVIDENCE_PENDING" : "AIR_TICKETING_EVIDENCE_PENDING",
+                        "Booking",
+                        booking.Id.ToString(),
+                        booking.BookingReference,
+                        failureDetail,
+                        "INFO");
+
+                    await NotifyAsync(
+                        booking,
+                        "Ticketing pending",
+                        $"Booking {booking.BookingReference}: {failureDetail}",
+                        "INFO");
+
+                    return new AirTicketingIssueResult(
+                        Array.Empty<string>(),
+                        null,
+                        booking.Status,
+                        booking.AirTicketingStatus,
+                        booking.AirTicketingPaymentStatus,
                         result.ResponseXml,
-                        result.RefreshedRecordXml,
-                        result.DocumentRetrieveXml,
-                        booking.TicketingResponseXml));
+                        string.IsNullOrWhiteSpace(result.RefreshedRecordXml) ? null : result.RefreshedRecordXml,
+                        string.Empty);
+                }
+
+                throw new InvalidOperationException(failureDetail);
             }
 
             var issuedAt = DateTime.UtcNow;
@@ -474,7 +525,9 @@ public class AirTicketingWorkflowService
         return await _db.Bookings
             .AsNoTracking()
             .Where(x =>
-                x.AirTicketingStatus == WorkflowScheduled &&
+                (x.AirTicketingStatus == WorkflowScheduled ||
+                 x.AirTicketingStatus == WorkflowAwaitingEvidence ||
+                 (x.AirTicketingStatus == WorkflowFailed && x.AirTicketingLastError.Contains("has no tickets yet"))) &&
                 x.AirTicketingDate.HasValue &&
                 x.AirTicketingDate.Value <= today &&
                 !x.TicketedAt.HasValue &&
@@ -586,6 +639,125 @@ public class AirTicketingWorkflowService
         return new List<string>();
     }
 
+    private async Task<AirTicketingIssueResult> RefreshTicketEvidenceAsync(
+        Booking booking,
+        Guid? actorId,
+        string actorEmail,
+        bool backgroundTriggered,
+        CancellationToken cancellationToken)
+    {
+        await RefreshProviderDetailsIfNeededAsync(booking, cancellationToken);
+
+        var retrieveXml = await _records.RetrieveAsync(
+            booking.UniversalRecordLocator,
+            providerCode: booking.ProviderCode,
+            providerLocatorCode: booking.ProviderLocator,
+            retrieveProviderReservationDetails: true);
+        var snapshot = BookingTicketingService.ExtractSnapshot(retrieveXml, booking);
+        ApplySnapshot(booking, snapshot);
+
+        var verifiedTicketNumbers = BookingTicketingService.ExtractVerifiedTicketNumbers(retrieveXml);
+        var documentRetrieveXml = string.Empty;
+
+        if (verifiedTicketNumbers.Count == 0)
+        {
+            try
+            {
+                documentRetrieveXml = await _ticketing.RetrieveDocumentInfoAsync(snapshot);
+                var documentVerifiedTicketNumbers = BookingTicketingService.ExtractVerifiedTicketNumbers(documentRetrieveXml);
+                if (documentVerifiedTicketNumbers.Count > 0)
+                    verifiedTicketNumbers = documentVerifiedTicketNumbers;
+            }
+            catch (Exception ex)
+            {
+                documentRetrieveXml = ex.Message;
+            }
+        }
+
+        if (verifiedTicketNumbers.Count > 0)
+        {
+            booking.TicketNumbersJson = JsonSerializer.Serialize(verifiedTicketNumbers);
+            booking.TicketedAt ??= DateTime.UtcNow;
+            booking.Status = "TICKETED";
+            booking.AirTicketingStatus = WorkflowIssued;
+            booking.AirTicketingLastError = string.Empty;
+
+            var paymentWarning = string.Empty;
+            if (booking.AirTicketingFormOfPayment == FormOfPaymentWallet &&
+                booking.AirTicketingWalletHoldId.HasValue &&
+                !string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    await _wallet.CaptureHoldAsync(
+                        booking.AirTicketingWalletHoldId.Value,
+                        $"{booking.BookingReference}-AT-CAPTURE");
+                    booking.AirTicketingPaymentStatus = PaymentPaid;
+                }
+                catch (Exception ex)
+                {
+                    paymentWarning = ExtractTravelportMessage(ex);
+                    booking.AirTicketingPaymentStatus = PaymentHoldActive;
+                }
+            }
+
+            booking.TicketingResponseXml = !string.IsNullOrWhiteSpace(documentRetrieveXml)
+                ? documentRetrieveXml
+                : retrieveXml;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            var normalizedActorEmail = NormalizeActorEmail(actorEmail);
+            await _audit.WriteAsync(
+                actorId,
+                normalizedActorEmail,
+                "BOOKING",
+                backgroundTriggered ? "AIR_TICKETING_AUTO_EVIDENCE_CONFIRMED" : "AIR_TICKETING_EVIDENCE_CONFIRMED",
+                "Booking",
+                booking.Id.ToString(),
+                booking.BookingReference,
+                $"Ticket evidence confirmed for booking {booking.BookingReference}. {string.Join(", ", verifiedTicketNumbers)}",
+                string.IsNullOrWhiteSpace(paymentWarning) ? "SUCCESS" : "WARN");
+
+            await NotifyAsync(
+                booking,
+                "Ticket issued",
+                $"Booking {booking.BookingReference} has been ticketed. Ticket numbers: {string.Join(", ", verifiedTicketNumbers)}.",
+                string.IsNullOrWhiteSpace(paymentWarning) ? "SUCCESS" : "WARN");
+
+            return new AirTicketingIssueResult(
+                verifiedTicketNumbers,
+                booking.TicketedAt,
+                booking.Status,
+                booking.AirTicketingStatus,
+                booking.AirTicketingPaymentStatus,
+                retrieveXml,
+                null,
+                paymentWarning);
+        }
+
+        booking.Status = "CONFIRMED";
+        booking.AirTicketingStatus = WorkflowAwaitingEvidence;
+        booking.TicketingResponseXml = !string.IsNullOrWhiteSpace(documentRetrieveXml) ? documentRetrieveXml : retrieveXml;
+
+        booking.AirTicketingLastError = BookingTicketingService.ExtractTicketingFailureDetail(
+            booking.AirTicketingLastError,
+            retrieveXml,
+            documentRetrieveXml);
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return new AirTicketingIssueResult(
+            Array.Empty<string>(),
+            null,
+            booking.Status,
+            booking.AirTicketingStatus,
+            booking.AirTicketingPaymentStatus,
+            retrieveXml,
+            null,
+            string.Empty);
+    }
+
     private async Task NotifyAsync(Booking booking, string title, string message, string severity)
     {
         var route = BuildWorkspacePath(booking.Id);
@@ -693,7 +865,7 @@ public sealed record AirTicketingScheduleResult(
 
 public sealed record AirTicketingIssueResult(
     IReadOnlyList<string> TicketNumbers,
-    DateTime TicketedAt,
+    DateTime? TicketedAt,
     string Status,
     string WorkflowStatus,
     string PaymentStatus,
