@@ -7,6 +7,8 @@ using Npgsql;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
+using TourValve.Api.Pdf;
 using TourValve.Application.Bookings.Ancillaries;
 using TourValve.Application.Bookings.Commands;
 using TourValve.Domain;
@@ -945,7 +947,65 @@ public class BookingsController : ControllerBase
         if (booking == null)
             return NotFound(new { error = "Booking not found." });
 
-        var pdfBytes = BuildSimpleBookingPdf(booking);
+        string? retrieveXml = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(booking.UniversalRecordLocator))
+            {
+                retrieveXml = await _records.RetrieveAsync(
+                    booking.UniversalRecordLocator,
+                    providerCode: booking.ProviderCode,
+                    providerLocatorCode: booking.ProviderLocator,
+                    retrieveProviderReservationDetails: true);
+
+                var snapshot = BookingTicketingService.ExtractSnapshot(retrieveXml, booking);
+                var hasChanges = false;
+
+                if (!string.IsNullOrWhiteSpace(snapshot.UniversalRecordLocator) &&
+                    !string.Equals(booking.UniversalRecordLocator, snapshot.UniversalRecordLocator, StringComparison.Ordinal))
+                {
+                    booking.UniversalRecordLocator = snapshot.UniversalRecordLocator;
+                    hasChanges = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(snapshot.ProviderLocator) &&
+                    !string.Equals(booking.ProviderLocator, snapshot.ProviderLocator, StringComparison.Ordinal))
+                {
+                    booking.ProviderLocator = snapshot.ProviderLocator;
+                    hasChanges = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(snapshot.AirlineLocator) &&
+                    !string.Equals(booking.AirlineLocator, snapshot.AirlineLocator, StringComparison.Ordinal))
+                {
+                    booking.AirlineLocator = snapshot.AirlineLocator;
+                    hasChanges = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(snapshot.ProviderCode) &&
+                    !string.Equals(booking.ProviderCode, snapshot.ProviderCode, StringComparison.Ordinal))
+                {
+                    booking.ProviderCode = snapshot.ProviderCode;
+                    hasChanges = true;
+                }
+
+                if (hasChanges)
+                    await _db.SaveChangesAsync();
+            }
+        }
+        catch
+        {
+            // Best-effort only; document export should still succeed.
+        }
+
+        var ancillaries = await _db.BookingAncillaryOrders
+            .AsNoTracking()
+            .Where(x => x.BookingId == booking.Id)
+            .OrderByDescending(x => x.RequestedAt)
+            .ToListAsync();
+
+        var model = BookingItineraryPdfBuilder.BuildModel(booking, retrieveXml, ancillaries);
+        var pdfBytes = new BookingItineraryPdfBuilder().Build(booking, model);
         var fileName = $"booking-{booking.BookingReference}.pdf";
         return File(pdfBytes, "application/pdf", fileName);
     }
