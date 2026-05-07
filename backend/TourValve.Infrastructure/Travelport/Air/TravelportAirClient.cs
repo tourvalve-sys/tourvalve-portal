@@ -27,6 +27,10 @@ public class TravelportAirClient
     public Task<string> PostToUniversalServiceAsync(string xmlOrBody, string? soapAction = null)
         => RawPostAsync("Travelport:UniversalEndpoint", xmlOrBody, soapAction);
 
+    // TERMINAL SERVICE (host commands)
+    public Task<string> PostToTerminalServiceAsync(string xmlOrBody, string? soapAction = null)
+        => RawPostAsync("Travelport:TerminalEndpoint", xmlOrBody, soapAction);
+
     private async Task<string> RawPostAsync(string endpointKey, string xmlOrBody, string? soapAction)
     {
         var endpoint = _config[endpointKey];
@@ -51,7 +55,9 @@ public class TravelportAirClient
         req.Content = new StringContent(payload, Encoding.UTF8, "text/xml");
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/xml"));
 
-        if (!string.IsNullOrWhiteSpace(soapAction))
+        // Travelport samples frequently include a SOAPAction header (often blank).
+        // Preserve the ability to explicitly send a blank SOAPAction by passing "".
+        if (soapAction is not null)
             req.Headers.Add("SOAPAction", soapAction);
 
         // Travelport rejects requests that carry both WS-Security and HTTP Basic

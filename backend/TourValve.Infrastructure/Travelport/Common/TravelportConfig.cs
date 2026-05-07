@@ -15,6 +15,7 @@ public class TravelportConfig
     public string SystemEndpoint { get; set; } = "";
     public string AirEndpoint { get; set; } = "";
     public string UniversalEndpoint { get; set; } = "";
+    public string TerminalEndpoint { get; set; } = "";
     public bool MockMode { get; set; } = false;
 
     public bool HasLiveCredentials() =>

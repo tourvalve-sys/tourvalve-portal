@@ -15,6 +15,7 @@ using TourValve.Infrastructure.Security;
 using TourValve.Infrastructure.Services;
 using TourValve.Infrastructure.Travelport.Air;
 using TourValve.Infrastructure.Travelport.Common;
+using TourValve.Infrastructure.Travelport.Terminal;
 using TourValve.Infrastructure.Travelport.XML;
 using TourValve.Infrastructure.Wallet;
 
@@ -181,6 +182,7 @@ builder.Services.AddScoped<AirAncillaryAvailabilityService>();
 builder.Services.AddScoped<BookingSeatMapService>();
 builder.Services.AddScoped<BookingTicketingService>();
 builder.Services.AddScoped<AirTicketingWorkflowService>();
+builder.Services.AddScoped<TravelportTerminalService>();
 builder.Services.AddScoped<AncillaryOfferService>();
 builder.Services.AddScoped<UniversalRecordService>();
 builder.Services.AddHostedService<AirTicketingWorker>();
