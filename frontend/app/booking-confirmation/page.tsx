@@ -1,8 +1,7 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useSyncExternalStore } from "react";
 import { CheckCircle2, Mail, Receipt, ShieldCheck, Ticket } from "lucide-react";
 import AirlineBrand from "@/components/AirlineBrand";
 import {
@@ -38,6 +37,20 @@ function BookingConfirmationPageContent() {
         }
     }, [isHydrated, searchParams]);
 
+    const [ticketingPromptDismissedBookingId, setTicketingPromptDismissedBookingId] = useState("");
+
+    const ticketNumbers = Array.isArray(confirmation?.ticketNumbers)
+        ? confirmation.ticketNumbers.filter((ticketNumber) => typeof ticketNumber === "string" && ticketNumber.trim().length > 0)
+        : [];
+    const ticketIssued =
+        Boolean(confirmation?.airlinePortalReady) ||
+        Boolean(confirmation?.ticketedAt) ||
+        ticketNumbers.length > 0 ||
+        confirmation?.airTicketingStatus === "ISSUED";
+
+    const bookingId = confirmation?.bookingId ?? "";
+    const ticketingPromptKey = bookingId ? `tv_ticketing_prompt_dismissed:${bookingId}` : "";
+
     if (!confirmation) {
         return (
             <div className="premium-panel rounded-[2rem] p-8 shadow fade-in">
@@ -65,21 +78,83 @@ function BookingConfirmationPageContent() {
     }
 
     const airlinePnr = confirmation.airlineLocator || "";
-    const ticketNumbers = Array.isArray(confirmation.ticketNumbers)
-        ? confirmation.ticketNumbers.filter((ticketNumber) => typeof ticketNumber === "string" && ticketNumber.trim().length > 0)
-        : [];
-    const ticketIssued =
-        Boolean(confirmation.airlinePortalReady) ||
-        Boolean(confirmation.ticketedAt) ||
-        ticketNumbers.length > 0 ||
-        confirmation.airTicketingStatus === "ISSUED";
+    const showTicketingPrompt = (() => {
+        if (!bookingId) {
+            return false;
+        }
+
+        if (ticketIssued) {
+            return false;
+        }
+
+        if (ticketingPromptDismissedBookingId === bookingId) {
+            return false;
+        }
+
+        try {
+            return !sessionStorage.getItem(ticketingPromptKey);
+        } catch {
+            return true;
+        }
+    })();
+
+    const dismissTicketingPrompt = () => {
+        try {
+            if (ticketingPromptKey) {
+                sessionStorage.setItem(ticketingPromptKey, "1");
+            }
+        } catch {
+            // Ignore session storage failures; modal may reappear on refresh.
+        }
+
+        setTicketingPromptDismissedBookingId(bookingId);
+    };
+
+    const proceedToTicketing = () => {
+        dismissTicketingPrompt();
+        router.push(`/air-ticketing/${encodeURIComponent(confirmation.bookingId)}`);
+    };
     const headline = ticketIssued ? "Your ticket is issued." : "Your booking is confirmed.";
     const intro = ticketIssued
-        ? "The reservation has been stored inside TourValve, automatic ticketing has completed, and the airline-facing record is ready for post-booking servicing."
-        : "The reservation has been stored inside TourValve. Automatic ticketing still needs review, so continue from the AirTicketing workspace before using the airline portal.";
+        ? "The reservation has been stored inside TourValve and ticket evidence is present. The airline-facing record is ready for post-booking servicing."
+        : "The reservation has been stored inside TourValve. Proceed to the AirTicketing workspace when you are ready to schedule and issue the ticket.";
 
     return (
         <div className="min-h-screen px-3 py-4 sm:px-4 md:p-6 fade-in">
+            {showTicketingPrompt ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+                    <button
+                        type="button"
+                        aria-label="Dismiss ticketing prompt"
+                        onClick={dismissTicketingPrompt}
+                        className="absolute inset-0 bg-slate-900/35 backdrop-blur-sm"
+                    />
+                    <div className="premium-panel relative w-full max-w-lg rounded-[2rem] border border-[rgba(89,64,46,0.12)] bg-[rgba(255,252,247,0.96)] p-6 shadow-[0_28px_70px_rgba(40,28,17,0.18)] sm:p-8">
+                        <div className="subtle-kicker mb-3">Next step</div>
+                        <h2 className="hero-title mb-3 text-2xl">Proceed for ticketing?</h2>
+                        <p className="text-sm leading-7 text-slate-600">
+                            Your reservation is confirmed. No wallet charge is made during reservation creation.
+                            Continue to the AirTicketing workspace when you&apos;re ready to schedule and issue the ticket.
+                        </p>
+                        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={dismissTicketingPrompt}
+                                className="ghost-button rounded-2xl px-5 py-3 font-semibold"
+                            >
+                                Not now
+                            </button>
+                            <button
+                                type="button"
+                                onClick={proceedToTicketing}
+                                className="gold-button rounded-2xl px-5 py-3 font-semibold"
+                            >
+                                Proceed for Ticketing
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
             <div className="mb-8">
                 <div className="subtle-kicker mb-3">Reservation Confirmation</div>
                 <h1 className="hero-title mb-3">{headline}</h1>

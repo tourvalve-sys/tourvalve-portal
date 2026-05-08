@@ -20,7 +20,7 @@ public sealed class AirBookingRequest
     public string AirPricingContextXml { get; set; } = string.Empty;
     public string ContactEmail { get; set; } = string.Empty;
     public string ContactPhone { get; set; } = string.Empty;
-    public bool AutoIssueTicket { get; set; } = true;
+    public bool AutoIssueTicket { get; set; } = false;
     public string FormOfPayment { get; set; } = "TOURVALVE_WALLET";
     public List<AirBookingItinerarySegmentRequest> ItinerarySegments { get; set; } = new();
     public AirBookingServicePreferencesRequest ServicePreferences { get; set; } = new();

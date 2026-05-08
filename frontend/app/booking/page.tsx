@@ -66,9 +66,9 @@ const BOOKING_PREPARE_CAPTIONS = [
     "Loading your selected itinerary, traveler mix, and booking session.",
 ];
 const BOOKING_CONFIRM_CAPTIONS = [
-    "Checking wallet coverage and preparing the live reservation request.",
+    "Preparing the live reservation request.",
     "Creating the PNR and syncing the booking record inside TourValve.",
-    "Issuing the ticket automatically when the reservation is ready.",
+    "Preparing your reservation confirmation and ticketing workspace.",
 ];
 
 function createPassenger(type: string): PassengerForm {
@@ -618,7 +618,7 @@ export default function BookingPage() {
                 airPricingContextXml: selectedFlight.airPricingContextXml,
                 contactEmail: contactEmail.trim(),
                 contactPhone: contactPhone.trim(),
-                autoIssueTicket: true,
+                autoIssueTicket: false,
                 formOfPayment: "TOURVALVE_WALLET",
                 itinerarySegments: itinerarySegments.map((segment) => ({
                     carrier: segment.carrier,
@@ -635,11 +635,9 @@ export default function BookingPage() {
             const confirmation = buildConfirmationState(reservation);
             sessionStorage.setItem(LATEST_BOOKING_CONFIRMATION_KEY, JSON.stringify(confirmation));
 
-            const fallbackNextStep = reservation.ticketIssued && reservation.bookingId
+            const fallbackNextStep = reservation.bookingId
                 ? `/booking-confirmation?bookingId=${encodeURIComponent(reservation.bookingId)}`
-                : reservation.bookingId
-                    ? `/air-ticketing/${encodeURIComponent(reservation.bookingId)}`
-                    : "/booking-confirmation";
+                : "/booking-confirmation";
 
             setSelectedFlight(null);
             router.push(reservation.nextActionUrl || fallbackNextStep);

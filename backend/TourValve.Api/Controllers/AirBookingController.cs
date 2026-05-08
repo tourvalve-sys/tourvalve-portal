@@ -115,28 +115,15 @@ public sealed class AirBookingController : ControllerBase
         {
             return BadRequest(new
             {
-                error = "This itinerary cannot complete the portal auto-ticketing flow.",
+                error = "This itinerary cannot be reserved from the portal.",
                 detail = bookingSupport.UserMessage
             });
         }
 
-        Guid? preAuthorizedHoldId = null;
         string reservationRequestXml = string.Empty;
 
         try
         {
-            var normalizedFormOfPayment = NormalizeRequestedFormOfPayment(request.FormOfPayment);
-            if (request.AutoIssueTicket && string.Equals(normalizedFormOfPayment, AirTicketingWorkflowService.FormOfPaymentWallet, StringComparison.OrdinalIgnoreCase))
-            {
-                preAuthorizedHoldId = await CreatePreAuthorizedWalletHoldAsync(
-                    actorId,
-                    actorEmail,
-                    isAdmin,
-                    request.Price,
-                    normalizedRequestId,
-                    cancellationToken);
-            }
-
             var refreshedPricing = await RefreshPricingForBookingAsync(request, bookingSupport.ProviderCode);
             var refreshedSupport = TravelportBookingSupportInspector.Analyze(
                 refreshedPricing.PricingSolutionXml,
@@ -194,64 +181,17 @@ public sealed class AirBookingController : ControllerBase
                 refreshedSupport.ProviderCode,
                 cancellationToken);
 
-            if (portalBooking.Booking is not null && preAuthorizedHoldId.HasValue)
-            {
-                portalBooking.Booking.AirTicketingWalletHoldId = preAuthorizedHoldId.Value;
-                await _db.SaveChangesAsync(cancellationToken);
-            }
-
-            AirTicketingIssueResult? issueResult = null;
-            var ticketingMessage = request.AutoIssueTicket
-                ? "Reservation created. Automatic ticket issuance has not started yet."
-                : "Reservation created successfully.";
-
-            if (portalBooking.Booking is not null && request.AutoIssueTicket)
-            {
-                await _airTicketingWorkflow.ScheduleAsync(
-                    portalBooking.Booking,
-                    normalizedFormOfPayment,
-                    DateOnly.FromDateTime(DateTime.UtcNow),
-                    actorId,
-                    actorEmail,
-                    isAdmin,
-                    cancellationToken);
-
-                try
-                {
-                    issueResult = await _airTicketingWorkflow.IssueAsync(
-                        portalBooking.Booking,
-                        actorId,
-                        actorEmail,
-                        releaseWalletHoldOnFailure: true,
-                        cancellationToken: cancellationToken);
-
-                    ticketingMessage = issueResult.TicketNumbers.Count > 0
-                        ? "Reservation created and ticket issued automatically."
-                        : "Reservation created. Review the refreshed AirTicketing record for ticket evidence.";
-                }
-                catch (Exception issueEx)
-                {
-                    ticketingMessage = ExtractTravelportMessage(issueEx);
-                }
-            }
-
-            if (portalBooking.Booking is null && preAuthorizedHoldId.HasValue)
-            {
-                await TryReleaseWalletHoldAsync(preAuthorizedHoldId.Value, $"{normalizedRequestId}-PORTAL-SYNC-FAIL");
-                preAuthorizedHoldId = null;
-            }
+            var ticketingMessage = portalBooking.PortalSyncPending
+                ? "Reservation created, but the portal record is still syncing. Open the booking ledger once it appears, then proceed to ticketing."
+                : "Reservation created. Proceed to ticketing to issue.";
 
             var booking = portalBooking.Booking;
             var ticketNumbers = booking is null
                 ? new List<string>()
                 : DeserializeTicketNumbers(booking);
-            var ticketIssued = string.Equals(booking?.AirTicketingStatus, AirTicketingWorkflowService.WorkflowIssued, StringComparison.OrdinalIgnoreCase) &&
-                ticketNumbers.Count > 0;
             var nextActionUrl = booking is null
                 ? "/booking-confirmation"
-                : ticketIssued
-                    ? $"/booking-confirmation?bookingId={Uri.EscapeDataString(booking.Id.ToString())}"
-                    : BuildWorkspacePath(booking.Id);
+                : $"/booking-confirmation?bookingId={Uri.EscapeDataString(booking.Id.ToString())}";
 
             return Ok(new AirBookingResponse
             {
@@ -265,24 +205,18 @@ public sealed class AirBookingController : ControllerBase
                 BookingId = booking?.Id,
                 BookingReference = portalBooking.BookingReference,
                 PortalSyncPending = portalBooking.PortalSyncPending,
-                AutoIssueRequested = request.AutoIssueTicket,
-                TicketIssued = ticketIssued,
-                AirlinePortalReady = ticketIssued,
+                AutoIssueRequested = false,
+                TicketIssued = false,
+                AirlinePortalReady = false,
                 AirTicketingStatus = booking?.AirTicketingStatus ?? string.Empty,
                 AirTicketingPaymentStatus = booking?.AirTicketingPaymentStatus ?? string.Empty,
-                TicketingMessage = portalBooking.PortalSyncPending
-                    ? "Reservation created, but the portal record is still syncing. The wallet hold has been released for safety."
-                    : ticketingMessage,
+                TicketingMessage = ticketingMessage,
                 TicketedAt = booking?.TicketedAt,
                 TicketNumbers = ticketNumbers,
                 Status = booking?.Status ?? "CONFIRMED",
-                Message = ticketIssued
-                    ? "Air booking and ticket issuance completed successfully."
-                    : portalBooking.PortalSyncPending
-                        ? "Air booking created, but the portal record is still syncing."
-                        : request.AutoIssueTicket
-                            ? "Air booking created. Review the AirTicketing workspace for the latest issue status."
-                            : "Air booking created successfully.",
+                Message = portalBooking.PortalSyncPending
+                    ? "Air booking created, but the portal record is still syncing."
+                    : "Air booking created. Proceed to AirTicketing to issue.",
                 NextActionUrl = nextActionUrl,
                 RawResponse = rawResponse,
                 IsMock = false
@@ -290,11 +224,6 @@ public sealed class AirBookingController : ControllerBase
         }
         catch (Exception ex)
         {
-            if (preAuthorizedHoldId.HasValue)
-            {
-                await TryReleaseWalletHoldAsync(preAuthorizedHoldId.Value, $"{normalizedRequestId}-BOOKING-FAIL");
-            }
-
             WriteBookingDebugSnapshot("BOOKING_FAILED", reservationRequestXml, null, ex.ToString());
             var detail = ExtractTravelportMessage(ex);
 
