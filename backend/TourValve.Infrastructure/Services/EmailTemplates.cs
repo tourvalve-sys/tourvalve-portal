@@ -7,6 +7,7 @@ public static class EmailTemplates
     public static string RegistrationRequestAdmin(string email, string countryOfOrigin, string phoneNumber)
         => Wrap(
             "New registration request",
+            "New registration request awaiting admin review.",
             $@"
 <p>A new registration request has been submitted for admin approval.</p>
 <ul>
@@ -19,6 +20,7 @@ public static class EmailTemplates
     public static string PasswordResetRequestAdmin(string email)
         => Wrap(
             "New password reset request",
+            "New password reset request awaiting admin review.",
             $@"
 <p>A password reset request has been submitted.</p>
 <ul>
@@ -29,6 +31,7 @@ public static class EmailTemplates
     public static string RegistrationApproved(string email)
         => Wrap(
             "Your TourValve access is approved",
+            "Your TourValve access is approved. Sign in to start booking.",
             $@"
 <p>Hello {Encode(email)},</p>
 <p>Your registration has been approved. You may now <a href=""https://tourvalve.com/login"">sign in</a> to the TourValve portal.</p>
@@ -37,6 +40,7 @@ public static class EmailTemplates
     public static string RegistrationRejected(string email)
         => Wrap(
             "Your TourValve registration update",
+            "Your TourValve registration request was not approved.",
             $@"
 <p>Hello {Encode(email)},</p>
 <p>Your registration request was not approved at this time.</p>
@@ -45,6 +49,7 @@ public static class EmailTemplates
     public static string PasswordResetApproved(string email, string temporaryPassword)
         => Wrap(
             "Your TourValve temporary password",
+            "A temporary password has been issued. Sign in to your TourValve account to regain access.",
             $@"
 <p>Hello {Encode(email)},</p>
 <p>A temporary password has been issued for your account.</p>
@@ -55,6 +60,7 @@ public static class EmailTemplates
     public static string PasswordResetRejected(string email)
         => Wrap(
             "Your TourValve password reset update",
+            "Your TourValve password reset request was not approved.",
             $@"
 <p>Hello {Encode(email)},</p>
 <p>Your password reset request was not approved at this time.</p>
@@ -77,8 +83,14 @@ public static class EmailTemplates
         string? manageBookingUrl,
         bool ticketIssued,
         string? ticketingWorkspaceUrl)
-        => Wrap(
+    {
+        var preheader = ticketIssued
+            ? "Your booking is ticketed. Your itinerary PDF is attached."
+            : "Your reservation is confirmed. Proceed to ticketing when you are ready to issue.";
+
+        return Wrap(
             "Your TourValve booking confirmation",
+            preheader,
             BuildBookingConfirmedBody(
                 email,
                 travelerDisplayName,
@@ -96,6 +108,7 @@ public static class EmailTemplates
                 manageBookingUrl,
                 ticketIssued,
                 ticketingWorkspaceUrl));
+    }
 
     private static string BuildBookingConfirmedBody(
         string email,
@@ -208,8 +221,15 @@ public static class EmailTemplates
 </div>";
     }
 
-    private static string Wrap(string title, string body)
-        => $@"
+    private static string Wrap(string title, string preheader, string body)
+    {
+        var safePreheader = string.IsNullOrWhiteSpace(preheader) ? title : preheader;
+
+        return $@"
+<div style=""display:none;font-size:1px;color:#f8f4ec;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;mso-hide:all;font-family:Segoe UI,Arial,sans-serif;"">
+  {Encode(safePreheader)}
+</div>
+<div style=""display:none;max-height:0px;overflow:hidden;mso-hide:all;"">&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>
 <div style=""font-family:Segoe UI,Arial,sans-serif;max-width:680px;margin:0 auto;padding:24px;background:#f8f4ec;color:#1f2a44;"">
   <div style=""background:#ffffff;border-radius:24px;padding:32px;box-shadow:0 12px 32px rgba(31,42,68,0.08);"">
     <div style=""font-size:12px;letter-spacing:0.24em;text-transform:uppercase;color:#9a6a3a;margin-bottom:12px;"">TourValve</div>
@@ -219,6 +239,7 @@ public static class EmailTemplates
     </div>
   </div>
 </div>";
+    }
 
     private static string Encode(string value) => WebUtility.HtmlEncode(value);
 }

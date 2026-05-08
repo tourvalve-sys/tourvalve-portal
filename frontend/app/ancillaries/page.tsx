@@ -304,6 +304,15 @@ function seatTone(
     return "border-[rgba(89,64,46,0.1)] bg-white/90 text-[var(--ink)] hover:-translate-y-0.5 hover:border-[rgba(176,122,67,0.4)] hover:shadow-[0_10px_22px_rgba(66,49,30,0.12)]";
 }
 
+function seatGroupCols(count: number) {
+    if (count <= 1) return "grid-cols-1";
+    if (count === 2) return "grid-cols-2";
+    if (count === 3) return "grid-cols-3";
+    if (count === 4) return "grid-cols-4";
+    if (count === 5) return "grid-cols-5";
+    return "grid-cols-6";
+}
+
 function buildLiveSeatPreset(
     seat: NonNullable<FlightSeatMapResponse["rows"][number]["seats"][number]>,
     segmentLabel: string
@@ -916,43 +925,107 @@ function AncillariesPageContent() {
                                               </div>
                                           </div>
 
-                                          <div className="space-y-3">
-                                              {seatMap.rows.map((row) => (
-                                                  <div
-                                                      key={row.number}
-                                                      className="rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/92 px-4 py-4"
-                                                  >
-                                                      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                                          Row {row.number}
-                                                      </div>
-                                                      <div className="grid gap-2 sm:grid-cols-4 xl:grid-cols-6">
-                                                          {row.seats.map((seat) => {
-                                                              const selected = selectedSeatCode === seat.code;
-                                                              return (
-                                                                  <button
-                                                                      key={`${row.number}-${seat.code}`}
-                                                                      type="button"
-                                                                      disabled={!isSeatSelectable(seat)}
-                                                                      onClick={() => setSelectedSeatCode(seat.code)}
-                                                                      className={`rounded-[1rem] border px-3 py-3 text-left transition ${seatTone(seat, selected)}`}
-                                                                  >
-                                                                      <div className="text-sm font-semibold">{seat.code}</div>
-                                                                      <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-80">
-                                                                          {seat.availability || "Available"}
+                                          <div className="relative overflow-hidden rounded-[1.7rem] border border-[rgba(89,64,46,0.08)] bg-[rgba(248,251,255,0.62)] px-4 py-6">
+                                              <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
+                                                  <div className="h-10 w-56 rounded-b-[2.5rem] bg-white/90 shadow-[0_14px_34px_rgba(31,42,68,0.08)]" />
+                                              </div>
+                                              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center">
+                                                  <div className="h-12 w-64 rounded-t-[2.5rem] bg-white/90 shadow-[0_-14px_34px_rgba(31,42,68,0.06)]" />
+                                              </div>
+                                              <div className="pointer-events-none absolute left-1/2 top-16 bottom-16 w-24 -translate-x-1/2 rounded-[2.5rem] border border-[rgba(89,64,46,0.06)] bg-white/65" />
+                                              <div className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-[120%] -translate-x-1/2 -translate-y-1/2 rounded-[2.5rem] bg-[rgba(255,247,236,0.75)]" />
+
+                                              <div className="relative space-y-3 pt-8 pb-10">
+                                                  {seatMap.rows.map((row) => {
+                                                      const orderedSeats = [...row.seats].sort((a, b) =>
+                                                          a.code.localeCompare(b.code, undefined, { numeric: true })
+                                                      );
+                                                      const aisleIndex = Math.ceil(orderedSeats.length / 2);
+                                                      const leftSeats = orderedSeats.slice(0, aisleIndex);
+                                                      const rightSeats = orderedSeats.slice(aisleIndex);
+
+                                                      return (
+                                                          <div
+                                                              key={row.number}
+                                                              className="rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/92 px-4 py-4 shadow-[0_18px_40px_rgba(31,42,68,0.06)]"
+                                                          >
+                                                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                                                  <div className="flex items-center gap-3">
+                                                                      <div className="flex h-10 w-12 items-center justify-center rounded-[1rem] bg-[rgba(247,244,239,0.88)] text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                                                          {row.number}
                                                                       </div>
-                                                                      <div className="mt-2 text-xs opacity-80">
-                                                                          {seat.seatPrice != null
-                                                                              ? formatCurrency(seat.seatPrice, seat.currency || "MYR")
-                                                                              : seat.paid
-                                                                                  ? "Paid seat"
-                                                                                  : "No separate seat price"}
+                                                                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                                                          Row
                                                                       </div>
-                                                                  </button>
-                                                              );
-                                                          })}
-                                                      </div>
-                                                  </div>
-                                              ))}
+                                                                  </div>
+                                                                  <div className="hidden rounded-full bg-[rgba(241,248,255,0.92)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 sm:inline-flex">
+                                                                      Aisle
+                                                                  </div>
+                                                              </div>
+
+                                                              <div className="mt-4 grid items-start gap-3 md:grid-cols-[1fr_3.5rem_1fr]">
+                                                                  <div className={`grid gap-2 ${seatGroupCols(leftSeats.length)}`}>
+                                                                      {leftSeats.map((seat) => {
+                                                                          const selected = selectedSeatCode === seat.code;
+                                                                          return (
+                                                                              <button
+                                                                                  key={`${row.number}-${seat.code}`}
+                                                                                  type="button"
+                                                                                  disabled={!isSeatSelectable(seat)}
+                                                                                  onClick={() => setSelectedSeatCode(seat.code)}
+                                                                                  className={`rounded-[1rem] border px-3 py-3 text-left transition ${seatTone(seat, selected)}`}
+                                                                              >
+                                                                                  <div className="text-sm font-semibold">{seat.code}</div>
+                                                                                  <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-80">
+                                                                                      {seat.availability || "Available"}
+                                                                                  </div>
+                                                                                  <div className="mt-2 text-xs opacity-80">
+                                                                                      {seat.seatPrice != null
+                                                                                          ? formatCurrency(seat.seatPrice, seat.currency || "MYR")
+                                                                                          : seat.paid
+                                                                                              ? "Paid seat"
+                                                                                              : "No separate seat price"}
+                                                                                  </div>
+                                                                              </button>
+                                                                          );
+                                                                      })}
+                                                                  </div>
+
+                                                                  <div className="hidden items-center justify-center md:flex">
+                                                                      <div className="h-full w-10 rounded-[1.5rem] bg-[rgba(241,248,255,0.92)] shadow-[inset_0_0_0_1px_rgba(89,64,46,0.06)]" />
+                                                                  </div>
+
+                                                                  <div className={`grid gap-2 ${seatGroupCols(rightSeats.length)}`}>
+                                                                      {rightSeats.map((seat) => {
+                                                                          const selected = selectedSeatCode === seat.code;
+                                                                          return (
+                                                                              <button
+                                                                                  key={`${row.number}-${seat.code}`}
+                                                                                  type="button"
+                                                                                  disabled={!isSeatSelectable(seat)}
+                                                                                  onClick={() => setSelectedSeatCode(seat.code)}
+                                                                                  className={`rounded-[1rem] border px-3 py-3 text-left transition ${seatTone(seat, selected)}`}
+                                                                              >
+                                                                                  <div className="text-sm font-semibold">{seat.code}</div>
+                                                                                  <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-80">
+                                                                                      {seat.availability || "Available"}
+                                                                                  </div>
+                                                                                  <div className="mt-2 text-xs opacity-80">
+                                                                                      {seat.seatPrice != null
+                                                                                          ? formatCurrency(seat.seatPrice, seat.currency || "MYR")
+                                                                                          : seat.paid
+                                                                                              ? "Paid seat"
+                                                                                              : "No separate seat price"}
+                                                                                  </div>
+                                                                              </button>
+                                                                          );
+                                                                      })}
+                                                                  </div>
+                                                              </div>
+                                                          </div>
+                                                      );
+                                                  })}
+                                              </div>
                                           </div>
 
                                           {selectedSeat && liveSeatPreset ? (
