@@ -62,6 +62,7 @@ public static class EmailTemplates
 
     public static string BookingConfirmed(
         string email,
+        string? travelerDisplayName,
         string locatorCode,
         string providerLocator,
         string airlineLocator,
@@ -72,23 +73,140 @@ public static class EmailTemplates
         string departure,
         string arrival,
         string amount,
-        string currency)
+        string currency,
+        string? manageBookingUrl,
+        bool ticketIssued,
+        string? ticketingWorkspaceUrl)
         => Wrap(
             "Your TourValve booking confirmation",
-            $@"
-<p>Hello {Encode(email)},</p>
-<p>Your reservation has been created successfully.</p>
-<ul>
-  <li><strong>Universal locator / PNR:</strong> {Encode(locatorCode)}</li>
-  <li><strong>Provider locator:</strong> {Encode(providerLocator)}</li>
-  <li><strong>Airline locator:</strong> {Encode(airlineLocator)}</li>
-  <li><strong>Flight:</strong> {Encode(carrier)} {Encode(flightNumber)}</li>
-  <li><strong>Route:</strong> {Encode(from)} to {Encode(to)}</li>
-  <li><strong>Departure:</strong> {Encode(departure)}</li>
-  <li><strong>Arrival:</strong> {Encode(arrival)}</li>
-  <li><strong>Amount:</strong> {Encode(currency)} {Encode(amount)}</li>
-</ul>
-<p>Please keep this email for your records and servicing follow-up.</p>");
+            BuildBookingConfirmedBody(
+                email,
+                travelerDisplayName,
+                locatorCode,
+                providerLocator,
+                airlineLocator,
+                carrier,
+                flightNumber,
+                from,
+                to,
+                departure,
+                arrival,
+                amount,
+                currency,
+                manageBookingUrl,
+                ticketIssued,
+                ticketingWorkspaceUrl));
+
+    private static string BuildBookingConfirmedBody(
+        string email,
+        string? travelerDisplayName,
+        string locatorCode,
+        string providerLocator,
+        string airlineLocator,
+        string carrier,
+        string flightNumber,
+        string from,
+        string to,
+        string departure,
+        string arrival,
+        string amount,
+        string currency,
+        string? manageBookingUrl,
+        bool ticketIssued,
+        string? ticketingWorkspaceUrl)
+    {
+        var greetingName = string.IsNullOrWhiteSpace(travelerDisplayName)
+            ? email
+            : travelerDisplayName;
+
+        var statusTitle = ticketIssued ? "Your flight booking is ticketed" : "Your flight reservation is confirmed";
+        var statusSubtitle = ticketIssued
+            ? "Ticket evidence is available for airline servicing."
+            : "Next step: proceed to ticketing when you are ready to issue.";
+
+        var primaryCtaUrl = ticketIssued ? manageBookingUrl : ticketingWorkspaceUrl ?? manageBookingUrl;
+        var primaryCtaLabel = ticketIssued ? "Manage booking" : "Proceed to ticketing";
+
+        var secondaryCtaUrl = ticketIssued ? ticketingWorkspaceUrl : manageBookingUrl;
+        var secondaryCtaLabel = ticketIssued ? "Open ticketing workspace" : "View booking";
+
+        return $@"
+<div style=""margin:0 0 18px;"">
+  <div style=""font-size:18px;font-weight:700;color:#1f2a44;margin:0 0 6px;"">{Encode(statusTitle)}</div>
+  <div style=""font-size:14px;color:#64748b;line-height:1.6;"">{Encode(statusSubtitle)}</div>
+</div>
+
+<p style=""margin:0 0 18px;"">Hi {Encode(greetingName)},</p>
+
+{BuildCtas(primaryCtaUrl, primaryCtaLabel, secondaryCtaUrl, secondaryCtaLabel)}
+
+<div style=""margin:22px 0 0;padding:18px;border:1px solid rgba(50,93,147,0.14);border-radius:18px;background:rgba(248,251,255,0.55);"">
+  <div style=""font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#7c8ba1;font-weight:700;margin-bottom:10px;"">Flight details</div>
+  <table role=""presentation"" cellpadding=""0"" cellspacing=""0"" width=""100%"" style=""border-collapse:collapse;font-size:14px;color:#1f2a44;"">
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"" width=""30%"">Route</td>
+      <td style=""padding:0 0 8px;"">{Encode(from)} &rarr; {Encode(to)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"">Flight</td>
+      <td style=""padding:0 0 8px;"">{Encode(carrier)} {Encode(flightNumber)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"">Departure</td>
+      <td style=""padding:0 0 8px;"">{Encode(departure)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"">Arrival</td>
+      <td style=""padding:0 0 8px;"">{Encode(arrival)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"">Amount</td>
+      <td style=""padding:0 0 8px;"">{Encode(currency)} {Encode(amount)}</td>
+    </tr>
+  </table>
+</div>
+
+<div style=""margin:16px 0 0;padding:18px;border:1px solid rgba(50,93,147,0.14);border-radius:18px;background:#ffffff;"">
+  <div style=""font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#7c8ba1;font-weight:700;margin-bottom:10px;"">Booking references</div>
+  <table role=""presentation"" cellpadding=""0"" cellspacing=""0"" width=""100%"" style=""border-collapse:collapse;font-size:14px;color:#1f2a44;"">
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"" width=""38%"">Universal locator / PNR</td>
+      <td style=""padding:0 0 8px;"">{Encode(locatorCode)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"">Provider locator</td>
+      <td style=""padding:0 0 8px;"">{Encode(providerLocator)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0;font-weight:700;"">Airline locator</td>
+      <td style=""padding:0;"">{Encode(airlineLocator)}</td>
+    </tr>
+  </table>
+</div>
+
+<p style=""margin:18px 0 0;color:#64748b;font-size:13px;line-height:1.7;"">
+  Your TourValve booking PDF is attached for your records and servicing follow-up.
+</p>";
+    }
+
+    private static string BuildCtas(string? primaryUrl, string primaryLabel, string? secondaryUrl, string secondaryLabel)
+    {
+        var primary = string.IsNullOrWhiteSpace(primaryUrl)
+            ? string.Empty
+            : $@"<a href=""{Encode(primaryUrl)}"" style=""display:inline-block;background:linear-gradient(135deg,#1e7df0,#0b58b6);color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:14px;font-weight:700;font-size:14px;"">{Encode(primaryLabel)}</a>";
+
+        var secondary = string.IsNullOrWhiteSpace(secondaryUrl)
+            ? string.Empty
+            : $@"<a href=""{Encode(secondaryUrl)}"" style=""display:inline-block;margin-left:10px;background:rgba(248,251,255,0.9);color:#1f2a44;text-decoration:none;padding:12px 18px;border-radius:14px;font-weight:700;font-size:14px;border:1px solid rgba(50,93,147,0.14);"">{Encode(secondaryLabel)}</a>";
+
+        if (string.IsNullOrWhiteSpace(primary) && string.IsNullOrWhiteSpace(secondary))
+            return string.Empty;
+
+        return $@"
+<div style=""margin:0 0 16px;"">
+  {primary}{secondary}
+</div>";
+    }
 
     private static string Wrap(string title, string body)
         => $@"

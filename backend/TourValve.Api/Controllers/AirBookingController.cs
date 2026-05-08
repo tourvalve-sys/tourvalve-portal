@@ -8,6 +8,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using TourValve.Api.Pdf;
 using TourValve.Api.Models;
 using TourValve.Application.Flights.DTO;
 using TourValve.Application.Bookings.Commands;
@@ -171,15 +172,15 @@ public sealed class AirBookingController : ControllerBase
                 throw new InvalidOperationException("Travelport returned a reservation response, but no locator / PNR could be extracted from it.");
             }
 
-            await TrySendBookingConfirmationAsync(request, refs);
-            await TrySendAdminBookingNoticeAsync(request, refs);
-
             var portalBooking = await TryCreatePortalBookingAsync(
                 request,
                 normalizedRequestId,
                 refs,
                 refreshedSupport.ProviderCode,
                 cancellationToken);
+
+            await TrySendBookingConfirmationAsync(request, refs, portalBooking.Booking, portalBooking.BookingReference);
+            await TrySendAdminBookingNoticeAsync(request, refs, portalBooking.Booking, portalBooking.BookingReference);
 
             var ticketingMessage = portalBooking.PortalSyncPending
                 ? "Reservation created, but the portal record is still syncing. Open the booking ledger once it appears, then proceed to ticketing."
@@ -1327,7 +1328,9 @@ public sealed class AirBookingController : ControllerBase
 
     private async Task TrySendBookingConfirmationAsync(
         AirBookingRequest request,
-        (string? UniversalRecordLocator, string? ProviderLocator, string? AirlineLocator) refs)
+        (string? UniversalRecordLocator, string? ProviderLocator, string? AirlineLocator) refs,
+        Booking? booking,
+        string bookingReference)
     {
         if (string.IsNullOrWhiteSpace(request.ContactEmail))
             return;
@@ -1335,11 +1338,26 @@ public sealed class AirBookingController : ControllerBase
         try
         {
             var locator = refs.UniversalRecordLocator ?? refs.ProviderLocator ?? refs.AirlineLocator ?? string.Empty;
+            var travelerDisplayName = request.Passengers.Count == 0
+                ? null
+                : string.Join(" ", new[] { request.Passengers[0].FirstName, request.Passengers[0].LastName }
+                    .Where(part => !string.IsNullOrWhiteSpace(part)));
+
+            var baseUrl = "https://tourvalve.com";
+            var manageBookingUrl = booking is null
+                ? $"{baseUrl}/bookings"
+                : $"{baseUrl}/booking-confirmation?bookingId={Uri.EscapeDataString(booking.Id.ToString())}";
+            var ticketingWorkspaceUrl = booking is null
+                ? null
+                : $"{baseUrl}/air-ticketing/{Uri.EscapeDataString(booking.Id.ToString())}";
+
+            var attachments = BuildBookingEmailAttachments(booking, bookingReference, request, locator, refs);
             await _emailService.SendAsync(
                 request.ContactEmail,
                 "Your TourValve booking confirmation",
                 EmailTemplates.BookingConfirmed(
                     request.ContactEmail,
+                    travelerDisplayName,
                     locator,
                     refs.ProviderLocator ?? locator,
                     refs.AirlineLocator ?? locator,
@@ -1350,7 +1368,11 @@ public sealed class AirBookingController : ControllerBase
                     request.Departure,
                     request.Arrival,
                     request.Price.ToString("0.00", CultureInfo.InvariantCulture),
-                    request.Currency));
+                    request.Currency,
+                    manageBookingUrl,
+                    ticketIssued: false,
+                    ticketingWorkspaceUrl),
+                attachments);
         }
         catch
         {
@@ -1360,7 +1382,9 @@ public sealed class AirBookingController : ControllerBase
 
     private async Task TrySendAdminBookingNoticeAsync(
         AirBookingRequest request,
-        (string? UniversalRecordLocator, string? ProviderLocator, string? AirlineLocator) refs)
+        (string? UniversalRecordLocator, string? ProviderLocator, string? AirlineLocator) refs,
+        Booking? booking,
+        string bookingReference)
     {
         if (string.IsNullOrWhiteSpace(_smtpOptions.AdminInboxEmail))
             return;
@@ -1368,11 +1392,26 @@ public sealed class AirBookingController : ControllerBase
         try
         {
             var locator = refs.UniversalRecordLocator ?? refs.ProviderLocator ?? refs.AirlineLocator ?? string.Empty;
+            var baseUrl = "https://tourvalve.com";
+            var manageBookingUrl = booking is null
+                ? $"{baseUrl}/bookings"
+                : $"{baseUrl}/booking-confirmation?bookingId={Uri.EscapeDataString(booking.Id.ToString())}";
+            var ticketingWorkspaceUrl = booking is null
+                ? null
+                : $"{baseUrl}/air-ticketing/{Uri.EscapeDataString(booking.Id.ToString())}";
+
+            var travelerDisplayName = request.Passengers.Count == 0
+                ? null
+                : string.Join(" ", new[] { request.Passengers[0].FirstName, request.Passengers[0].LastName }
+                    .Where(part => !string.IsNullOrWhiteSpace(part)));
+
+            var attachments = BuildBookingEmailAttachments(booking, bookingReference, request, locator, refs);
             await _emailService.SendAsync(
                 _smtpOptions.AdminInboxEmail,
                 "TourValve live booking confirmed",
                 EmailTemplates.BookingConfirmed(
                     request.ContactEmail,
+                    travelerDisplayName,
                     locator,
                     refs.ProviderLocator ?? locator,
                     refs.AirlineLocator ?? locator,
@@ -1383,11 +1422,92 @@ public sealed class AirBookingController : ControllerBase
                     request.Departure,
                     request.Arrival,
                     request.Price.ToString("0.00", CultureInfo.InvariantCulture),
-                    request.Currency));
+                    request.Currency,
+                    manageBookingUrl,
+                    ticketIssued: false,
+                    ticketingWorkspaceUrl),
+                attachments);
         }
         catch
         {
             // Keep booking success as primary outcome even if admin notice fails.
+        }
+    }
+
+    private static IReadOnlyList<EmailAttachment>? BuildBookingEmailAttachments(
+        Booking? booking,
+        string bookingReference,
+        AirBookingRequest request,
+        string locator,
+        (string? UniversalRecordLocator, string? ProviderLocator, string? AirlineLocator) refs)
+    {
+        if (booking is null)
+            return null;
+
+        try
+        {
+            var passengers = request.Passengers.Count == 0
+                ? new List<string>()
+                : request.Passengers
+                    .Select(p =>
+                    {
+                        var full = string.Join(" ", new[] { p.FirstName, p.LastName }.Where(part => !string.IsNullOrWhiteSpace(part)));
+                        return string.IsNullOrWhiteSpace(p.TravelerType) ? full : $"{full} ({p.TravelerType})";
+                    })
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .ToList();
+
+            var segments = (request.ItinerarySegments.Count > 0 ? request.ItinerarySegments : new List<AirBookingItinerarySegmentRequest>
+                {
+                    new()
+                    {
+                        Carrier = request.Carrier,
+                        FlightNumber = request.FlightNumber,
+                        From = request.From,
+                        To = request.To,
+                        Departure = request.Departure,
+                        Arrival = request.Arrival
+                    }
+                })
+                .Select(seg => new BookingItinerarySegment
+                {
+                    Carrier = seg.Carrier,
+                    FlightNumber = seg.FlightNumber,
+                    From = seg.From,
+                    To = seg.To,
+                    Departure = seg.Departure,
+                    Arrival = seg.Arrival
+                })
+                .ToList();
+
+            var model = new BookingItineraryPdfModel(
+                BookingReference: string.IsNullOrWhiteSpace(bookingReference) ? booking.BookingReference : bookingReference,
+                Status: booking.Status,
+                UniversalLocator: refs.UniversalRecordLocator ?? locator,
+                ProviderLocator: refs.ProviderLocator ?? locator,
+                AirlineLocator: refs.AirlineLocator ?? locator,
+                ProviderCode: booking.ProviderCode,
+                TotalAmount: booking.Amount,
+                Currency: string.IsNullOrWhiteSpace(request.Currency) ? "MYR" : request.Currency,
+                CreatedAtUtc: booking.CreatedAt,
+                Passengers: passengers,
+                ContactEmail: request.ContactEmail,
+                ContactPhone: request.ContactPhone,
+                ItinerarySegments: segments,
+                TicketNumbers: Array.Empty<string>(),
+                Ancillaries: Array.Empty<BookingAncillaryOrder>());
+
+            var pdfBytes = new BookingItineraryPdfBuilder().Build(booking, model);
+            var fileName = $"TourValve Booking - {booking.BookingReference}.pdf";
+
+            return new List<EmailAttachment>
+            {
+                new(fileName, "application/pdf", pdfBytes)
+            };
+        }
+        catch
+        {
+            return null;
         }
     }
 

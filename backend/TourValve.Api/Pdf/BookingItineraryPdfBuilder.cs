@@ -316,17 +316,99 @@ public sealed class BookingItineraryPdfBuilder
             .Select(a => $"{a.Type}: {a.Description} ({a.Currency} {a.TotalAmount:0.00})")
             .ToList();
 
-        var cardHeight = 18 + rows.Count * 16 + 16;
+        const double padding = 14;
+        var contentWidth = width - padding * 2;
+        var lineHeight = gfx.MeasureString("Ag", bodyFont).Height;
+
+        var wrappedRows = rows
+            .Select(row => WrapText(gfx, bodyFont, row, contentWidth))
+            .ToList();
+
+        var contentHeight = wrappedRows.Sum(lines => Math.Max(1, lines.Count) * lineHeight);
+        var cardHeight = padding + contentHeight + padding;
+
         DrawCard(gfx, x, y, width, cardHeight);
 
-        var rowY = y + 14;
-        foreach (var row in rows)
+        var rowY = y + padding;
+        foreach (var lines in wrappedRows)
         {
-            tf.DrawString(row, bodyFont, BrushTextDark, new XRect(x + 14, rowY, width - 28, 14));
-            rowY += 16;
+            foreach (var line in lines)
+            {
+                gfx.DrawString(line, bodyFont, BrushTextDark, new XRect(x + padding, rowY, contentWidth, lineHeight), XStringFormats.TopLeft);
+                rowY += lineHeight;
+            }
         }
 
         return y + cardHeight;
+    }
+
+    private static List<string> WrapText(XGraphics gfx, XFont font, string text, double maxWidth)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return new List<string> { string.Empty };
+
+        var normalized = text.Replace("\r", " ").Replace("\n", " ").Trim();
+        var words = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+            return new List<string> { string.Empty };
+
+        var lines = new List<string>();
+        var current = string.Empty;
+
+        foreach (var word in words)
+        {
+            if (string.IsNullOrEmpty(current))
+            {
+                current = word;
+                continue;
+            }
+
+            var candidate = $"{current} {word}";
+            if (gfx.MeasureString(candidate, font).Width <= maxWidth)
+            {
+                current = candidate;
+                continue;
+            }
+
+            lines.AddRange(SplitLongWordIfNeeded(gfx, font, current, maxWidth));
+            current = word;
+        }
+
+        if (!string.IsNullOrEmpty(current))
+            lines.AddRange(SplitLongWordIfNeeded(gfx, font, current, maxWidth));
+
+        return lines.Count == 0 ? new List<string> { string.Empty } : lines;
+    }
+
+    private static IEnumerable<string> SplitLongWordIfNeeded(XGraphics gfx, XFont font, string chunk, double maxWidth)
+    {
+        if (string.IsNullOrEmpty(chunk))
+            return new[] { string.Empty };
+
+        if (gfx.MeasureString(chunk, font).Width <= maxWidth)
+            return new[] { chunk };
+
+        // Force-break long segments (e.g., supplier strings without spaces) to prevent PDF overlap.
+        var parts = new List<string>();
+        var buffer = string.Empty;
+
+        foreach (var ch in chunk)
+        {
+            var candidate = buffer + ch;
+            if (gfx.MeasureString(candidate, font).Width <= maxWidth || buffer.Length == 0)
+            {
+                buffer = candidate;
+                continue;
+            }
+
+            parts.Add(buffer);
+            buffer = ch.ToString();
+        }
+
+        if (!string.IsNullOrEmpty(buffer))
+            parts.Add(buffer);
+
+        return parts;
     }
 
     private static void DrawFooter(XGraphics gfx, Booking booking, BookingItineraryPdfModel model, double margin, XFont font)

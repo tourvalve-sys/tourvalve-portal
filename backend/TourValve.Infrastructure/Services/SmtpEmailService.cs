@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Mail;
+using System.Net.Mime;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -16,7 +17,7 @@ public class SmtpEmailService : IEmailService
         _logger = logger;
     }
 
-    public async Task SendAsync(string toEmail, string subject, string htmlBody)
+    public async Task SendAsync(string toEmail, string subject, string htmlBody, IReadOnlyList<EmailAttachment>? attachments = null)
     {
         if (!_options.Enabled)
         {
@@ -39,6 +40,21 @@ public class SmtpEmailService : IEmailService
         };
 
         message.To.Add(toEmail);
+
+        if (attachments is not null)
+        {
+            foreach (var attachment in attachments.Where(a => a.Content.Length > 0))
+            {
+                var stream = new MemoryStream(attachment.Content);
+                var mailAttachment = new Attachment(stream, attachment.FileName, attachment.ContentType);
+                if (mailAttachment.ContentDisposition is not null)
+                {
+                    mailAttachment.ContentDisposition.Inline = false;
+                    mailAttachment.ContentDisposition.DispositionType = DispositionTypeNames.Attachment;
+                }
+                message.Attachments.Add(mailAttachment);
+            }
+        }
 
         await client.SendMailAsync(message);
     }
