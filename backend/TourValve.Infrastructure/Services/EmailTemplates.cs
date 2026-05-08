@@ -31,7 +31,7 @@ public static class EmailTemplates
             "Your TourValve access is approved",
             $@"
 <p>Hello {Encode(email)},</p>
-<p>Your registration has been approved. You may now sign in to the TourValve portal.</p>
+<p>Your registration has been approved. You may now <a href=""https://tourvalve.com/login"">sign in</a> to the TourValve portal.</p>
 <p>Please keep your login details ready and contact TourValve admin if you need help with onboarding or wallet activation.</p>");
 
     public static string RegistrationRejected(string email)
@@ -49,7 +49,7 @@ public static class EmailTemplates
 <p>Hello {Encode(email)},</p>
 <p>A temporary password has been issued for your account.</p>
 <p><strong>Temporary password:</strong> {Encode(temporaryPassword)}</p>
-<p>Please sign in using the temporary password.</p>
+<p>Please <a href=""https://tourvalve.com/login"">sign in</a> using the temporary password.</p>
 <p>If you did not request this change, contact TourValve admin immediately.</p>");
 
     public static string PasswordResetRejected(string email)

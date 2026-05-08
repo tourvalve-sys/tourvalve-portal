@@ -227,12 +227,26 @@ public class AdminAgentsController : ControllerBase
             CreatedAt = DateTime.UtcNow
         };
 
+        var wallet = new WalletAccount
+        {
+            Id = Guid.NewGuid(),
+            AgentId = agent.Id,
+            Currency = "MYR",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
         request.Status = "APPROVED";
         request.ProcessedAt = DateTime.UtcNow;
         request.ProcessedByEmail = User.Identity?.Name ?? "admin@tourvalve.com";
 
-        _db.Agents.Add(agent);
-        await _db.SaveChangesAsync();
+        await using (var tx = await _db.Database.BeginTransactionAsync())
+        {
+            _db.Agents.Add(agent);
+            _db.WalletAccounts.Add(wallet);
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
 
         await TrySendEmailAsync(
             request.Email,

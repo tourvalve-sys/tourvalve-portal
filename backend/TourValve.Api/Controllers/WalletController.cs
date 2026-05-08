@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using System.Text;
 using TourValve.Application.Wallet;
+using TourValve.Domain;
 using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Services;
 
@@ -80,6 +81,52 @@ public class WalletController : ControllerBase
                         wallet.Currency
                     })
                     .FirstOrDefaultAsync();
+            }
+
+            if (ownWallet == null && !isAdmin)
+            {
+                var isActiveAgent = await _db.Agents
+                    .AsNoTracking()
+                    .AnyAsync(x => x.Id == requesterAgentId && x.IsActive);
+
+                if (isActiveAgent)
+                {
+                    try
+                    {
+                        var alreadyExists = await _db.WalletAccounts
+                            .AsNoTracking()
+                            .AnyAsync(x => x.AgentId == requesterAgentId);
+
+                        if (!alreadyExists)
+                        {
+                            _db.WalletAccounts.Add(new WalletAccount
+                            {
+                                Id = Guid.NewGuid(),
+                                AgentId = requesterAgentId,
+                                Currency = "MYR",
+                                IsActive = true,
+                                CreatedAt = DateTime.UtcNow
+                            });
+                            await _db.SaveChangesAsync();
+                        }
+                    }
+                    catch
+                    {
+                        // Best-effort only; wallet may already exist or DB may reject write.
+                    }
+
+                    ownWallet = await _db.WalletAccounts
+                        .AsNoTracking()
+                        .Where(x => x.AgentId == requesterAgentId)
+                        .Select(x => new
+                        {
+                            x.AgentId,
+                            x.Id,
+                            x.IsActive,
+                            x.Currency
+                        })
+                        .FirstOrDefaultAsync();
+                }
             }
 
             if (ownWallet == null)
