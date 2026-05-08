@@ -19,7 +19,7 @@ export default function ForgotPasswordPage() {
             setLoading(true);
             setError("");
             const res = await forgotPassword(email);
-            setMessage(`${res.message} Admin contact: ${res.adminContactEmail}`);
+            setMessage(res.message);
             setEmail("");
         } catch (value: unknown) {
             setError(getErrorMessage(value));
@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
                 <div className="subtle-kicker mb-3">Access Recovery</div>
                 <h2 className="font-display text-4xl text-[var(--ink)]">Request password assistance</h2>
                 <p className="mt-3 text-sm leading-7 text-slate-600">
-                    Password reset requests are routed to <span className="font-semibold text-[var(--accent-strong)]">tourvalve@gmail.com</span> so the admin can contact you directly before any reset is approved.
+                    Enter your registered email. A temporary password will be sent to your inbox so you can sign in again.
                 </p>
 
                 {error && (
@@ -59,13 +59,13 @@ export default function ForgotPasswordPage() {
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                     <div className="soft-panel rounded-[1.75rem] p-4">
                         <MailCheck className="text-[var(--accent-strong)]" size={18} />
-                        <div className="mt-3 text-sm font-semibold text-[var(--ink)]">Admin contact only</div>
-                        <div className="mt-2 text-xs leading-6 text-slate-500">The request is queued for the admin inbox rather than issuing an instant password.</div>
+                        <div className="mt-3 text-sm font-semibold text-[var(--ink)]">Email reset</div>
+                        <div className="mt-2 text-xs leading-6 text-slate-500">A temporary password is emailed to the registered address.</div>
                     </div>
                     <div className="soft-panel rounded-[1.75rem] p-4">
                         <LifeBuoy className="text-[var(--accent-strong)]" size={18} />
-                        <div className="mt-3 text-sm font-semibold text-[var(--ink)]">Manual recovery</div>
-                        <div className="mt-2 text-xs leading-6 text-slate-500">Your admin will contact you for reset password after approval.</div>
+                        <div className="mt-3 text-sm font-semibold text-[var(--ink)]">Fast access</div>
+                        <div className="mt-2 text-xs leading-6 text-slate-500">Sign in with the temporary password from your email.</div>
                     </div>
                 </div>
 
@@ -74,7 +74,7 @@ export default function ForgotPasswordPage() {
                     disabled={loading}
                     className="gold-button mt-6 w-full rounded-2xl py-4 font-semibold transition disabled:opacity-60"
                 >
-                    {loading ? "Submitting..." : "Send Reset Request"}
+                    {loading ? "Sending..." : "Email Temporary Password"}
                 </button>
 
                 <div className="mt-5 text-sm text-slate-600">

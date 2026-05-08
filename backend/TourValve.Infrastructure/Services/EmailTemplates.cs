@@ -47,9 +47,9 @@ public static class EmailTemplates
             "Your TourValve temporary password",
             $@"
 <p>Hello {Encode(email)},</p>
-<p>Your password reset request has been approved.</p>
+<p>A temporary password has been issued for your account.</p>
 <p><strong>Temporary password:</strong> {Encode(temporaryPassword)}</p>
-<p>Please sign in and change it as soon as possible.</p>
+<p>Please sign in using the temporary password.</p>
 <p>If you did not request this change, contact TourValve admin immediately.</p>");
 
     public static string PasswordResetRejected(string email)

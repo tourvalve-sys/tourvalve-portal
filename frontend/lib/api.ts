@@ -885,7 +885,7 @@ export async function forgotPassword(email: string) {
         body: JSON.stringify({ email }),
     });
 
-    return readJson<{ message: string; adminContactEmail: string }>(res);
+    return readJson<{ message: string }>(res);
 }
 
 export async function getCurrentUser(): Promise<CurrentUser> {

@@ -77,45 +77,55 @@ public class AuthController : ControllerBase
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
     {
-        var email = request.Email.Trim().ToLower();
+        var email = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email))
+            return BadRequest(new { error = "Email is required" });
 
-        var agent = await _db.Agents
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Email.ToLower() == email);
-
-        if (agent != null)
+        // Always return a generic OK response to avoid disclosing account existence.
+        var response = new
         {
-            var hasPendingRequest = await _db.PasswordResetApprovalRequests
-                .AnyAsync(x => x.Email.ToLower() == email && x.Status == "PENDING");
+            message = "If an account exists for this email, a temporary password has been sent to the registered inbox."
+        };
 
-            if (!hasPendingRequest)
+        try
+        {
+            var agent = await _db.Agents.FirstOrDefaultAsync(x => x.Email.ToLower() == email);
+            if (agent == null)
+                return Ok(response);
+
+            if (!agent.IsActive)
+                return Ok(response);
+
+            var temporaryPassword = GenerateTemporaryPassword();
+            agent.PasswordHash = BCrypt.Net.BCrypt.HashPassword(temporaryPassword);
+
+            var pendingRequests = await _db.PasswordResetApprovalRequests
+                .Where(x => x.Email.ToLower() == email && x.Status == "PENDING")
+                .ToListAsync();
+
+            foreach (var pending in pendingRequests)
             {
-                var resetRequest = new PasswordResetApprovalRequest
-                {
-                    Id = Guid.NewGuid(),
-                    Email = email,
-                    AdminContactEmail = _smtpOptions.AdminInboxEmail,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                _db.PasswordResetApprovalRequests.Add(resetRequest);
-                await _db.SaveChangesAsync();
-
-                await TrySendEmailAsync(
-                    _smtpOptions.AdminInboxEmail,
-                    "TourValve password reset approval needed",
-                    EmailTemplates.PasswordResetRequestAdmin(email));
-
-                await _audit.WriteAsync(agent.Id, email, "ACCESS", "PASSWORD_RESET_REQUEST", "PasswordResetApprovalRequest", resetRequest.Id.ToString(), email, "Password reset approval requested.");
-                await _notifications.CreateAsync(null, "ADMIN", "ACCESS", "Approval pending", $"A password reset request from {email} is waiting for admin review.", "WARN", "/agents");
+                pending.Status = "AUTO_APPROVED";
+                pending.ProcessedAt = DateTime.UtcNow;
+                pending.ProcessedByEmail = "self-service";
             }
+
+            await _db.SaveChangesAsync();
+
+            await TrySendEmailAsync(
+                email,
+                "Your TourValve temporary password",
+                EmailTemplates.PasswordResetApproved(email, temporaryPassword));
+
+            await _audit.WriteAsync(agent.Id, email, "ACCESS", "PASSWORD_RESET_SELF_SERVICE", "Agent", agent.Id.ToString(), email, "Temporary password issued via self-service forgot-password.");
+            await _notifications.CreateAsync(agent.Id, "AGENT", "ACCESS", "Password reset", "A temporary password has been emailed to you. Please sign in and change it.", "WARN", "/login");
+        }
+        catch
+        {
+            // Best-effort only; always return generic success response.
         }
 
-        return Ok(new
-        {
-            adminContactEmail = _smtpOptions.AdminInboxEmail,
-            message = "Your admin will contact you for reset password."
-        });
+        return Ok(response);
     }
 
     [HttpPost("login")]
