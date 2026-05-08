@@ -14,6 +14,9 @@ public sealed class BookingItineraryPdfBuilder
     private const double PageWidth = 595;
     private const double PageHeight = 842;
 
+    private const string Bullet = "\u2022";
+    private const string Arrow = "\u2192";
+
     private static readonly XColor BrandBlue = XColor.FromArgb(255, 30, 85, 243);
     private static readonly XColor HeaderBg = XColor.FromArgb(255, 248, 250, 255);
     private static readonly XColor Border = XColor.FromArgb(255, 224, 230, 240);
@@ -137,7 +140,7 @@ public sealed class BookingItineraryPdfBuilder
         var title = "Flight Itinerary";
         gfx.DrawString(title, titleFont, BrushTextDark, new XRect(x, 18, width, 20), XStringFormats.TopRight);
 
-        var subtitle = $"Booking {model.BookingReference} • {model.Status}";
+        var subtitle = $"Booking {model.BookingReference} {Bullet} {model.Status}";
         gfx.DrawString(subtitle, smallFont, BrushTextMuted, new XRect(x, 40, width, 14), XStringFormats.TopRight);
     }
 
@@ -157,7 +160,7 @@ public sealed class BookingItineraryPdfBuilder
         gfx.DrawString("Trip summary", h2Font, BrushTextDark, new XRect(x, y, width, 18), XStringFormats.TopLeft);
         y += 22;
 
-        var cardHeight = 130d;
+        var cardHeight = 164d;
         DrawCard(gfx, x, y, width, cardHeight);
 
         var padding = 14d;
@@ -169,8 +172,8 @@ public sealed class BookingItineraryPdfBuilder
         var lastSeg = model.ItinerarySegments.LastOrDefault();
 
         var routeTitle = firstSeg == null || lastSeg == null
-            ? $"{booking.From} → {booking.To}"
-            : $"{firstSeg.From} → {lastSeg.To}";
+            ? $"{booking.From} {Arrow} {booking.To}"
+            : $"{firstSeg.From} {Arrow} {lastSeg.To}";
 
         gfx.DrawString(routeTitle, new XFont(bodyFont.FontFamily.Name, 14, XFontStyle.Bold), BrushTextDark, new XRect(leftX, rowY, width - padding * 2, 18), XStringFormats.TopLeft);
         rowY += 22;
@@ -181,8 +184,10 @@ public sealed class BookingItineraryPdfBuilder
         gfx.DrawString(flightLine, bodyFont, BrushTextMuted, new XRect(leftX, rowY, width - padding * 2, 14), XStringFormats.TopLeft);
         rowY += 18;
 
-        var dep = firstSeg?.Departure ?? booking.DepartureTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
-        var arr = lastSeg?.Arrival ?? booking.ArrivalTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        var dep = FormatDateTimeValueForPdf(firstSeg?.Departure)
+            ?? booking.DepartureTime.ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture);
+        var arr = FormatDateTimeValueForPdf(lastSeg?.Arrival)
+            ?? booking.ArrivalTime.ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture);
 
         DrawKeyValue(gfx, labelFont, smallFont, leftX, rowY, 110, "Departure", dep);
         DrawKeyValue(gfx, labelFont, smallFont, rightX, rowY, 110, "Arrival", arr);
@@ -196,6 +201,23 @@ public sealed class BookingItineraryPdfBuilder
         DrawKeyValue(gfx, labelFont, smallFont, rightX, rowY, 110, "Total", $"{model.Currency} {model.TotalAmount:0.00}");
 
         return y + cardHeight;
+    }
+
+    private static string? FormatDateTimeValueForPdf(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var trimmed = raw.Trim();
+
+        if (DateTimeOffset.TryParse(trimmed, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dto))
+            return dto.ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture);
+
+        if (DateTime.TryParse(trimmed, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var dt))
+            return dt.ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture);
+
+        // Best-effort cleanup for ISO-ish strings that fail parsing.
+        return trimmed.Replace('T', ' ');
     }
 
     private static double DrawPassengers(
