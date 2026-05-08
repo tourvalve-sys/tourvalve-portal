@@ -6,6 +6,7 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
 import ProtectedSessionShell from "@/components/ProtectedSessionShell";
+import SiteFooter from "@/components/SiteFooter";
 import { usePathname } from "next/navigation";
 
 const chunkRecoveryScript = `
@@ -108,7 +109,15 @@ const themeBootstrapScript = `
 (() => {
   const storageKey = "tv_theme";
   const root = document.documentElement;
-  const forcedLightPaths = new Set(["/", "/login", "/register", "/forgot-password"]);
+  const forcedLightPaths = new Set([
+    "/",
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/terms-and-conditions",
+    "/refund-policy",
+    "/privacy-policy"
+  ]);
 
   try {
     if (forcedLightPaths.has(window.location.pathname)) {
@@ -141,6 +150,9 @@ export default function RootLayout({
         "/register",
         "/forgot-password",
         "/maintenance",
+        "/terms-and-conditions",
+        "/refund-policy",
+        "/privacy-policy",
     ]);
 
     const isPublicPage = publicPaths.has(pathname);
@@ -162,18 +174,22 @@ export default function RootLayout({
             <body>
                 <BookingProvider>
                     {isPublicPage ? (
-                        <div className="app-surface min-h-screen">{children}</div>
+                        <div className="app-surface flex min-h-screen flex-col">
+                            <div className="flex-1">{children}</div>
+                            <SiteFooter />
+                        </div>
                     ) : (
                         <ProtectedSessionShell>
                             <div className="page-shell">
                                 <div className="app-surface flex min-h-screen flex-col xl:flex-row">
                                     <Sidebar />
 
-                                    <div className="flex-1 pb-8 md:pb-10">
+                                    <div className="flex flex-1 flex-col pb-8 md:pb-10">
                                         <Topbar />
-                                        <main className="px-3 pb-32 pt-2 sm:px-4 sm:pt-3 md:px-6 md:pt-4 xl:pb-12">
+                                        <main className="flex-1 px-3 pb-12 pt-2 sm:px-4 sm:pt-3 md:px-6 md:pt-4">
                                             {children}
                                         </main>
+                                        <SiteFooter />
                                     </div>
                                 </div>
                             </div>
