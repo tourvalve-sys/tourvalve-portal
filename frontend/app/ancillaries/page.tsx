@@ -925,17 +925,28 @@ function AncillariesPageContent() {
                                               </div>
                                           </div>
 
-                                          <div className="relative overflow-hidden rounded-[1.7rem] border border-[rgba(89,64,46,0.08)] bg-[rgba(248,251,255,0.62)] px-4 py-6">
-                                              <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
-                                                  <div className="h-10 w-56 rounded-b-[2.5rem] bg-white/90 shadow-[0_14px_34px_rgba(31,42,68,0.08)]" />
+                                          <div className="relative overflow-x-clip">
+                                              <div className="pointer-events-none absolute inset-y-0 left-0 z-0 hidden lg:block">
+                                                  <div className="absolute left-0 top-1/2 h-28 w-56 -translate-y-1/2 -skew-y-6 rounded-l-[4rem] rounded-r-[1.75rem] bg-gradient-to-br from-white/90 via-[rgba(241,248,255,0.9)] to-[rgba(255,247,236,0.9)] shadow-[0_32px_84px_rgba(31,42,68,0.16)]" />
+                                                  <div className="absolute left-10 top-1/2 h-12 w-12 -translate-y-1/2 rounded-[2.25rem] bg-white/75 shadow-[inset_0_0_0_1px_rgba(89,64,46,0.06)]" />
                                               </div>
-                                              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center">
-                                                  <div className="h-12 w-64 rounded-t-[2.5rem] bg-white/90 shadow-[0_-14px_34px_rgba(31,42,68,0.06)]" />
+                                              <div className="pointer-events-none absolute inset-y-0 right-0 z-0 hidden lg:block">
+                                                  <div className="absolute right-0 top-1/2 h-28 w-56 -translate-y-1/2 skew-y-6 rounded-r-[4rem] rounded-l-[1.75rem] bg-gradient-to-bl from-white/90 via-[rgba(241,248,255,0.9)] to-[rgba(255,247,236,0.9)] shadow-[0_32px_84px_rgba(31,42,68,0.16)]" />
+                                                  <div className="absolute right-10 top-1/2 h-12 w-12 -translate-y-1/2 rounded-[2.25rem] bg-white/75 shadow-[inset_0_0_0_1px_rgba(89,64,46,0.06)]" />
                                               </div>
-                                              <div className="pointer-events-none absolute left-1/2 top-16 bottom-16 w-24 -translate-x-1/2 rounded-[2.5rem] border border-[rgba(89,64,46,0.06)] bg-white/65" />
-                                              <div className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-[120%] -translate-x-1/2 -translate-y-1/2 rounded-[2.5rem] bg-[rgba(255,247,236,0.75)]" />
 
-                                              <div className="relative space-y-3 pt-8 pb-10">
+                                              <div className="relative z-10 overflow-hidden rounded-[1.9rem] border border-[rgba(89,64,46,0.08)] bg-gradient-to-b from-[rgba(248,251,255,0.78)] to-[rgba(255,247,236,0.55)] px-4 py-6 shadow-[0_28px_80px_rgba(31,42,68,0.08)] backdrop-blur-sm lg:mx-16 xl:mx-20">
+                                                  <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
+                                                      <div className="h-10 w-56 rounded-b-[2.5rem] bg-white/90 shadow-[0_14px_34px_rgba(31,42,68,0.08)]" />
+                                                  </div>
+                                                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center">
+                                                      <div className="h-12 w-64 rounded-t-[2.5rem] bg-white/90 shadow-[0_-14px_34px_rgba(31,42,68,0.06)]" />
+                                                  </div>
+                                                  <div className="pointer-events-none absolute left-1/2 top-16 bottom-16 w-24 -translate-x-1/2 rounded-[2.5rem] border border-[rgba(89,64,46,0.06)] bg-white/65" />
+                                                  <div className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-[120%] -translate-x-1/2 -translate-y-1/2 rounded-[2.5rem] bg-[rgba(255,247,236,0.75)]" />
+                                                  <div className="pointer-events-none absolute left-1/2 top-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[rgba(30,125,240,0.12)] blur-3xl" />
+
+                                                  <div className="relative space-y-3 pt-8 pb-10">
                                                   {seatMap.rows.map((row) => {
                                                       const orderedSeats = [...row.seats].sort((a, b) =>
                                                           a.code.localeCompare(b.code, undefined, { numeric: true })
@@ -947,7 +958,7 @@ function AncillariesPageContent() {
                                                       return (
                                                           <div
                                                               key={row.number}
-                                                              className="rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/92 px-4 py-4 shadow-[0_18px_40px_rgba(31,42,68,0.06)]"
+                                                              className="rounded-[1.45rem] border border-[rgba(89,64,46,0.08)] bg-white/86 px-4 py-4 shadow-[0_18px_40px_rgba(31,42,68,0.06)] backdrop-blur-sm"
                                                           >
                                                               <div className="flex flex-wrap items-center justify-between gap-3">
                                                                   <div className="flex items-center gap-3">
@@ -1025,6 +1036,7 @@ function AncillariesPageContent() {
                                                           </div>
                                                       );
                                                   })}
+                                                  </div>
                                               </div>
                                           </div>
 
