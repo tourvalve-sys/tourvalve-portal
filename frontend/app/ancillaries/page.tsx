@@ -315,9 +315,7 @@ function seatLegendStatus(
         characteristics: string[];
         seatPrice?: number | null;
     },
-    isSelected: boolean
-): SeatLegendFilter {
-    if (isSelected) return "SELECTED";
+): Exclude<SeatLegendFilter, "ALL" | "SELECTED"> {
     if (!isSeatSelectable(seat)) return "BLOCKED";
     if (seat.paid || (seat.seatPrice != null && seat.seatPrice > 0)) return "PAID";
     return "AVAILABLE";
@@ -1037,8 +1035,11 @@ function AncillariesPageContent() {
                                                                   <div className={`grid gap-2 ${seatGroupCols(leftSeats.length)}`}>
                                                                       {leftSeats.map((seat) => {
                                                                           const selected = selectedSeatCode === seat.code;
-                                                                          const status = seatLegendStatus(seat, selected);
-                                                                          const matchesFilter = seatLegendFilter === "ALL" || status === seatLegendFilter;
+                                                                          const status = seatLegendStatus(seat);
+                                                                          const matchesFilter =
+                                                                              seatLegendFilter === "SELECTED"
+                                                                                  ? selected
+                                                                                  : seatLegendFilter === "ALL" || status === seatLegendFilter;
                                                                           return (
                                                                               <button
                                                                                   key={`${row.number}-${seat.code}`}
@@ -1054,7 +1055,7 @@ function AncillariesPageContent() {
                                                                                           ×
                                                                                       </div>
                                                                                   ) : null}
-                                                                                  {status === "SELECTED" ? (
+                                                                                  {selected ? (
                                                                                       <div className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--success)] text-[11px] font-bold text-white shadow">
                                                                                           ✓
                                                                                       </div>
@@ -1094,8 +1095,11 @@ function AncillariesPageContent() {
                                                                   <div className={`grid gap-2 ${seatGroupCols(rightSeats.length)}`}>
                                                                       {rightSeats.map((seat) => {
                                                                           const selected = selectedSeatCode === seat.code;
-                                                                          const status = seatLegendStatus(seat, selected);
-                                                                          const matchesFilter = seatLegendFilter === "ALL" || status === seatLegendFilter;
+                                                                          const status = seatLegendStatus(seat);
+                                                                          const matchesFilter =
+                                                                              seatLegendFilter === "SELECTED"
+                                                                                  ? selected
+                                                                                  : seatLegendFilter === "ALL" || status === seatLegendFilter;
                                                                           return (
                                                                               <button
                                                                                   key={`${row.number}-${seat.code}`}
@@ -1111,7 +1115,7 @@ function AncillariesPageContent() {
                                                                                           ×
                                                                                       </div>
                                                                                   ) : null}
-                                                                                  {status === "SELECTED" ? (
+                                                                                  {selected ? (
                                                                                       <div className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--success)] text-[11px] font-bold text-white shadow">
                                                                                           ✓
                                                                                       </div>
