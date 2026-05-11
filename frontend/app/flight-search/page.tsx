@@ -1,6 +1,17 @@
 "use client";
 
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
+import {
+    Component,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type Dispatch,
+    type ErrorInfo,
+    type ReactNode,
+    type SetStateAction,
+} from "react";
 import Image from "next/image";
 import {
     ArrowLeftRight,
@@ -33,6 +44,189 @@ type FilterState = {
     departureWindow: "any" | "morning" | "afternoon" | "evening";
     airlines: string[];
 };
+
+type AirlineOption = {
+    code: string;
+    name: string;
+    count: number;
+};
+
+function FlightFiltersPanel({
+    airlineOptions,
+    filters,
+    onClose,
+    setFilters,
+    variant = "sidebar",
+}: {
+    airlineOptions: AirlineOption[];
+    filters: FilterState;
+    onClose?: () => void;
+    setFilters: Dispatch<SetStateAction<FilterState>>;
+    variant?: "sidebar" | "overlay";
+}) {
+    const rootClassName =
+        variant === "overlay"
+            ? "min-w-0 space-y-4"
+            : "h-fit min-w-0 space-y-4 rounded-[1.6rem] soft-panel p-4 fade-in sm:space-y-5 sm:rounded-[1.9rem] sm:p-6 xl:sticky xl:top-28";
+
+    return (
+        <div className={rootClassName}>
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    <SlidersHorizontal size={16} className="text-[var(--accent-strong)]" />
+                    <h3 className="font-display text-2xl text-[var(--ink)]">Filters</h3>
+                </div>
+                {onClose ? (
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="ghost-button rounded-2xl px-3 py-2 text-sm font-semibold"
+                        aria-label="Close filters"
+                    >
+                        <X size={16} />
+                    </button>
+                ) : null}
+            </div>
+
+            <div>
+                <div className="mb-2 flex items-center justify-between text-sm text-slate-500">
+                    <span>Max Price</span>
+                    <span>MYR {filters.maxPrice}</span>
+                </div>
+                <input
+                    type="range"
+                    min="100"
+                    max="50000"
+                    step="50"
+                    value={filters.maxPrice}
+                    onChange={(e) => setFilters({ ...filters, maxPrice: Number(e.target.value) })}
+                    className="w-full"
+                />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5">
+                <button
+                    onClick={() =>
+                        setFilters((current) => ({
+                            ...current,
+                            stopCounts: current.stopCounts.includes(0)
+                                ? current.stopCounts.filter((count) => count !== 0)
+                                : [...current.stopCounts, 0].sort(),
+                        }))
+                    }
+                    className={`min-h-[4.25rem] min-w-0 rounded-2xl px-2 py-3 text-center text-[13px] font-semibold leading-4 transition ${filters.stopCounts.includes(0) ? "gold-button" : "ghost-button"}`}
+                >
+                    Nonstop
+                </button>
+                <button
+                    onClick={() =>
+                        setFilters((current) => ({
+                            ...current,
+                            stopCounts: current.stopCounts.includes(1)
+                                ? current.stopCounts.filter((count) => count !== 1)
+                                : [...current.stopCounts, 1].sort(),
+                        }))
+                    }
+                    className={`min-h-[4.25rem] min-w-0 rounded-2xl px-2 py-3 text-center text-[13px] font-semibold leading-4 transition ${filters.stopCounts.includes(1) ? "gold-button" : "ghost-button"}`}
+                >
+                    Stops / 1
+                </button>
+                <button
+                    onClick={() =>
+                        setFilters((current) => ({
+                            ...current,
+                            stopCounts: current.stopCounts.includes(2)
+                                ? current.stopCounts.filter((count) => count !== 2)
+                                : [...current.stopCounts, 2].sort(),
+                        }))
+                    }
+                    className={`min-h-[4.25rem] min-w-0 rounded-2xl px-2 py-3 text-center text-[13px] font-semibold leading-4 transition ${filters.stopCounts.includes(2) ? "gold-button" : "ghost-button"}`}
+                >
+                    Stops / 2+
+                </button>
+            </div>
+
+            <div>
+                <label className="mb-2 block text-sm text-slate-500">Departure Time</label>
+                <select
+                    className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                    value={filters.departureWindow}
+                    onChange={(e) =>
+                        setFilters({ ...filters, departureWindow: e.target.value as FilterState["departureWindow"] })
+                    }
+                >
+                    <option value="any">Any Time</option>
+                    <option value="morning">Morning</option>
+                    <option value="afternoon">Afternoon</option>
+                    <option value="evening">Evening</option>
+                </select>
+            </div>
+
+            <div>
+                <label className="mb-2 block text-sm text-slate-500">Sort By</label>
+                <select
+                    className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
+                    value={filters.sortBy}
+                    onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as FilterState["sortBy"] })}
+                >
+                    <option value="recommended">Recommended</option>
+                    <option value="earliest">Earliest</option>
+                    <option value="cheapest">Cheapest</option>
+                </select>
+            </div>
+
+            <div>
+                <label className="mb-2 block text-sm text-slate-500">Airlines</label>
+                <div className="rounded-[1.4rem] border border-[rgba(89,64,46,0.12)] bg-white/80 p-3">
+                    {airlineOptions.length === 0 ? (
+                        <div className="text-sm leading-6 text-slate-500">
+                            Run a search to list the returned airlines here.
+                        </div>
+                    ) : (
+                        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                            {airlineOptions.map((airline) => {
+                                const active = filters.airlines.includes(airline.code);
+
+                                return (
+                                    <label
+                                        key={airline.code}
+                                        className="flex cursor-pointer items-center gap-3 rounded-2xl px-3 py-2 transition hover:bg-[rgba(176,122,67,0.08)]"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={active}
+                                            onChange={() =>
+                                                setFilters((current) => ({
+                                                    ...current,
+                                                    airlines: active
+                                                        ? current.airlines.filter((item) => item !== airline.code)
+                                                        : [...current.airlines, airline.code],
+                                                }))
+                                            }
+                                            className="sr-only"
+                                        />
+                                        <span
+                                            className={`flex h-5 w-5 items-center justify-center rounded-md border transition ${
+                                                active
+                                                    ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white"
+                                                    : "border-[rgba(89,64,46,0.18)] bg-white text-transparent"
+                                            }`}
+                                        >
+                                            <Check size={13} />
+                                        </span>
+                                        <span className="min-w-0 text-sm text-[var(--ink)]">
+                                            {airline.name} ({airline.count})
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
 
 type ActiveAirportField =
     | { mode: "single"; field: "from" | "to" }
@@ -668,6 +862,7 @@ export default function FlightSearch() {
     const [filters, setFilters] = useState<FilterState>(restoredState?.filters ?? createDefaultFilters());
     const [prebookFlightId, setPrebookFlightId] = useState<string | null>(null);
     const [expandedFlightId, setExpandedFlightId] = useState<string | null>(null);
+    const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
     const [prebookSeatMap, setPrebookSeatMap] = useState<FlightSeatMapResponse | null>(null);
     const [prebookSeatMapLoading, setPrebookSeatMapLoading] = useState(false);
     const [prebookSeatMapError, setPrebookSeatMapError] = useState("");
@@ -1533,6 +1728,23 @@ export default function FlightSearch() {
         return () => window.clearTimeout(timer);
     }, [filteredResults.length, isSearchDraftDirty, loading]);
 
+    useEffect(() => {
+        if (typeof document === "undefined") {
+            return;
+        }
+
+        if (!mobileFiltersOpen) {
+            return;
+        }
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [mobileFiltersOpen]);
+
     const isAvailabilitySearch = searchMode === "availability";
     const showPageLoader = loading || pricingFlightId !== null;
     const loaderLabel = loading
@@ -1551,6 +1763,34 @@ export default function FlightSearch() {
                     detail={loaderDetail}
                     captions={loaderCaptions}
                 />
+            ) : null}
+            {mobileFiltersOpen ? (
+                <div className="fixed inset-0 z-50 xl:hidden">
+                    <button
+                        type="button"
+                        aria-label="Close filters"
+                        onClick={() => setMobileFiltersOpen(false)}
+                        className="absolute inset-0 bg-[rgba(17,22,31,0.55)] backdrop-blur-sm"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 flex max-h-[85vh] flex-col rounded-t-[2.25rem] border border-[rgba(255,255,255,0.12)] bg-[rgba(244,248,255,0.98)] px-4 pt-4 pb-[calc(16px+env(safe-area-inset-bottom))] shadow-[0_30px_80px_rgba(16,24,40,0.34)]">
+                        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                            <FlightFiltersPanel
+                                variant="overlay"
+                                airlineOptions={airlineOptions}
+                                filters={filters}
+                                setFilters={setFilters}
+                                onClose={() => setMobileFiltersOpen(false)}
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setMobileFiltersOpen(false)}
+                            className="gold-button mt-4 w-full rounded-2xl px-5 py-4 text-sm font-semibold"
+                        >
+                            View results
+                        </button>
+                    </div>
+                </div>
             ) : null}
             <div className="relative min-h-screen fade-in">
             <Image
@@ -1894,146 +2134,8 @@ export default function FlightSearch() {
                 <div
                     className="mx-auto mt-6 grid max-w-[88rem] grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]"
                 >
-                    <div className="h-fit min-w-0 space-y-4 rounded-[1.6rem] soft-panel p-4 fade-in sm:space-y-5 sm:rounded-[1.9rem] sm:p-6 xl:sticky xl:top-28">
-                        <div className="flex items-center gap-2">
-                            <SlidersHorizontal size={16} className="text-[var(--accent-strong)]" />
-                            <h3 className="font-display text-2xl text-[var(--ink)]">Filters</h3>
-                        </div>
-
-                        <div>
-                            <div className="mb-2 flex items-center justify-between text-sm text-slate-500">
-                                <span>Max Price</span>
-                                <span>MYR {filters.maxPrice}</span>
-                            </div>
-                            <input
-                                type="range"
-                                min="100"
-                                max="50000"
-                                step="50"
-                                value={filters.maxPrice}
-                                onChange={(e) => setFilters({ ...filters, maxPrice: Number(e.target.value) })}
-                                className="w-full"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2.5">
-                            <button
-                                onClick={() =>
-                                    setFilters((current) => ({
-                                        ...current,
-                                        stopCounts: current.stopCounts.includes(0)
-                                            ? current.stopCounts.filter((count) => count !== 0)
-                                            : [...current.stopCounts, 0].sort(),
-                                    }))
-                                }
-                                className={`min-h-[4.25rem] min-w-0 rounded-2xl px-2 py-3 text-center text-[13px] font-semibold leading-4 transition ${filters.stopCounts.includes(0) ? "gold-button" : "ghost-button"}`}
-                            >
-                                Nonstop
-                            </button>
-                            <button
-                                onClick={() =>
-                                    setFilters((current) => ({
-                                        ...current,
-                                        stopCounts: current.stopCounts.includes(1)
-                                            ? current.stopCounts.filter((count) => count !== 1)
-                                            : [...current.stopCounts, 1].sort(),
-                                    }))
-                                }
-                                className={`min-h-[4.25rem] min-w-0 rounded-2xl px-2 py-3 text-center text-[13px] font-semibold leading-4 transition ${filters.stopCounts.includes(1) ? "gold-button" : "ghost-button"}`}
-                            >
-                                Stops / 1
-                            </button>
-                            <button
-                                onClick={() =>
-                                    setFilters((current) => ({
-                                        ...current,
-                                        stopCounts: current.stopCounts.includes(2)
-                                            ? current.stopCounts.filter((count) => count !== 2)
-                                            : [...current.stopCounts, 2].sort(),
-                                    }))
-                                }
-                                className={`min-h-[4.25rem] min-w-0 rounded-2xl px-2 py-3 text-center text-[13px] font-semibold leading-4 transition ${filters.stopCounts.includes(2) ? "gold-button" : "ghost-button"}`}
-                            >
-                                Stops / 2+
-                            </button>
-                        </div>
-
-                        <div>
-                            <label className="mb-2 block text-sm text-slate-500">Departure Time</label>
-                            <select
-                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
-                                value={filters.departureWindow}
-                                onChange={(e) => setFilters({ ...filters, departureWindow: e.target.value as FilterState["departureWindow"] })}
-                            >
-                                <option value="any">Any Time</option>
-                                <option value="morning">Morning</option>
-                                <option value="afternoon">Afternoon</option>
-                                <option value="evening">Evening</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="mb-2 block text-sm text-slate-500">Sort By</label>
-                            <select
-                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-3"
-                                value={filters.sortBy}
-                                onChange={(e) => setFilters({ ...filters, sortBy: e.target.value as FilterState["sortBy"] })}
-                            >
-                                <option value="recommended">Recommended</option>
-                                <option value="earliest">Earliest</option>
-                                <option value="cheapest">Cheapest</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label className="mb-2 block text-sm text-slate-500">Airlines</label>
-                            <div className="rounded-[1.4rem] border border-[rgba(89,64,46,0.12)] bg-white/80 p-3">
-                                {airlineOptions.length === 0 ? (
-                                    <div className="text-sm leading-6 text-slate-500">
-                                        Run a search to list the returned airlines here.
-                                    </div>
-                                ) : (
-                                    <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
-                                        {airlineOptions.map((airline) => {
-                                            const active = filters.airlines.includes(airline.code);
-
-                                            return (
-                                                <label
-                                                    key={airline.code}
-                                                    className="flex cursor-pointer items-center gap-3 rounded-2xl px-3 py-2 transition hover:bg-[rgba(176,122,67,0.08)]"
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={active}
-                                                        onChange={() =>
-                                                            setFilters((current) => ({
-                                                                ...current,
-                                                                airlines: active
-                                                                    ? current.airlines.filter((item) => item !== airline.code)
-                                                                    : [...current.airlines, airline.code],
-                                                            }))
-                                                        }
-                                                        className="sr-only"
-                                                    />
-                                                    <span
-                                                        className={`flex h-5 w-5 items-center justify-center rounded-md border transition ${
-                                                            active
-                                                                ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white"
-                                                                : "border-[rgba(89,64,46,0.18)] bg-white text-transparent"
-                                                        }`}
-                                                    >
-                                                        <Check size={13} />
-                                                    </span>
-                                                    <span className="min-w-0 text-sm text-[var(--ink)]">
-                                                        {airline.name} ({airline.count})
-                                                    </span>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                    <div className="hidden xl:block">
+                        <FlightFiltersPanel airlineOptions={airlineOptions} filters={filters} setFilters={setFilters} />
                     </div>
 
                     <div ref={resultsSectionRef} className="space-y-4">
@@ -2043,18 +2145,33 @@ export default function FlightSearch() {
                                     <div className="text-sm font-semibold text-[var(--ink)]">
                                         {filteredResults.length} result{filteredResults.length === 1 ? "" : "s"}
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={resetFiltersOnly}
-                                        disabled={activeFilterChips.length === 0 && filters.sortBy === "recommended"}
-                                        className="ghost-button rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                        Reset filters
-                                    </button>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setMobileFiltersOpen(true)}
+                                            className="ghost-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold xl:hidden"
+                                        >
+                                            <SlidersHorizontal size={16} className="text-[var(--accent-strong)]" />
+                                            Filters
+                                            {activeFilterChips.length > 0 ? (
+                                                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[rgba(176,122,67,0.16)] px-2 text-[11px] font-semibold text-[var(--accent-strong)]">
+                                                    {activeFilterChips.length}
+                                                </span>
+                                            ) : null}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={resetFiltersOnly}
+                                            disabled={activeFilterChips.length === 0 && filters.sortBy === "recommended"}
+                                            className="ghost-button rounded-2xl px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            Reset filters
+                                        </button>
+                                    </div>
                                 </div>
 
-                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <div className="flex flex-wrap items-center gap-2">
+                                <div className="mt-3 space-y-2">
+                                    <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
                                         {(["recommended", "earliest", "cheapest"] as const).map((value) => {
                                             const active = filters.sortBy === value;
                                             const label = value === "recommended" ? "Recommended" : value === "earliest" ? "Earliest" : "Cheapest";
@@ -2064,7 +2181,7 @@ export default function FlightSearch() {
                                                     type="button"
                                                     onClick={() => setFilters((current) => ({ ...current, sortBy: value }))}
                                                     aria-pressed={active}
-                                                    className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition ${
+                                                    className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition ${
                                                         active
                                                             ? "bg-[rgba(241,248,255,0.92)] text-[#174498] shadow-[0_12px_28px_rgba(31,42,68,0.08)] ring-1 ring-inset ring-[rgba(23,68,152,0.2)]"
                                                             : "bg-[rgba(248,251,255,0.7)] text-slate-500 hover:bg-[rgba(241,248,255,0.9)]"
@@ -2076,20 +2193,18 @@ export default function FlightSearch() {
                                         })}
                                     </div>
 
-                                    <div className="h-5 w-px bg-[rgba(89,64,46,0.12)]" />
-
-                                    <div className="flex flex-1 flex-wrap gap-2">
+                                    <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
                                         {activeFilterChips.length > 0 ? (
                                             activeFilterChips.map((chip) => (
                                                 <span
                                                     key={chip.key}
-                                                    className="rounded-full border border-[rgba(89,64,46,0.1)] bg-white/80 px-4 py-2 text-xs font-semibold text-slate-600 shadow-[0_12px_28px_rgba(31,42,68,0.04)]"
+                                                    className="shrink-0 rounded-full border border-[rgba(89,64,46,0.1)] bg-white/80 px-4 py-2 text-xs font-semibold text-slate-600 shadow-[0_12px_28px_rgba(31,42,68,0.04)]"
                                                 >
                                                     {chip.label}
                                                 </span>
                                             ))
                                         ) : (
-                                            <span className="rounded-full border border-[rgba(89,64,46,0.1)] bg-white/70 px-4 py-2 text-xs font-semibold text-slate-500">
+                                            <span className="shrink-0 rounded-full border border-[rgba(89,64,46,0.1)] bg-white/70 px-4 py-2 text-xs font-semibold text-slate-500">
                                                 No active filters
                                             </span>
                                         )}
@@ -2215,7 +2330,7 @@ export default function FlightSearch() {
                                     >
                                         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] xl:items-start">
                                             <div className="min-w-0 space-y-3">
-                                                <div className="flex flex-wrap items-start justify-between gap-4">
+                                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                                     <div className="min-w-0 flex-1">
                                                         <div className="flex flex-wrap items-center gap-3">
                                                             <div className="w-full max-w-[14rem]">
@@ -2277,7 +2392,83 @@ export default function FlightSearch() {
                                                 </div>
 
                                                 <div className="rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/88 px-4 py-4 shadow-[0_14px_30px_rgba(31,42,68,0.06)]">
-                                                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)] sm:items-center">
+                                                    <div className="sm:hidden">
+                                                        <div className="flex items-start justify-between gap-4">
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-baseline gap-2">
+                                                                    <div className="text-2xl font-semibold tracking-tight text-[var(--ink)]">
+                                                                        {departureClock}
+                                                                    </div>
+                                                                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                                        {firstSegment.from}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="mt-1 text-[11px] leading-5 text-slate-500">
+                                                                    {departureDateLabel}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="min-w-0 text-right">
+                                                                <div className="flex items-baseline justify-end gap-2">
+                                                                    <div className="text-2xl font-semibold tracking-tight text-[var(--ink)]">
+                                                                        {arrivalClock}
+                                                                    </div>
+                                                                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                                        {lastSegment.to}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="mt-1 text-[11px] leading-5 text-slate-500">
+                                                                    {arrivalDateLabel}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-3 min-w-0">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="h-px flex-1 border-t border-dashed border-[rgba(89,64,46,0.2)]" />
+                                                                <PlaneTakeoff size={16} className="text-slate-400" />
+                                                                <div className="h-px flex-1 border-t border-dashed border-[rgba(89,64,46,0.2)]" />
+                                                            </div>
+                                                            <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500">
+                                                                {durationLabel ? <span>{durationLabel}</span> : null}
+                                                                {aircraftLabel ? (
+                                                                    <span className="rounded-full bg-[rgba(241,248,255,0.92)] px-2 py-1 text-[11px] font-medium text-slate-600">
+                                                                        {aircraftLabel}
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
+                                                            {stopoverChips.length > 0 ? (
+                                                                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                                                                    {stopoverChips.slice(0, 3).map((stop) => (
+                                                                        <span
+                                                                            key={`${stop.code}-${stop.minutes ?? "na"}`}
+                                                                            className="rounded-full border border-[rgba(89,64,46,0.12)] bg-[rgba(248,251,255,0.92)] px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-[0_10px_24px_rgba(31,42,68,0.04)]"
+                                                                        >
+                                                                            {stop.code}
+                                                                            {stop.duration ? (
+                                                                                <span className="ml-2 text-[10px] font-medium text-slate-500">
+                                                                                    ({stop.duration})
+                                                                                </span>
+                                                                            ) : null}
+                                                                        </span>
+                                                                    ))}
+                                                                    {stopoverChips.length > 3 ? (
+                                                                        <span className="rounded-full border border-[rgba(89,64,46,0.12)] bg-[rgba(248,251,255,0.92)] px-3 py-1 text-[11px] font-semibold text-slate-600">
+                                                                            +{stopoverChips.length - 3} stops
+                                                                        </span>
+                                                                    ) : null}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="mt-3 flex items-center justify-center">
+                                                                    <span className="rounded-full border border-[rgba(45,120,92,0.14)] bg-[rgba(225,246,236,0.86)] px-3 py-1 text-[11px] font-semibold text-[var(--success)] shadow-[0_10px_24px_rgba(31,42,68,0.04)]">
+                                                                        Nonstop
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="hidden gap-4 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)] sm:items-center">
                                                         <div className="text-left">
                                                             <div className="text-2xl font-semibold tracking-tight text-[var(--ink)]">
                                                                 {departureClock}
