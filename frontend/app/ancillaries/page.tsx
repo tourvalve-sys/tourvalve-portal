@@ -286,6 +286,7 @@ function seatTone(
         availability: string;
         paid: boolean;
         characteristics: string[];
+        seatPrice?: number | null;
     },
     isSelected: boolean
 ) {
@@ -297,11 +298,29 @@ function seatTone(
         return "border-[rgba(89,64,46,0.08)] bg-[rgba(225,221,214,0.34)] text-slate-400 opacity-60";
     }
 
-    if (seat.paid) {
+    if (seat.paid || (seat.seatPrice != null && seat.seatPrice > 0)) {
         return "border-[rgba(176,122,67,0.2)] bg-[rgba(255,245,229,0.92)] text-[var(--accent-strong)]";
     }
 
     return "border-[rgba(89,64,46,0.1)] bg-white/90 text-[var(--ink)] hover:-translate-y-0.5 hover:border-[rgba(176,122,67,0.4)] hover:shadow-[0_10px_22px_rgba(66,49,30,0.12)]";
+}
+
+type SeatLegendFilter = "ALL" | "AVAILABLE" | "PAID" | "BLOCKED" | "SELECTED";
+
+function seatLegendStatus(
+    seat: {
+        code: string;
+        availability: string;
+        paid: boolean;
+        characteristics: string[];
+        seatPrice?: number | null;
+    },
+    isSelected: boolean
+): SeatLegendFilter {
+    if (isSelected) return "SELECTED";
+    if (!isSeatSelectable(seat)) return "BLOCKED";
+    if (seat.paid || (seat.seatPrice != null && seat.seatPrice > 0)) return "PAID";
+    return "AVAILABLE";
 }
 
 function seatGroupCols(count: number) {
@@ -401,6 +420,7 @@ function AncillariesPageContent() {
     const [seatMapLoading, setSeatMapLoading] = useState(false);
     const [seatMapError, setSeatMapError] = useState("");
     const [seatMapDetailed, setSeatMapDetailed] = useState(false);
+    const [seatLegendFilter, setSeatLegendFilter] = useState<SeatLegendFilter>("ALL");
     const [quote, setQuote] = useState<BookingAncillaryQuote | null>(null);
     const [notes, setNotes] = useState("");
     const [travelerQuantities, setTravelerQuantities] = useState<Record<string, number>>({});
@@ -452,6 +472,7 @@ function AncillariesPageContent() {
         setSeatMapError("");
         setQuote(null);
         setSuccess("");
+        setSeatLegendFilter("ALL");
     }, [category, selectedSegment]);
 
     const itinerarySegments = useMemo(() => {
@@ -1016,20 +1037,38 @@ function AncillariesPageContent() {
                                                                   <div className={`grid gap-2 ${seatGroupCols(leftSeats.length)}`}>
                                                                       {leftSeats.map((seat) => {
                                                                           const selected = selectedSeatCode === seat.code;
+                                                                          const status = seatLegendStatus(seat, selected);
+                                                                          const matchesFilter = seatLegendFilter === "ALL" || status === seatLegendFilter;
                                                                           return (
                                                                               <button
                                                                                   key={`${row.number}-${seat.code}`}
                                                                                   type="button"
-                                                                                  disabled={!isSeatSelectable(seat)}
+                                                                                  disabled={!isSeatSelectable(seat) || !matchesFilter}
                                                                                   onClick={() => setSelectedSeatCode(seat.code)}
-                                                                                  className={`group relative flex aspect-square w-full flex-col items-center justify-center rounded-[1.05rem] border p-2 text-center transition ${seatTone(seat, selected)}`}
+                                                                                  className={`group relative flex aspect-square w-full flex-col items-center justify-center rounded-[1.05rem] border p-2 text-center transition ${seatTone(seat, selected)} ${
+                                                                                      matchesFilter ? "" : "opacity-30"
+                                                                                  }`}
                                                                               >
+                                                                                  {status === "BLOCKED" ? (
+                                                                                      <div className="absolute inset-0 flex items-center justify-center text-xl font-semibold text-slate-400">
+                                                                                          ×
+                                                                                      </div>
+                                                                                  ) : null}
+                                                                                  {status === "SELECTED" ? (
+                                                                                      <div className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--success)] text-[11px] font-bold text-white shadow">
+                                                                                          ✓
+                                                                                      </div>
+                                                                                  ) : status === "PAID" ? (
+                                                                                      <div className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-bold text-white shadow">
+                                                                                          $
+                                                                                      </div>
+                                                                                  ) : null}
                                                                                   <div className="relative h-8 w-8">
                                                                                       <div className="absolute inset-x-1 top-0 h-3 rounded-[0.65rem] bg-current/20" />
                                                                                       <div className="absolute inset-x-0 bottom-0 h-4 rounded-[0.65rem] bg-current/12" />
                                                                                       <div className="absolute left-0 top-2 bottom-1 w-1.5 rounded-[0.65rem] bg-current/12" />
                                                                                       <div className="absolute right-0 top-2 bottom-1 w-1.5 rounded-[0.65rem] bg-current/12" />
-                                                                                      {seat.seatPrice != null ? (
+                                                                                      {seat.seatPrice != null && seat.seatPrice > 0 ? (
                                                                                           <div className="absolute -bottom-2 -right-2 rounded-full bg-[var(--accent-strong)] px-2 py-0.5 text-[10px] font-semibold text-white shadow">
                                                                                               {Math.round(seat.seatPrice)}
                                                                                           </div>
@@ -1055,14 +1094,32 @@ function AncillariesPageContent() {
                                                                   <div className={`grid gap-2 ${seatGroupCols(rightSeats.length)}`}>
                                                                       {rightSeats.map((seat) => {
                                                                           const selected = selectedSeatCode === seat.code;
+                                                                          const status = seatLegendStatus(seat, selected);
+                                                                          const matchesFilter = seatLegendFilter === "ALL" || status === seatLegendFilter;
                                                                           return (
                                                                               <button
                                                                                   key={`${row.number}-${seat.code}`}
                                                                                   type="button"
-                                                                                  disabled={!isSeatSelectable(seat)}
+                                                                                  disabled={!isSeatSelectable(seat) || !matchesFilter}
                                                                                   onClick={() => setSelectedSeatCode(seat.code)}
-                                                                                  className={`group relative flex aspect-square w-full flex-col items-center justify-center rounded-[1.05rem] border p-2 text-center transition ${seatTone(seat, selected)}`}
+                                                                                  className={`group relative flex aspect-square w-full flex-col items-center justify-center rounded-[1.05rem] border p-2 text-center transition ${seatTone(seat, selected)} ${
+                                                                                      matchesFilter ? "" : "opacity-30"
+                                                                                  }`}
                                                                               >
+                                                                                  {status === "BLOCKED" ? (
+                                                                                      <div className="absolute inset-0 flex items-center justify-center text-xl font-semibold text-slate-400">
+                                                                                          ×
+                                                                                      </div>
+                                                                                  ) : null}
+                                                                                  {status === "SELECTED" ? (
+                                                                                      <div className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--success)] text-[11px] font-bold text-white shadow">
+                                                                                          ✓
+                                                                                      </div>
+                                                                                  ) : status === "PAID" ? (
+                                                                                      <div className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] text-[10px] font-bold text-white shadow">
+                                                                                          $
+                                                                                      </div>
+                                                                                  ) : null}
                                                                                   <div className="relative h-8 w-8">
                                                                                       <div className="absolute inset-x-1 top-0 h-3 rounded-[0.65rem] bg-current/20" />
                                                                                       <div className="absolute inset-x-0 bottom-0 h-4 rounded-[0.65rem] bg-current/12" />
@@ -1110,37 +1167,89 @@ function AncillariesPageContent() {
                                                   </div>
 
                                                   <div className="mt-5 grid gap-3">
-                                                      <div className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[rgba(248,251,255,0.72)] px-4 py-3 text-sm">
+                                                      <button
+                                                          type="button"
+                                                          onClick={() =>
+                                                              setSeatLegendFilter((value) => (value === "AVAILABLE" ? "ALL" : "AVAILABLE"))
+                                                          }
+                                                          aria-pressed={seatLegendFilter === "AVAILABLE"}
+                                                          className={`flex w-full items-center justify-between gap-3 rounded-[1.25rem] px-4 py-3 text-sm transition ${
+                                                              seatLegendFilter === "AVAILABLE"
+                                                                  ? "bg-[rgba(241,248,255,0.96)] shadow-[0_14px_30px_rgba(31,42,68,0.08)] ring-1 ring-inset ring-[rgba(12,78,163,0.18)]"
+                                                                  : "bg-[rgba(248,251,255,0.72)] hover:bg-[rgba(241,248,255,0.92)]"
+                                                          }`}
+                                                      >
                                                           <div className="flex items-center gap-3 text-slate-600">
-                                                              <span className="h-3 w-3 rounded-sm border border-[rgba(89,64,46,0.14)] bg-white" />
+                                                              <span className="flex h-4 w-4 items-center justify-center rounded-md border border-[rgba(89,64,46,0.14)] bg-white text-[10px] font-bold text-slate-400">
+                                                                  {" "}
+                                                              </span>
                                                               Available
                                                           </div>
                                                           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Free</span>
-                                                      </div>
+                                                      </button>
 
-                                                      <div className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[rgba(255,247,236,0.86)] px-4 py-3 text-sm">
+                                                      <button
+                                                          type="button"
+                                                          onClick={() =>
+                                                              setSeatLegendFilter((value) => (value === "PAID" ? "ALL" : "PAID"))
+                                                          }
+                                                          aria-pressed={seatLegendFilter === "PAID"}
+                                                          className={`flex w-full items-center justify-between gap-3 rounded-[1.25rem] px-4 py-3 text-sm transition ${
+                                                              seatLegendFilter === "PAID"
+                                                                  ? "bg-[rgba(255,247,236,0.92)] shadow-[0_14px_30px_rgba(31,42,68,0.08)] ring-1 ring-inset ring-[rgba(176,122,67,0.24)]"
+                                                                  : "bg-[rgba(255,247,236,0.86)] hover:bg-[rgba(255,245,229,0.92)]"
+                                                          }`}
+                                                      >
                                                           <div className="flex items-center gap-3 text-[var(--accent-strong)]">
-                                                              <span className="h-3 w-3 rounded-sm border border-[rgba(176,122,67,0.28)] bg-[rgba(255,245,229,0.92)]" />
+                                                              <span className="flex h-4 w-4 items-center justify-center rounded-md border border-[rgba(176,122,67,0.28)] bg-[rgba(255,245,229,0.92)] text-[10px] font-bold text-[var(--accent-strong)]">
+                                                                  $
+                                                              </span>
                                                               Paid seat
                                                           </div>
                                                           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent-strong)]">Paid</span>
-                                                      </div>
+                                                      </button>
 
-                                                      <div className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[rgba(239,236,231,0.92)] px-4 py-3 text-sm">
+                                                      <button
+                                                          type="button"
+                                                          onClick={() =>
+                                                              setSeatLegendFilter((value) => (value === "BLOCKED" ? "ALL" : "BLOCKED"))
+                                                          }
+                                                          aria-pressed={seatLegendFilter === "BLOCKED"}
+                                                          className={`flex w-full items-center justify-between gap-3 rounded-[1.25rem] px-4 py-3 text-sm transition ${
+                                                              seatLegendFilter === "BLOCKED"
+                                                                  ? "bg-[rgba(239,236,231,0.96)] shadow-[0_14px_30px_rgba(31,42,68,0.08)] ring-1 ring-inset ring-[rgba(89,64,46,0.16)]"
+                                                                  : "bg-[rgba(239,236,231,0.92)] hover:bg-[rgba(231,227,222,0.92)]"
+                                                          }`}
+                                                      >
                                                           <div className="flex items-center gap-3 text-slate-500">
-                                                              <span className="h-3 w-3 rounded-sm border border-[rgba(89,64,46,0.12)] bg-[rgba(225,221,214,0.34)]" />
+                                                              <span className="flex h-4 w-4 items-center justify-center rounded-md border border-[rgba(89,64,46,0.12)] bg-[rgba(225,221,214,0.34)] text-[12px] font-bold text-slate-400">
+                                                                  ×
+                                                              </span>
                                                               Blocked / unavailable
                                                           </div>
                                                           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Locked</span>
-                                                      </div>
+                                                      </button>
 
-                                                      <div className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[rgba(225,246,236,0.82)] px-4 py-3 text-sm">
+                                                      <button
+                                                          type="button"
+                                                          onClick={() =>
+                                                              setSeatLegendFilter((value) => (value === "SELECTED" ? "ALL" : "SELECTED"))
+                                                          }
+                                                          aria-pressed={seatLegendFilter === "SELECTED"}
+                                                          className={`flex w-full items-center justify-between gap-3 rounded-[1.25rem] px-4 py-3 text-sm transition ${
+                                                              seatLegendFilter === "SELECTED"
+                                                                  ? "bg-[rgba(225,246,236,0.9)] shadow-[0_14px_30px_rgba(31,42,68,0.08)] ring-1 ring-inset ring-[rgba(45,120,92,0.22)]"
+                                                                  : "bg-[rgba(225,246,236,0.82)] hover:bg-[rgba(225,246,236,0.92)]"
+                                                          }`}
+                                                      >
                                                           <div className="flex items-center gap-3 text-[var(--success)]">
-                                                              <span className="h-3 w-3 rounded-sm border border-[rgba(45,120,92,0.28)] bg-[rgba(225,246,236,0.96)]" />
+                                                              <span className="flex h-4 w-4 items-center justify-center rounded-md border border-[rgba(45,120,92,0.28)] bg-[rgba(225,246,236,0.96)] text-[10px] font-bold text-[var(--success)]">
+                                                                  ✓
+                                                              </span>
                                                               Selected
                                                           </div>
                                                           <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--success)]">Active</span>
-                                                      </div>
+                                                      </button>
                                                   </div>
 
                                                   <div className="mt-5 text-sm leading-7 text-slate-500">
