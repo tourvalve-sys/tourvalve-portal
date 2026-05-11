@@ -400,6 +400,7 @@ function AncillariesPageContent() {
     const [seatMap, setSeatMap] = useState<FlightSeatMapResponse | null>(null);
     const [seatMapLoading, setSeatMapLoading] = useState(false);
     const [seatMapError, setSeatMapError] = useState("");
+    const [seatMapDetailed, setSeatMapDetailed] = useState(false);
     const [quote, setQuote] = useState<BookingAncillaryQuote | null>(null);
     const [notes, setNotes] = useState("");
     const [travelerQuantities, setTravelerQuantities] = useState<Record<string, number>>({});
@@ -882,20 +883,41 @@ function AncillariesPageContent() {
                                       <div>
                                           <div className="subtle-kicker">Live Seat Map</div>
                                           <div className="mt-2 text-xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
-                                              Load the booked segment’s real seat layout.
+                                              Load the booked segment&apos;s real seat layout.
                                           </div>
                                       </div>
-                                      <button
-                                          onClick={() => void loadSeatMap()}
-                                          disabled={seatMapLoading}
-                                          className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
-                                      >
-                                          {seatMapLoading ? "Loading live seat map..." : "Refresh Seat Map"}
-                                      </button>
+                                      <div className="flex flex-wrap items-center gap-3">
+                                          <button
+                                              onClick={() => void loadSeatMap()}
+                                              disabled={seatMapLoading}
+                                              className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
+                                          >
+                                              {seatMapLoading ? "Loading live seat map..." : "Refresh Seat Map"}
+                                          </button>
+                                          <button
+                                              type="button"
+                                              aria-pressed={seatMapDetailed}
+                                              onClick={() => setSeatMapDetailed((value) => !value)}
+                                              className="flex items-center gap-3 rounded-full border border-[rgba(89,64,46,0.12)] bg-white/85 px-4 py-3 text-sm font-semibold text-slate-600 shadow-[0_12px_28px_rgba(31,42,68,0.06)] transition hover:bg-white"
+                                          >
+                                              Detailed view
+                                              <span
+                                                  className={`relative h-6 w-11 rounded-full p-0.5 shadow-[inset_0_0_0_1px_rgba(89,64,46,0.08)] transition ${
+                                                      seatMapDetailed ? "bg-[var(--accent-strong)]" : "bg-[rgba(225,221,214,0.9)]"
+                                                  }`}
+                                              >
+                                                  <span
+                                                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
+                                                          seatMapDetailed ? "translate-x-5" : "translate-x-0.5"
+                                                      }`}
+                                                  />
+                                              </span>
+                                          </button>
+                                      </div>
                                   </div>
 
                                   <div className="mt-4 rounded-[1.25rem] bg-[rgba(241,248,255,0.92)] px-4 py-4 text-sm leading-7 text-slate-600">
-                                      This seat view comes from the booked record’s live seat-map response. It is the right place to inspect real seat rows and returned seat pricing before falling back to manual seat servicing.
+                                      This seat view comes from the booked record&apos;s live seat-map response. It is the right place to inspect real seat rows and returned seat pricing before falling back to manual seat servicing.
                                   </div>
 
                                   {seatMapError ? (
@@ -925,7 +947,23 @@ function AncillariesPageContent() {
                                               </div>
                                           </div>
 
-                                          <div className="relative overflow-x-clip">
+                                          <div className="flex flex-wrap items-center justify-center gap-2">
+                                              <span className="rounded-full bg-[rgba(125,63,228,0.16)] px-4 py-2 text-xs font-semibold text-[rgba(125,63,228,0.9)] shadow-[0_10px_24px_rgba(125,63,228,0.12)] ring-1 ring-inset ring-[rgba(125,63,228,0.22)]">
+                                                  Business
+                                              </span>
+                                              <span className="rounded-full bg-[rgba(20,184,166,0.14)] px-4 py-2 text-xs font-semibold text-[rgba(20,184,166,0.92)] shadow-[0_10px_24px_rgba(20,184,166,0.12)] ring-1 ring-inset ring-[rgba(20,184,166,0.22)]">
+                                                  Premium Select
+                                              </span>
+                                              <span className="rounded-full bg-[rgba(34,197,94,0.14)] px-4 py-2 text-xs font-semibold text-[rgba(34,197,94,0.92)] shadow-[0_10px_24px_rgba(34,197,94,0.12)] ring-1 ring-inset ring-[rgba(34,197,94,0.22)]">
+                                                  Economy – Comfort Plus
+                                              </span>
+                                              <span className="rounded-full bg-[rgba(30,125,240,0.14)] px-4 py-2 text-xs font-semibold text-[rgba(30,125,240,0.92)] shadow-[0_10px_24px_rgba(30,125,240,0.12)] ring-1 ring-inset ring-[rgba(30,125,240,0.22)]">
+                                                  Economy
+                                              </span>
+                                          </div>
+
+                                          <div className="grid gap-4 xl:grid-cols-[1fr_22rem] xl:items-start">
+                                              <div className="relative overflow-x-clip">
                                               <div className="pointer-events-none absolute inset-y-0 left-0 z-0 hidden lg:block">
                                                   <div className="absolute left-0 top-1/2 h-28 w-56 -translate-y-1/2 -skew-y-6 rounded-l-[4rem] rounded-r-[1.75rem] bg-gradient-to-br from-white/90 via-[rgba(241,248,255,0.9)] to-[rgba(255,247,236,0.9)] shadow-[0_32px_84px_rgba(31,42,68,0.16)]" />
                                                   <div className="absolute left-10 top-1/2 h-12 w-12 -translate-y-1/2 rounded-[2.25rem] bg-white/75 shadow-[inset_0_0_0_1px_rgba(89,64,46,0.06)]" />
@@ -984,19 +1022,27 @@ function AncillariesPageContent() {
                                                                                   type="button"
                                                                                   disabled={!isSeatSelectable(seat)}
                                                                                   onClick={() => setSelectedSeatCode(seat.code)}
-                                                                                  className={`rounded-[1rem] border px-3 py-3 text-left transition ${seatTone(seat, selected)}`}
+                                                                                  className={`group relative flex aspect-square w-full flex-col items-center justify-center rounded-[1.05rem] border p-2 text-center transition ${seatTone(seat, selected)}`}
                                                                               >
-                                                                                  <div className="text-sm font-semibold">{seat.code}</div>
-                                                                                  <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-80">
-                                                                                      {seat.availability || "Available"}
+                                                                                  <div className="relative h-8 w-8">
+                                                                                      <div className="absolute inset-x-1 top-0 h-3 rounded-[0.65rem] bg-current/20" />
+                                                                                      <div className="absolute inset-x-0 bottom-0 h-4 rounded-[0.65rem] bg-current/12" />
+                                                                                      <div className="absolute left-0 top-2 bottom-1 w-1.5 rounded-[0.65rem] bg-current/12" />
+                                                                                      <div className="absolute right-0 top-2 bottom-1 w-1.5 rounded-[0.65rem] bg-current/12" />
+                                                                                      {seat.seatPrice != null ? (
+                                                                                          <div className="absolute -bottom-2 -right-2 rounded-full bg-[var(--accent-strong)] px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+                                                                                              {Math.round(seat.seatPrice)}
+                                                                                          </div>
+                                                                                      ) : null}
                                                                                   </div>
-                                                                                  <div className="mt-2 text-xs opacity-80">
-                                                                                      {seat.seatPrice != null
-                                                                                          ? formatCurrency(seat.seatPrice, seat.currency || "MYR")
-                                                                                          : seat.paid
-                                                                                              ? "Paid seat"
-                                                                                              : "No separate seat price"}
+                                                                                  <div className="mt-1 text-xs font-semibold tracking-[0.12em]">
+                                                                                      {seat.code.match(/[A-Za-z]+$/)?.[0] ?? seat.code}
                                                                                   </div>
+                                                                                  {seatMapDetailed ? (
+                                                                                      <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
+                                                                                          {seat.availability || "Available"}
+                                                                                      </div>
+                                                                                  ) : null}
                                                                               </button>
                                                                           );
                                                                       })}
@@ -1015,19 +1061,27 @@ function AncillariesPageContent() {
                                                                                   type="button"
                                                                                   disabled={!isSeatSelectable(seat)}
                                                                                   onClick={() => setSelectedSeatCode(seat.code)}
-                                                                                  className={`rounded-[1rem] border px-3 py-3 text-left transition ${seatTone(seat, selected)}`}
+                                                                                  className={`group relative flex aspect-square w-full flex-col items-center justify-center rounded-[1.05rem] border p-2 text-center transition ${seatTone(seat, selected)}`}
                                                                               >
-                                                                                  <div className="text-sm font-semibold">{seat.code}</div>
-                                                                                  <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-80">
-                                                                                      {seat.availability || "Available"}
+                                                                                  <div className="relative h-8 w-8">
+                                                                                      <div className="absolute inset-x-1 top-0 h-3 rounded-[0.65rem] bg-current/20" />
+                                                                                      <div className="absolute inset-x-0 bottom-0 h-4 rounded-[0.65rem] bg-current/12" />
+                                                                                      <div className="absolute left-0 top-2 bottom-1 w-1.5 rounded-[0.65rem] bg-current/12" />
+                                                                                      <div className="absolute right-0 top-2 bottom-1 w-1.5 rounded-[0.65rem] bg-current/12" />
+                                                                                      {seat.seatPrice != null ? (
+                                                                                          <div className="absolute -bottom-2 -right-2 rounded-full bg-[var(--accent-strong)] px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+                                                                                              {Math.round(seat.seatPrice)}
+                                                                                          </div>
+                                                                                      ) : null}
                                                                                   </div>
-                                                                                  <div className="mt-2 text-xs opacity-80">
-                                                                                      {seat.seatPrice != null
-                                                                                          ? formatCurrency(seat.seatPrice, seat.currency || "MYR")
-                                                                                          : seat.paid
-                                                                                              ? "Paid seat"
-                                                                                              : "No separate seat price"}
+                                                                                  <div className="mt-1 text-xs font-semibold tracking-[0.12em]">
+                                                                                      {seat.code.match(/[A-Za-z]+$/)?.[0] ?? seat.code}
                                                                                   </div>
+                                                                                  {seatMapDetailed ? (
+                                                                                      <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
+                                                                                          {seat.availability || "Available"}
+                                                                                      </div>
+                                                                                  ) : null}
                                                                               </button>
                                                                           );
                                                                       })}
@@ -1036,6 +1090,61 @@ function AncillariesPageContent() {
                                                           </div>
                                                       );
                                                   })}
+                                                  </div>
+                                              </div>
+                                              </div>
+
+                                              <div className="rounded-[1.9rem] border border-[rgba(89,64,46,0.08)] bg-white/86 p-5 shadow-[0_28px_80px_rgba(31,42,68,0.08)]">
+                                                  <div className="flex items-start justify-between gap-3">
+                                                      <div>
+                                                          <div className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                                                              Seats layout
+                                                          </div>
+                                                          <div className="mt-2 text-xl font-[family-name:var(--font-playfair)] text-[var(--ink)]">
+                                                              Legends
+                                                          </div>
+                                                      </div>
+                                                      <div className="rounded-full bg-[rgba(241,248,255,0.92)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                                          {seatMapDetailed ? "Detailed" : "Compact"}
+                                                      </div>
+                                                  </div>
+
+                                                  <div className="mt-5 grid gap-3">
+                                                      <div className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[rgba(248,251,255,0.72)] px-4 py-3 text-sm">
+                                                          <div className="flex items-center gap-3 text-slate-600">
+                                                              <span className="h-3 w-3 rounded-sm border border-[rgba(89,64,46,0.14)] bg-white" />
+                                                              Available
+                                                          </div>
+                                                          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Free</span>
+                                                      </div>
+
+                                                      <div className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[rgba(255,247,236,0.86)] px-4 py-3 text-sm">
+                                                          <div className="flex items-center gap-3 text-[var(--accent-strong)]">
+                                                              <span className="h-3 w-3 rounded-sm border border-[rgba(176,122,67,0.28)] bg-[rgba(255,245,229,0.92)]" />
+                                                              Paid seat
+                                                          </div>
+                                                          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent-strong)]">Paid</span>
+                                                      </div>
+
+                                                      <div className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[rgba(239,236,231,0.92)] px-4 py-3 text-sm">
+                                                          <div className="flex items-center gap-3 text-slate-500">
+                                                              <span className="h-3 w-3 rounded-sm border border-[rgba(89,64,46,0.12)] bg-[rgba(225,221,214,0.34)]" />
+                                                              Blocked / unavailable
+                                                          </div>
+                                                          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Locked</span>
+                                                      </div>
+
+                                                      <div className="flex items-center justify-between gap-3 rounded-[1.25rem] bg-[rgba(225,246,236,0.82)] px-4 py-3 text-sm">
+                                                          <div className="flex items-center gap-3 text-[var(--success)]">
+                                                              <span className="h-3 w-3 rounded-sm border border-[rgba(45,120,92,0.28)] bg-[rgba(225,246,236,0.96)]" />
+                                                              Selected
+                                                          </div>
+                                                          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--success)]">Active</span>
+                                                      </div>
+                                                  </div>
+
+                                                  <div className="mt-5 text-sm leading-7 text-slate-500">
+                                                      Select a seat inside the aircraft view to preview the live seat option and quote it into the ancillary workflow.
                                                   </div>
                                               </div>
                                           </div>
