@@ -8,6 +8,7 @@ export type AirportOption = {
 };
 
 const AIRPORTS = airportData as AirportOption[];
+const AIRPORT_BY_CODE = new Map(AIRPORTS.map((airport) => [airport.code.toUpperCase(), airport]));
 const POPULAR_CODES = [
     "KUL",
     "SIN",
@@ -100,4 +101,10 @@ export function findAirportMatches(query: string): AirportOption[] {
         })
         .slice(0, 12)
         .map(({ airport }) => airport);
+}
+
+export function getAirportByCode(code: string): AirportOption | null {
+    const normalized = code.trim().toUpperCase();
+    if (!normalized) return null;
+    return AIRPORT_BY_CODE.get(normalized) ?? null;
 }

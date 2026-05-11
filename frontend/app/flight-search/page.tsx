@@ -8,6 +8,7 @@ import {
     Check,
     Luggage,
     MapPin,
+    PlaneTakeoff,
     Search,
     SlidersHorizontal,
     Sparkles,
@@ -17,7 +18,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getFlightSeatMap, priceFlight, searchFlights, type FlightResult, type FlightSeatMapResponse } from "@/lib/api";
-import { findAirportMatches, type AirportOption } from "@/lib/airports";
+import { findAirportMatches, getAirportByCode, type AirportOption } from "@/lib/airports";
 import AirlineBrand, { getAirlineDisplayName } from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
 import PromoCarousel from "@/components/PromoCarousel";
@@ -248,6 +249,61 @@ function coerceFiniteNumber(value: unknown) {
 function formatMoney(currency: unknown, amount: unknown) {
     const safeCurrency = typeof currency === "string" && currency.trim() ? currency : "MYR";
     return `${safeCurrency} ${(coerceFiniteNumber(amount) ?? 0).toFixed(2)}`;
+}
+
+function formatFlightClock(value: string) {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) {
+        return "--:--";
+    }
+
+    return date.toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    });
+}
+
+function formatFlightDate(value: string) {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) {
+        return "";
+    }
+
+    const day = new Intl.DateTimeFormat("en-GB", { day: "2-digit" }).format(date);
+    const month = new Intl.DateTimeFormat("en-GB", { month: "short" }).format(date);
+    const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "short" }).format(date);
+    const year = new Intl.DateTimeFormat("en-GB", { year: "numeric" }).format(date);
+
+    return `${day} ${month}, ${weekday}, ${year}`;
+}
+
+function formatFlightDuration(start: string, end: string) {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const startMs = startDate.getTime();
+    const endMs = endDate.getTime();
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+        return "";
+    }
+
+    const minutes = Math.round((endMs - startMs) / 60000);
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return `${hours}h ${remainingMinutes.toString().padStart(2, "0")}m`;
+}
+
+function extractAircraftLabel(segments: FlightResult["airSegmentXmls"], fallbackXml: string) {
+    const samples = segments?.length ? segments : fallbackXml ? [fallbackXml] : [];
+    for (const xml of samples) {
+        if (typeof xml !== "string" || !xml) continue;
+        const match = xml.match(/\bEquipment=\"([^\"]+)\"/i);
+        if (match?.[1]) {
+            return match[1].trim();
+        }
+    }
+
+    return "";
 }
 
 function formatSeatMapRawPreview(raw: unknown) {
@@ -1895,11 +1951,6 @@ export default function FlightSearch() {
                                     nonstopEligible,
                                 } = getJourneySummary(flight);
                                 const pricingError = pricingErrors[flight.id];
-                                const itineraryPath = itinerarySegments
-                                    .flatMap((segment, segmentIndex) =>
-                                        segmentIndex === 0 ? [segment.from, segment.to] : [segment.to]
-                                    )
-                                    .join(" -> ");
                                 const stopSummary = matchesReturnSearch && nonstopEligible
                                     ? "Nonstop return itinerary"
                                     : isRoundTripItinerary
@@ -1911,6 +1962,25 @@ export default function FlightSearch() {
                                             .map((segment) => segment.to)
                                             .filter((stop) => stop !== flight.to)
                                             .join(", ")}`;
+                                const firstSegment = itinerarySegments[0] ?? {
+                                    carrier: flight.carrier,
+                                    flightNumber: flight.flightNumber,
+                                    from: flight.from,
+                                    to: flight.to,
+                                    departure: flight.departure,
+                                    arrival: flight.arrival,
+                                };
+                                const lastSegment = itinerarySegments[itinerarySegments.length - 1] ?? firstSegment;
+                                const originAirport = getAirportByCode(firstSegment.from);
+                                const destinationAirport = getAirportByCode(lastSegment.to);
+                                const flightLabel = [flight.carrier, flight.flightNumber].filter(Boolean).join(" ").trim() || "Live itinerary";
+                                const routeLabel = `${originAirport?.city ?? firstSegment.from} -> ${destinationAirport?.city ?? lastSegment.to}`;
+                                const departureClock = formatFlightClock(firstSegment.departure);
+                                const arrivalClock = formatFlightClock(lastSegment.arrival);
+                                const departureDateLabel = formatFlightDate(firstSegment.departure);
+                                const arrivalDateLabel = formatFlightDate(lastSegment.arrival);
+                                const durationLabel = formatFlightDuration(firstSegment.departure, lastSegment.arrival);
+                                const aircraftLabel = extractAircraftLabel(flight.airSegmentXmls, flight.airSegmentXml);
 
                                 return (
                                     <div
@@ -1931,13 +2001,59 @@ export default function FlightSearch() {
                                             </div>
 
                                             <div className="min-w-0">
-                                                <div className="text-[15px] font-semibold leading-6 text-slate-800 sm:text-base">
-                                                    <span className="block truncate">{itineraryPath}</span>
-                                                </div>
-                                                <div className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-xs">
-                                                    <span className="block">
-                                                        {new Date(flight.departure).toLocaleString()} to {new Date(flight.arrival).toLocaleString()}
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(23,68,152,0.12)] bg-[rgba(241,248,255,0.92)] px-3 py-1 text-[11px] font-semibold text-[#174498] shadow-[0_10px_24px_rgba(31,42,68,0.06)]">
+                                                        {flightLabel}
                                                     </span>
+                                                    <span className="truncate text-[15px] font-semibold leading-6 text-slate-800 sm:text-base">
+                                                        {routeLabel}
+                                                    </span>
+                                                </div>
+
+                                                <div className="mt-3 rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/88 px-4 py-4 shadow-[0_14px_30px_rgba(31,42,68,0.06)]">
+                                                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)] sm:items-center">
+                                                        <div className="text-left">
+                                                            <div className="text-2xl font-semibold tracking-tight text-[var(--ink)]">
+                                                                {departureClock}
+                                                            </div>
+                                                            <div className="mt-1 text-[11px] leading-5 text-slate-500">
+                                                                {departureDateLabel}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="min-w-0">
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                                    {firstSegment.from}
+                                                                </div>
+                                                                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                                    {lastSegment.to}
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-2 flex items-center gap-3">
+                                                                <div className="h-px flex-1 border-t border-dashed border-[rgba(89,64,46,0.2)]" />
+                                                                <PlaneTakeoff size={16} className="text-slate-400" />
+                                                                <div className="h-px flex-1 border-t border-dashed border-[rgba(89,64,46,0.2)]" />
+                                                            </div>
+                                                            <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500">
+                                                                {durationLabel ? <span>{durationLabel}</span> : null}
+                                                                {aircraftLabel ? (
+                                                                    <span className="rounded-full bg-[rgba(241,248,255,0.92)] px-2 py-1 text-[11px] font-medium text-slate-600">
+                                                                        {aircraftLabel}
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="text-right sm:text-right">
+                                                            <div className="text-2xl font-semibold tracking-tight text-[var(--ink)]">
+                                                                {arrivalClock}
+                                                            </div>
+                                                            <div className="mt-1 text-[11px] leading-5 text-slate-500">
+                                                                {arrivalDateLabel}
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                                 <div className="mt-1 text-xs font-medium text-[var(--accent-strong)]">
                                                     {stopSummary}
