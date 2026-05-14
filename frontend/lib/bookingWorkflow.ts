@@ -44,7 +44,8 @@ export function inferPortalBookingSupport(input: BookingWorkflowInput): BookingW
         const routingIdentifier = solutionXml.trim();
         const hasRoutingIdentifier =
             routingIdentifier.length > 0 &&
-            routingIdentifier.length < 512 &&
+            // Atlas routing identifiers can be long (base64-ish); allow a generous limit but still reject HTML/XML payloads.
+            routingIdentifier.length < 50_000 &&
             !/[<>]/.test(routingIdentifier);
         const supportsPortalCheckout = hasRoutingIdentifier && price > 0;
 
