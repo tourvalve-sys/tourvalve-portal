@@ -11,6 +11,7 @@ import {
     Ticket,
 } from "lucide-react";
 import {
+    bookAtlasFlight,
     bookFlight,
     getFlightSeatMap,
     type FlightSeatMapResponse,
@@ -514,6 +515,12 @@ export default function BookingPage() {
     });
 
     const loadSeatMap = async () => {
+        const provider = (selectedFlight?.providerCode || "").trim().toUpperCase();
+        if (provider === "ATLAS") {
+            setSeatMapError("Seat maps are not available in pre-book mode for Atlas LCC fares yet.");
+            return;
+        }
+
         if (!activeSeatSegment?.airSegmentXml) {
             setSeatMapError("This flight leg does not include enough segment data for seat mapping.");
             return;
@@ -599,7 +606,9 @@ export default function BookingPage() {
             const requestId = `BOOK-${Date.now()}`;
             const primarySegment = itinerarySegments[0];
             const finalSegment = itinerarySegments[itinerarySegments.length - 1] ?? primarySegment;
-            const reservation = await bookFlight({
+            const bookingProvider = (selectedFlight.providerCode || "").trim().toUpperCase();
+            const submitBooking = bookingProvider === "ATLAS" ? bookAtlasFlight : bookFlight;
+            const reservation = await submitBooking({
                 clientRequestId: requestId,
                 carrier: primarySegment?.carrier || selectedFlight.carrier,
                 flightNumber: primarySegment?.flightNumber || selectedFlight.flightNumber,

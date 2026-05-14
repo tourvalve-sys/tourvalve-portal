@@ -916,10 +916,44 @@ export async function searchFlights(
     };
 }
 
+export async function searchAtlasFlights(
+    payload: FlightSearchPayload
+): Promise<FlightSearchResponse> {
+    const res = await authFetch(`${API_BASE}/api/atlas/flights/search`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+
+    const data = await readJson<FlightResult[] | FlightSearchResponse>(res);
+
+    if (Array.isArray(data)) {
+        return {
+            flights: data,
+            diagnosticMessage: "",
+        };
+    }
+
+    return {
+        flights: data.flights ?? [],
+        diagnosticMessage: data.diagnosticMessage ?? "",
+    };
+}
+
 export async function bookFlight(
     payload: AirBookingPayload
 ): Promise<AirBookingResponse> {
     const res = await authFetch(`${API_BASE}/api/air-booking`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+
+    return readJson<AirBookingResponse>(res);
+}
+
+export async function bookAtlasFlight(
+    payload: AirBookingPayload
+): Promise<AirBookingResponse> {
+    const res = await authFetch(`${API_BASE}/api/atlas/booking`, {
         method: "POST",
         body: JSON.stringify(payload),
     });

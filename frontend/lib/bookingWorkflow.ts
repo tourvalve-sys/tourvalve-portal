@@ -39,6 +39,25 @@ export function inferPortalBookingSupport(input: BookingWorkflowInput): BookingW
     const price = typeof input.price === "number" && Number.isFinite(input.price) ? input.price : 0;
     const explicitProviderCode = typeof input.providerCode === "string" ? input.providerCode.trim() : "";
     const derivedProviderCode = resolveProviderCode(explicitProviderCode, combinedXml);
+
+    if (derivedProviderCode.trim().toUpperCase() === "ATLAS") {
+        const routingIdentifier = solutionXml.trim();
+        const hasRoutingIdentifier =
+            routingIdentifier.length > 0 &&
+            routingIdentifier.length < 512 &&
+            !/[<>]/.test(routingIdentifier);
+        const supportsPortalCheckout = hasRoutingIdentifier && price > 0;
+
+        return {
+            providerCode: "ATLAS",
+            bookingWorkflow: supportsPortalCheckout ? "ATLAS_LCC_RESERVATION" : "BOOKING_NOT_READY",
+            supportsPortalCheckout,
+            supportsPortalAutoIssue: false,
+            bookingNotice: supportsPortalCheckout
+                ? ""
+                : "This Atlas LCC itinerary needs a fresh search before it can be reserved. Please search again and reselect the fare.",
+        };
+    }
     const hasStoredPricing = hasReservationPricingInfo(solutionXml) || hasReservationPricingInfo(contextXml);
     const requiresSupplierPayment =
         SUPPLIER_DIRECT_PROVIDERS.has(derivedProviderCode.toUpperCase()) ||

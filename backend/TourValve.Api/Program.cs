@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using System.Text;
 using TourValve.Application.Agents;
@@ -12,6 +13,7 @@ using TourValve.Api.Services;
 using TourValve.Infrastructure.Agents;
 using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Security;
+using TourValve.Infrastructure.Atlas;
 using TourValve.Infrastructure.Services;
 using TourValve.Infrastructure.Travelport.Air;
 using TourValve.Infrastructure.Travelport.Common;
@@ -115,6 +117,7 @@ builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.Configure<WalletAlertOptions>(builder.Configuration.GetSection("WalletAlerts"));
 builder.Services.Configure<TicketMarkupOptions>(builder.Configuration.GetSection("TicketMarkup"));
 builder.Services.Configure<AncillaryMarkupOptions>(builder.Configuration.GetSection("AncillaryMarkup"));
+builder.Services.Configure<AtlasOptions>(builder.Configuration.GetSection(AtlasOptions.SectionName));
 builder.Services.AddScoped<IAuditTrailService, AuditTrailService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddHttpClient<IBillplzTopUpService, BillplzTopUpService>(client =>
@@ -123,6 +126,16 @@ builder.Services.AddHttpClient<IBillplzTopUpService, BillplzTopUpService>(client
 });
 builder.Services.AddScoped<TicketMarkupService>();
 builder.Services.AddScoped<AncillaryMarkupService>();
+builder.Services.AddHttpClient<AtlasApiClient>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<AtlasOptions>>().Value;
+
+    client.Timeout = TimeSpan.FromSeconds(60);
+
+    if (!string.IsNullOrWhiteSpace(options.BaseUrl))
+        client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+});
+builder.Services.AddScoped<AtlasTicketingService>();
 
 // ==============================
 // Database

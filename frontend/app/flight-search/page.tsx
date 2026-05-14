@@ -28,7 +28,7 @@ import {
     X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { getFlightSeatMap, priceFlight, searchFlights, type FlightResult, type FlightSeatMapResponse } from "@/lib/api";
+import { getFlightSeatMap, priceFlight, searchAtlasFlights, searchFlights, type FlightResult, type FlightSeatMapResponse } from "@/lib/api";
 import { findAirportMatches, getAirportByCode, type AirportOption } from "@/lib/airports";
 import AirlineBrand, { getAirlineDisplayName } from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
@@ -250,6 +250,7 @@ const PRICING_LOADING_CAPTIONS = [
 
 type FlightSearchUiState = {
     tripType: "oneway" | "return" | "multicity";
+    contentSource: "travelport" | "atlas";
     searchNotice: string;
     hasSearched: boolean;
     lastSearchedKey: string | null;
@@ -308,6 +309,7 @@ const createDefaultMultiCitySegments = () => ([
 
 const createDefaultFlightSearchUiState = (): FlightSearchUiState => ({
     tripType: "oneway",
+    contentSource: "travelport",
     searchMode: "lowfare",
     hasSearched: false,
     searchNotice: "",
@@ -655,6 +657,7 @@ function sanitizeFlightResult(flight: FlightResult): FlightResult {
 
 function buildSearchSignature(args: {
     tripType: "oneway" | "return" | "multicity";
+    contentSource: "travelport" | "atlas";
     searchMode: SearchMode;
     form: ReturnType<typeof createDefaultForm>;
     multiCitySegments: Array<{
@@ -665,6 +668,7 @@ function buildSearchSignature(args: {
 }) {
     return JSON.stringify({
         tripType: args.tripType,
+        contentSource: args.contentSource,
         searchMode: args.searchMode,
         cabin: args.form.cabin,
         adults: args.form.adults,
@@ -697,6 +701,7 @@ function sanitizePersistedFlightSearchUiState(value: unknown): FlightSearchUiSta
 
     if (
         (candidate.tripType !== "oneway" && candidate.tripType !== "return" && candidate.tripType !== "multicity") ||
+        (candidate.contentSource !== undefined && candidate.contentSource !== "travelport" && candidate.contentSource !== "atlas") ||
         (candidate.searchMode !== "lowfare" && candidate.searchMode !== "availability") ||
         typeof candidate.searchNotice !== "string" ||
         typeof candidate.hasSearched !== "boolean" ||
@@ -740,6 +745,7 @@ function sanitizePersistedFlightSearchUiState(value: unknown): FlightSearchUiSta
 
     return {
         tripType: candidate.tripType,
+        contentSource: candidate.contentSource === "atlas" ? "atlas" : "travelport",
         searchMode: candidate.searchMode,
         searchNotice: candidate.searchNotice,
         hasSearched: candidate.hasSearched,
@@ -847,6 +853,9 @@ export default function FlightSearch() {
     const [tripType, setTripType] = useState<"oneway" | "return" | "multicity">(
         restoredState?.tripType ?? "oneway"
     );
+    const [contentSource, setContentSource] = useState<"travelport" | "atlas">(
+        restoredState?.contentSource ?? "travelport"
+    );
     const [results, setResults] = useState<FlightResult[]>(
         sanitizedContextState?.results ?? []
     );
@@ -885,6 +894,7 @@ export default function FlightSearch() {
         const defaults = createDefaultFlightSearchUiState();
 
         setTripType(defaults.tripType);
+        setContentSource(defaults.contentSource);
         setResults([]);
         setLoading(false);
         setError("");
@@ -924,6 +934,7 @@ export default function FlightSearch() {
     useEffect(() => {
         setFlightSearchState({
             tripType,
+            contentSource,
             results,
             searchNotice,
             hasSearched,
@@ -935,6 +946,7 @@ export default function FlightSearch() {
             multiCitySegments,
         });
     }, [
+        contentSource,
         filters,
         form,
         hasSearched,
@@ -960,6 +972,7 @@ export default function FlightSearch() {
                     version: FLIGHT_SEARCH_STATE_VERSION,
                     ui: {
                         tripType,
+                        contentSource,
                         searchNotice,
                         hasSearched,
                         lastSearchedKey,
@@ -975,6 +988,7 @@ export default function FlightSearch() {
             sessionStorage.removeItem(FLIGHT_SEARCH_STATE_KEY);
         }
     }, [
+        contentSource,
         filters,
         form,
         hasSearched,
@@ -990,11 +1004,12 @@ export default function FlightSearch() {
         () =>
             buildSearchSignature({
                 tripType,
+                contentSource,
                 searchMode,
                 form,
                 multiCitySegments,
             }),
-        [form, multiCitySegments, searchMode, tripType]
+        [contentSource, form, multiCitySegments, searchMode, tripType]
     );
 
     const prebookFlight = useMemo(
@@ -1113,10 +1128,28 @@ export default function FlightSearch() {
         value instanceof Error ? value.message : "Flight search failed";
 
     const selectSearchMode = (mode: SearchMode) => {
+        if (contentSource === "atlas" && mode === "availability") {
+            return;
+        }
         searchModeRef.current = mode;
         setSearchMode(mode);
         setSearchNotice("");
         setError("");
+    };
+
+    const selectContentSource = (source: "travelport" | "atlas") => {
+        setContentSource(source);
+        setSearchNotice("");
+        setError("");
+
+        if (source === "atlas") {
+            searchModeRef.current = "lowfare";
+            setSearchMode("lowfare");
+
+            if (tripType === "multicity") {
+                setTripType("oneway");
+            }
+        }
     };
 
     const closePrebookStudio = () => {
@@ -1220,9 +1253,15 @@ export default function FlightSearch() {
     };
 
     const handleSearch = async () => {
-        const activeSearchMode = searchModeRef.current;
+        if (contentSource === "atlas" && tripType === "multicity") {
+            setError("Atlas LCC shopping currently supports one-way and return searches only.");
+            return;
+        }
+
+        const activeSearchMode = contentSource === "atlas" ? "lowfare" : searchModeRef.current;
         const requestSearchKey = buildSearchSignature({
             tripType,
+            contentSource,
             searchMode: activeSearchMode,
             form,
             multiCitySegments,
@@ -1291,7 +1330,8 @@ export default function FlightSearch() {
             setActiveField(null);
             pendingResultsScrollRef.current = true;
 
-            const searchResponse = await searchFlights({
+            const searchFn = contentSource === "atlas" ? searchAtlasFlights : searchFlights;
+            const searchResponse = await searchFn({
                 ...form,
                 searchMode: activeSearchMode,
                 from: tripType === "multicity" ? multiCitySegments[0]?.from.toUpperCase() ?? "" : form.from.toUpperCase(),
@@ -2062,6 +2102,43 @@ export default function FlightSearch() {
                     </div>
 
                     <div id="flight-search-form" className="mb-5 rounded-[1.4rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.7)] px-4 py-4 sm:rounded-[1.6rem]">
+                        <div className="mb-4">
+                            <div className="subtle-kicker">Inventory Provider</div>
+                            <div className="mt-1 text-sm leading-6 text-slate-600">
+                                Switch between GDS-hosted Travelport content and Atlas low-cost carrier (LCC) content.
+                            </div>
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                <button
+                                    type="button"
+                                    onClick={() => selectContentSource("travelport")}
+                                    className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
+                                        contentSource === "travelport"
+                                            ? "border-[rgba(176,122,67,0.45)] bg-[rgba(176,122,67,0.14)] shadow-[0_18px_30px_rgba(122,82,45,0.12)]"
+                                            : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
+                                    }`}
+                                >
+                                    <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">Travelport (GDS)</div>
+                                    <div className="mt-2 text-sm leading-6 text-slate-600">
+                                        Full GDS shopping + availability diagnostics + hosted ticketing workflow.
+                                    </div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => selectContentSource("atlas")}
+                                    className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
+                                        contentSource === "atlas"
+                                            ? "border-[rgba(45,120,92,0.28)] bg-[rgba(232,245,237,0.88)] shadow-[0_18px_30px_rgba(45,120,92,0.1)]"
+                                            : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
+                                    }`}
+                                >
+                                    <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Atlas (LCC)</div>
+                                    <div className="mt-2 text-sm leading-6 text-slate-600">
+                                        Low-cost carrier inventory. Reservation-first flow; ticketing happens later.
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="mb-2 flex items-center justify-between gap-3">
                             <div>
                                 <div className="subtle-kicker">Search Source</div>
@@ -2088,7 +2165,8 @@ export default function FlightSearch() {
                             <button
                                 type="button"
                                 onClick={() => selectSearchMode("availability")}
-                                className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
+                                disabled={contentSource === "atlas"}
+                                className={`rounded-[1.25rem] border px-4 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
                                     searchMode === "availability"
                                         ? "border-[rgba(45,120,92,0.28)] bg-[rgba(232,245,237,0.88)] shadow-[0_18px_30px_rgba(45,120,92,0.1)]"
                                         : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
@@ -2096,7 +2174,7 @@ export default function FlightSearch() {
                             >
                                 <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Air Availability</div>
                                 <div className="mt-2 text-sm leading-6 text-slate-600">
-                                    Show schedule-based options that agents can price one by one when low fares are missing.
+                                    Travelport-only schedules for manual pricing when low fares are missing.
                                 </div>
                             </button>
                         </div>

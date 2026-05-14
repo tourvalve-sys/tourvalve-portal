@@ -6,6 +6,7 @@ import { inferPortalBookingSupport } from "@/lib/bookingWorkflow";
 
 type FlightSearchUiState = {
     tripType: "oneway" | "return" | "multicity";
+    contentSource: "travelport" | "atlas";
     searchMode: "lowfare" | "availability";
     hasSearched: boolean;
     searchNotice: string;

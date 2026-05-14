@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TourValve.Application.Wallet;
 using TourValve.Domain;
+using TourValve.Infrastructure.Atlas;
 using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Services;
 
@@ -30,6 +31,7 @@ public class AirTicketingWorkflowService
     private readonly TourValveDbContext _db;
     private readonly BookingTicketingService _ticketing;
     private readonly UniversalRecordService _records;
+    private readonly AtlasTicketingService _atlasTicketing;
     private readonly IWalletService _wallet;
     private readonly IAuditTrailService _audit;
     private readonly INotificationService _notifications;
@@ -38,6 +40,7 @@ public class AirTicketingWorkflowService
         TourValveDbContext db,
         BookingTicketingService ticketing,
         UniversalRecordService records,
+        AtlasTicketingService atlasTicketing,
         IWalletService wallet,
         IAuditTrailService audit,
         INotificationService notifications)
@@ -45,6 +48,7 @@ public class AirTicketingWorkflowService
         _db = db;
         _ticketing = ticketing;
         _records = records;
+        _atlasTicketing = atlasTicketing;
         _wallet = wallet;
         _audit = audit;
         _notifications = notifications;
@@ -169,6 +173,74 @@ public class AirTicketingWorkflowService
                     throw new InvalidOperationException("The saved TourValve wallet hold is missing or no longer active.");
 
                 booking.AirTicketingWalletHoldId = holdId;
+            }
+
+            if (string.Equals(booking.ProviderCode, "ATLAS", StringComparison.OrdinalIgnoreCase))
+            {
+                var atlasIssuedAt = DateTime.UtcNow;
+                var atlasIssue = await _atlasTicketing.IssueAsync(booking, cancellationToken);
+
+                booking.TicketingResponseXml = atlasIssue.OrderDetailsJson;
+
+                if (atlasIssue.TicketNumbers.Count == 0)
+                    throw new InvalidOperationException("Atlas did not return any valid e-ticket numbers yet. Refresh order details and try again.");
+
+                var atlasPaymentWarning = string.Empty;
+                if (booking.AirTicketingFormOfPayment == FormOfPaymentWallet && booking.AirTicketingWalletHoldId.HasValue)
+                {
+                    try
+                    {
+                        await _wallet.CaptureHoldAsync(
+                            booking.AirTicketingWalletHoldId.Value,
+                            $"{booking.BookingReference}-AT-CAPTURE");
+                        booking.AirTicketingPaymentStatus = PaymentPaid;
+                    }
+                    catch (Exception captureEx)
+                    {
+                        atlasPaymentWarning = ExtractTravelportMessage(captureEx);
+                        booking.AirTicketingPaymentStatus = PaymentHoldActive;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(atlasIssue.AirlinePnr))
+                    booking.AirlineLocator = atlasIssue.AirlinePnr;
+
+                booking.TicketNumbersJson = JsonSerializer.Serialize(atlasIssue.TicketNumbers);
+                booking.TicketedAt = atlasIssuedAt;
+                booking.Status = "TICKETED";
+                booking.AirTicketingStatus = WorkflowIssued;
+                booking.AirTicketingLastError = atlasPaymentWarning;
+
+                await _db.SaveChangesAsync(cancellationToken);
+
+                var normalizedAtlasActorEmail = NormalizeActorEmail(actorEmail);
+                await _audit.WriteAsync(
+                    actorId,
+                    normalizedAtlasActorEmail,
+                    "BOOKING",
+                    backgroundTriggered ? "AIR_TICKETING_AUTO_ISSUE" : "AIR_TICKETING_ISSUE",
+                    "Booking",
+                    booking.Id.ToString(),
+                    booking.BookingReference,
+                    atlasIssue.TicketNumbers.Count > 0
+                        ? $"Atlas ticketed: {string.Join(", ", atlasIssue.TicketNumbers)}"
+                        : "Atlas ticketed.");
+
+                await NotifyAsync(
+                    booking,
+                    "Ticket issued",
+                    $"Booking {booking.BookingReference} has been ticketed. Ticket numbers: {string.Join(", ", atlasIssue.TicketNumbers)}.",
+                    string.IsNullOrWhiteSpace(atlasPaymentWarning) ? "SUCCESS" : "WARN");
+
+                return new AirTicketingIssueResult(
+                    atlasIssue.TicketNumbers,
+                    atlasIssuedAt,
+                    booking.Status,
+                    booking.AirTicketingStatus,
+                    booking.AirTicketingPaymentStatus,
+                    atlasIssue.PayResponseJson,
+                    atlasIssue.OrderDetailsJson,
+                    atlasPaymentWarning);
             }
 
             var result = await _ticketing.IssueAsync(booking);
