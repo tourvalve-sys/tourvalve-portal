@@ -13,11 +13,17 @@ public class TourValveDbContext : DbContext, IApplicationDbContext
     public DbSet<WalletLedgerEntry> WalletLedger => Set<WalletLedgerEntry>();
     public DbSet<WalletHold> WalletHolds => Set<WalletHold>();
     public DbSet<Agent> Agents => Set<Agent>();
+    public DbSet<RegistrationApprovalRequest> RegistrationApprovalRequests => Set<RegistrationApprovalRequest>();
+    public DbSet<PasswordResetApprovalRequest> PasswordResetApprovalRequests => Set<PasswordResetApprovalRequest>();
+    public DbSet<AuditTrailEvent> AuditTrailEvents => Set<AuditTrailEvent>();
+    public DbSet<NotificationItem> NotificationItems => Set<NotificationItem>();
     public DbSet<WalletTopUpRequest> WalletTopUpRequests => Set<WalletTopUpRequest>();
     public DbSet<WalletLimitAuditLog> WalletLimitAuditLogs => Set<WalletLimitAuditLog>();
+    public DbSet<AdminWithdrawalRequest> AdminWithdrawalRequests => Set<AdminWithdrawalRequest>();
+    public DbSet<BookingAncillaryOrder> BookingAncillaryOrders => Set<BookingAncillaryOrder>();
     public DbSet<Booking> Bookings => Set<Booking>();
 
-    public Task<int> SaveChangesAsync(CancellationToken cancellationToken)
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => base.SaveChangesAsync(cancellationToken);
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -27,11 +33,45 @@ public class TourValveDbContext : DbContext, IApplicationDbContext
         modelBuilder.Entity<WalletHold>().HasKey(x => x.Id);
         modelBuilder.Entity<WalletTopUpRequest>().HasKey(x => x.Id);
         modelBuilder.Entity<WalletLimitAuditLog>().HasKey(x => x.Id);
+        modelBuilder.Entity<AdminWithdrawalRequest>().HasKey(x => x.Id);
+        modelBuilder.Entity<BookingAncillaryOrder>().HasKey(x => x.Id);
+        modelBuilder.Entity<Agent>().HasKey(x => x.Id);
+        modelBuilder.Entity<RegistrationApprovalRequest>().HasKey(x => x.Id);
+        modelBuilder.Entity<PasswordResetApprovalRequest>().HasKey(x => x.Id);
+        modelBuilder.Entity<AuditTrailEvent>().HasKey(x => x.Id);
+        modelBuilder.Entity<NotificationItem>().HasKey(x => x.Id);
+
+        modelBuilder.Entity<Agent>()
+            .HasIndex(x => x.Email)
+            .IsUnique();
+
+        modelBuilder.Entity<RegistrationApprovalRequest>()
+            .HasIndex(x => new { x.Email, x.Status });
+
+        modelBuilder.Entity<PasswordResetApprovalRequest>()
+            .HasIndex(x => new { x.Email, x.Status });
+
+        modelBuilder.Entity<AuditTrailEvent>()
+            .HasIndex(x => new { x.CreatedAt, x.Category });
+
+        modelBuilder.Entity<NotificationItem>()
+            .HasIndex(x => new { x.AgentId, x.IsRead, x.CreatedAt });
+
+        modelBuilder.Entity<NotificationItem>()
+            .HasIndex(x => new { x.RoleTarget, x.IsRead, x.CreatedAt });
 
         modelBuilder.Entity<Booking>().HasKey(x => x.Id);
 
         modelBuilder.Entity<Booking>()
             .Property(x => x.Amount)
+            .HasColumnType("numeric(12,2)");
+
+        modelBuilder.Entity<Booking>()
+            .Property(x => x.BaseAmount)
+            .HasColumnType("numeric(12,2)");
+
+        modelBuilder.Entity<Booking>()
+            .Property(x => x.MarkupAmount)
             .HasColumnType("numeric(12,2)");
 
         modelBuilder.Entity<Booking>()
@@ -41,12 +81,40 @@ public class TourValveDbContext : DbContext, IApplicationDbContext
             .HasIndex(x => x.BookingReference)
             .IsUnique();
 
+        modelBuilder.Entity<BookingAncillaryOrder>()
+            .Property(x => x.BaseAmount)
+            .HasColumnType("numeric(12,2)");
+
+        modelBuilder.Entity<BookingAncillaryOrder>()
+            .Property(x => x.MarkupAmount)
+            .HasColumnType("numeric(12,2)");
+
+        modelBuilder.Entity<BookingAncillaryOrder>()
+            .Property(x => x.TotalAmount)
+            .HasColumnType("numeric(12,2)");
+
+        modelBuilder.Entity<BookingAncillaryOrder>()
+            .HasIndex(x => new { x.BookingId, x.RequestedAt });
+
+        modelBuilder.Entity<BookingAncillaryOrder>()
+            .HasIndex(x => new { x.AgentId, x.Status, x.RequestedAt });
+
         modelBuilder.Entity<WalletTopUpRequest>()
             .Property(x => x.Amount)
             .HasColumnType("numeric(12,2)");
 
         modelBuilder.Entity<WalletTopUpRequest>()
             .HasIndex(x => new { x.AgentId, x.Status });
+
+        modelBuilder.Entity<AdminWithdrawalRequest>()
+            .Property(x => x.Amount)
+            .HasColumnType("numeric(12,2)");
+
+        modelBuilder.Entity<AdminWithdrawalRequest>()
+            .HasIndex(x => new { x.WalletAccountId, x.RequestedAt });
+
+        modelBuilder.Entity<AdminWithdrawalRequest>()
+            .HasIndex(x => new { x.Status, x.RequestedAt });
 
         modelBuilder.Entity<WalletLedgerEntry>()
             .Property(x => x.Amount)

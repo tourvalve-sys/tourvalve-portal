@@ -15,28 +15,29 @@ public sealed class TravelportSoapClient
         _config = config;
     }
 
-    public async Task<string> SendAsync(string endpointUrl, string soapXml, CancellationToken ct = default)
+    public async Task<string> SendAsync(string endpointUrl, string xml)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, endpointUrl);
+        var request = new HttpRequestMessage(HttpMethod.Post, endpointUrl);
 
-        // Basic Auth (RFC7617): use Latin1 bytes
-        var raw = $"{_config.Username}:{_config.Password}";
-        var basic = Convert.ToBase64String(Encoding.Latin1.GetBytes(raw));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", basic);
+        // IMPORTANT: Travelport requires "Universal API/"
+        var raw = $"Universal API/{_config.Username}:{_config.Password}";
+        var base64 = Convert.ToBase64String(Encoding.ASCII.GetBytes(raw));
 
-        // Some SOAP gateways require these
-        request.Headers.TryAddWithoutValidation("Accept", "text/xml");
-        request.Headers.TryAddWithoutValidation("SOAPAction", "\"\""); // SOAP 1.1 empty action
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue("Basic", base64);
 
-        request.Content = new StringContent(soapXml, Encoding.UTF8);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("text/xml");
-        request.Content.Headers.ContentType.CharSet = "utf-8";
+        request.Headers.Add("SOAPAction", "");
 
-        var response = await _httpClient.SendAsync(request, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
+        request.Content = new StringContent(xml, Encoding.UTF8, "text/xml");
+
+        var response = await _httpClient.SendAsync(request);
+
+        var body = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"Travelport SOAP failed ({(int)response.StatusCode}): {body}");
+        {
+            throw new Exception(body);
+        }
 
         return body;
     }

@@ -8,6 +8,9 @@ namespace TourValve.Infrastructure.Wallet;
 
 public class WalletService : IWalletService
 {
+    private static readonly Guid ReservedAdminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private const string ReservedAdminEmail = "admin@tourvalve.com";
+    private const decimal MinimumAdminWithdrawalAmount = 500m;
     private readonly TourValveDbContext _db;
     private readonly IConfiguration _config;
 
@@ -36,15 +39,70 @@ public class WalletService : IWalletService
         return DateTime.SpecifyKind(v, DateTimeKind.Utc);
     }
 
+    private async Task<Agent?> EnsureWalletAgentAsync(Guid walletAgentId, bool isAdmin)
+    {
+        var agent = await _db.Agents.FirstOrDefaultAsync(x => x.Id == walletAgentId);
+        if (agent != null)
+            return agent;
+
+        if (!isAdmin || walletAgentId != ReservedAdminId)
+            return null;
+
+        agent = new Agent
+        {
+            Id = ReservedAdminId,
+            Email = ReservedAdminEmail,
+            PasswordHash = "SYSTEM_RESERVED_ADMIN",
+            Role = "ADMIN",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _db.Agents.Add(agent);
+        await _db.SaveChangesAsync();
+
+        return agent;
+    }
+
+    private async Task<(Agent Agent, WalletAccount Wallet)> EnsureReservedAdminWalletAsync()
+    {
+        var agent = await EnsureWalletAgentAsync(ReservedAdminId, true);
+        if (agent == null)
+            throw new InvalidOperationException("Reserved admin wallet owner could not be created.");
+
+        var wallet = await _db.WalletAccounts.FirstOrDefaultAsync(x => x.AgentId == agent.Id);
+        if (wallet == null)
+        {
+            wallet = new WalletAccount
+            {
+                Id = Guid.NewGuid(),
+                AgentId = agent.Id,
+                Currency = "MYR",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _db.WalletAccounts.Add(wallet);
+            await _db.SaveChangesAsync();
+        }
+        else if (!wallet.IsActive)
+        {
+            wallet.IsActive = true;
+            await _db.SaveChangesAsync();
+        }
+
+        return (agent, wallet);
+    }
+
     // ---------------- Balance ----------------
     public async Task<decimal> GetBalanceAsync(Guid walletAccountId)
     {
         var credits = await _db.WalletLedger
-            .Where(x => x.WalletAccountId == walletAccountId && x.Type == "TOPUP")
+            .Where(x => x.WalletAccountId == walletAccountId && (x.Type == "TOPUP" || x.Type == "MARKUP_CREDIT" || x.Type == "WITHDRAWAL_RELEASE" || x.Type == "ANCILLARY_REFUND" || x.Type == "ANCILLARY_MARKUP_CREDIT"))
             .SumAsync(x => (decimal?)x.Amount) ?? 0m;
 
         var debits = await _db.WalletLedger
-            .Where(x => x.WalletAccountId == walletAccountId && x.Type == "DEBIT")
+            .Where(x => x.WalletAccountId == walletAccountId && (x.Type == "DEBIT" || x.Type == "WITHDRAWAL_RESERVE"))
             .SumAsync(x => (decimal?)x.Amount) ?? 0m;
 
         var activeHolds = await _db.WalletHolds
@@ -66,6 +124,16 @@ public class WalletService : IWalletService
         if (!isAdmin && wallet.AgentId != requesterAgentId)
             throw new UnauthorizedAccessException("Access denied");
 
+        if (!wallet.IsActive)
+            throw new InvalidOperationException("Wallet is inactive");
+
+        var agent = await EnsureWalletAgentAsync(wallet.AgentId, isAdmin);
+        if (agent == null)
+            throw new InvalidOperationException("Agent not found for wallet");
+
+        if (!agent.IsActive)
+            throw new InvalidOperationException("Agent account is inactive");
+
         return await GetBalanceAsync(walletAccountId);
     }
 
@@ -75,16 +143,57 @@ public class WalletService : IWalletService
         if (amount <= 0)
             throw new ArgumentException("Amount must be greater than zero");
 
+        var wallet = await _db.WalletAccounts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == walletAccountId);
+
+        if (wallet == null)
+            throw new InvalidOperationException("Wallet not found");
+
+        if (!wallet.IsActive)
+            throw new InvalidOperationException("Wallet is inactive");
+
+        var agent = await _db.Agents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == wallet.AgentId);
+
+        if (agent == null)
+            throw new InvalidOperationException("Agent not found for wallet");
+
+        if (!agent.IsActive)
+            throw new InvalidOperationException("Cannot top up an inactive agent");
+
+        if (!string.Equals(agent.Role, "AGENT", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Admin top-up is allowed only for agent wallets");
+
+        var normalizedReference = string.IsNullOrWhiteSpace(reference)
+            ? $"ADMIN-TOPUP-{DateTime.UtcNow:yyyyMMddHHmmss}"
+            : reference.Trim();
+
         var entry = new WalletLedgerEntry
         {
             Id = Guid.NewGuid(),
             WalletAccountId = walletAccountId,
             Type = "TOPUP",
             Amount = amount,
-            Reference = reference ?? string.Empty
+            Reference = normalizedReference
         };
 
         _db.WalletLedger.Add(entry);
+
+        _db.WalletTopUpRequests.Add(new WalletTopUpRequest
+        {
+            Id = Guid.NewGuid(),
+            AgentId = wallet.AgentId,
+            WalletAccountId = walletAccountId,
+            Amount = amount,
+            ExternalReference = normalizedReference,
+            Status = "APPROVED",
+            Notes = "Manual admin wallet top-up",
+            RequestedAt = DateTime.UtcNow,
+            ReviewedAt = DateTime.UtcNow
+        });
+
         await _db.SaveChangesAsync();
 
         return entry.Id;
@@ -380,6 +489,188 @@ public class WalletService : IWalletService
             dailyLimit,
             monthDebits,
             monthlyLimit
+        );
+    }
+
+    public async Task<IReadOnlyList<AgentWalletAdminDto>> GetAgentWalletsForAdminAsync()
+    {
+        var wallets = await (
+            from wallet in _db.WalletAccounts.AsNoTracking()
+            join agent in _db.Agents.AsNoTracking() on wallet.AgentId equals agent.Id
+            where agent.Role == "AGENT"
+            orderby agent.CreatedAt descending
+            select new
+            {
+                agent.Id,
+                agent.Email,
+                AgentIsActive = agent.IsActive,
+                WalletAccountId = wallet.Id,
+                WalletIsActive = wallet.IsActive,
+                wallet.Currency
+            })
+            .ToListAsync();
+
+        var result = new List<AgentWalletAdminDto>(wallets.Count);
+
+        foreach (var wallet in wallets)
+        {
+            var balance = await GetBalanceAsync(wallet.WalletAccountId);
+
+            result.Add(new AgentWalletAdminDto(
+                wallet.Id,
+                wallet.Email,
+                wallet.AgentIsActive,
+                wallet.WalletAccountId,
+                wallet.WalletIsActive,
+                wallet.Currency,
+                balance
+            ));
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<AdminWithdrawalRequestDto>> GetAdminWithdrawalsAsync()
+    {
+        var (_, wallet) = await EnsureReservedAdminWalletAsync();
+
+        return await _db.AdminWithdrawalRequests
+            .AsNoTracking()
+            .Where(x => x.WalletAccountId == wallet.Id)
+            .OrderByDescending(x => x.RequestedAt)
+            .Select(x => new AdminWithdrawalRequestDto(
+                x.Id,
+                x.WalletAccountId,
+                x.RequestedByAgentId,
+                x.Amount,
+                x.Status,
+                x.Notes,
+                x.PayoutReference,
+                x.RequestedAt,
+                x.ProcessedAt,
+                x.ProcessedByEmail
+            ))
+            .ToListAsync();
+    }
+
+    public async Task<AdminWithdrawalRequestDto> CreateAdminWithdrawalAsync(
+        Guid requesterAgentId,
+        string requesterEmail,
+        decimal amount,
+        string notes)
+    {
+        if (amount < MinimumAdminWithdrawalAmount)
+            throw new InvalidOperationException($"Minimum admin withdrawal is MYR {MinimumAdminWithdrawalAmount:0.00}.");
+
+        var (_, wallet) = await EnsureReservedAdminWalletAsync();
+        var availableBalance = await GetBalanceForUserAsync(wallet.Id, requesterAgentId, true);
+
+        if (availableBalance < amount)
+            throw new InvalidOperationException("Insufficient revenue balance for this withdrawal request.");
+
+        var request = new AdminWithdrawalRequest
+        {
+            Id = Guid.NewGuid(),
+            WalletAccountId = wallet.Id,
+            RequestedByAgentId = requesterAgentId,
+            Amount = amount,
+            Status = "PENDING",
+            Notes = notes?.Trim() ?? string.Empty,
+            RequestedAt = DateTime.UtcNow
+        };
+
+        _db.AdminWithdrawalRequests.Add(request);
+        _db.WalletLedger.Add(new WalletLedgerEntry
+        {
+            Id = Guid.NewGuid(),
+            WalletAccountId = wallet.Id,
+            Type = "WITHDRAWAL_RESERVE",
+            Amount = amount,
+            Reference = $"WITHDRAWAL-{request.Id}"
+        });
+
+        await _db.SaveChangesAsync();
+
+        return new AdminWithdrawalRequestDto(
+            request.Id,
+            request.WalletAccountId,
+            request.RequestedByAgentId,
+            request.Amount,
+            request.Status,
+            request.Notes,
+            request.PayoutReference,
+            request.RequestedAt,
+            request.ProcessedAt,
+            request.ProcessedByEmail
+        );
+    }
+
+    public async Task<AdminWithdrawalRequestDto> UpdateAdminWithdrawalStatusAsync(
+        Guid withdrawalRequestId,
+        string status,
+        string processedByEmail,
+        string notes,
+        string payoutReference)
+    {
+        var request = await _db.AdminWithdrawalRequests.FirstOrDefaultAsync(x => x.Id == withdrawalRequestId);
+        if (request == null)
+            throw new InvalidOperationException("Withdrawal request not found.");
+
+        var normalizedStatus = (status ?? string.Empty).Trim().ToUpperInvariant();
+        if (normalizedStatus is not ("PROCESSING" or "PAID" or "FAILED" or "CANCELLED"))
+            throw new InvalidOperationException("Unsupported withdrawal status.");
+
+        if (request.Status == "PAID")
+            throw new InvalidOperationException("A paid withdrawal request cannot be modified.");
+
+        if (request.Status is "FAILED" or "CANCELLED" && normalizedStatus != request.Status)
+            throw new InvalidOperationException("A closed withdrawal request cannot be modified.");
+
+        var previousStatus = request.Status;
+        request.Status = normalizedStatus;
+        request.Notes = string.IsNullOrWhiteSpace(notes) ? request.Notes : notes.Trim();
+        request.PayoutReference = string.IsNullOrWhiteSpace(payoutReference) ? request.PayoutReference : payoutReference.Trim();
+        request.ProcessedAt = DateTime.UtcNow;
+        request.ProcessedByEmail = processedByEmail ?? string.Empty;
+
+        var releaseAlreadyExists = await _db.WalletLedger.AnyAsync(x =>
+            x.WalletAccountId == request.WalletAccountId &&
+            x.Type == "WITHDRAWAL_RELEASE" &&
+            x.Reference == $"WITHDRAWAL-{request.Id}");
+
+        if (normalizedStatus is "FAILED" or "CANCELLED")
+        {
+            if (!releaseAlreadyExists)
+            {
+                _db.WalletLedger.Add(new WalletLedgerEntry
+                {
+                    Id = Guid.NewGuid(),
+                    WalletAccountId = request.WalletAccountId,
+                    Type = "WITHDRAWAL_RELEASE",
+                    Amount = request.Amount,
+                    Reference = $"WITHDRAWAL-{request.Id}"
+                });
+            }
+        }
+        else if (normalizedStatus is "PROCESSING" or "PAID")
+        {
+            if (previousStatus is "FAILED" or "CANCELLED")
+                throw new InvalidOperationException("Closed withdrawal requests cannot move back into processing.");
+        }
+
+        await _db.SaveChangesAsync();
+
+        return new AdminWithdrawalRequestDto(
+            request.Id,
+            request.WalletAccountId,
+            request.RequestedByAgentId,
+            request.Amount,
+            request.Status,
+            request.Notes,
+            request.PayoutReference,
+            request.RequestedAt,
+            request.ProcessedAt,
+            request.ProcessedByEmail
         );
     }
 }

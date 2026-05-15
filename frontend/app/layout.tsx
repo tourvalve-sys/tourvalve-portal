@@ -1,39 +1,47 @@
+"use client";
+
 import { BookingProvider } from "./context/BookingContext";
 import "./globals.css";
-import Sidebar from "./components/Sidebar";
-
-export const metadata = {
-    title: "TourValve",
-    description: "B2B Travel Portal",
-};
+import Sidebar from "@/components/Sidebar";
+import Topbar from "@/components/Topbar";
+import { usePathname } from "next/navigation";
 
 export default function RootLayout({
     children,
 }: {
     children: React.ReactNode;
 }) {
+    const pathname = usePathname();
+
+    const isAuthPage =
+        pathname === "/login" ||
+        pathname === "/register" ||
+        pathname === "/forgot-password";
+
     return (
         <html lang="en">
             <body>
-                <BookingProvider>   {/* MUST wrap EVERYTHING */}
-
-                    <div className="flex h-screen bg-gray-100">
-
-                        <Sidebar />
-
-                        <div className="flex-1 flex flex-col">
-
-                            <div className="bg-white shadow px-8 py-4 flex justify-between items-center">
-                                <h1 className="text-2xl font-semibold">TourValve Portal</h1>
-                            </div>
-
-                            <div className="p-8 overflow-auto">
+                <BookingProvider>
+                    {isAuthPage ? (
+                        <div className="page-shell classic-grid">
+                            <div className="app-surface min-h-screen">
                                 {children}
                             </div>
-
                         </div>
-                    </div>
+                    ) : (
+                        <div className="page-shell">
+                            <div className="app-surface flex min-h-screen flex-col xl:flex-row">
+                                <Sidebar />
 
+                                <div className="flex-1 pb-10">
+                                    <Topbar />
+                                    <main className="px-3 pb-12 pt-5 sm:px-4 md:px-6 md:pt-6">
+                                        {children}
+                                    </main>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </BookingProvider>
             </body>
         </html>

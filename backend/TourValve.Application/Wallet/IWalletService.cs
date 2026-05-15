@@ -46,4 +46,23 @@ public interface IWalletService
         Guid requesterAgentId,
         bool isAdmin
     );
+
+    Task<IReadOnlyList<AgentWalletAdminDto>> GetAgentWalletsForAdminAsync();
+
+    Task<IReadOnlyList<AdminWithdrawalRequestDto>> GetAdminWithdrawalsAsync();
+
+    Task<AdminWithdrawalRequestDto> CreateAdminWithdrawalAsync(
+        Guid requesterAgentId,
+        string requesterEmail,
+        decimal amount,
+        string notes
+    );
+
+    Task<AdminWithdrawalRequestDto> UpdateAdminWithdrawalStatusAsync(
+        Guid withdrawalRequestId,
+        string status,
+        string processedByEmail,
+        string notes,
+        string payoutReference
+    );
 }

@@ -14,6 +14,7 @@ namespace TourValve.Application.Common.Interfaces
         DbSet<WalletHold> WalletHolds { get; }
 
         DbSet<Booking> Bookings { get; }
+        DbSet<Agent> Agents { get; }
 
         Task<int> SaveChangesAsync(CancellationToken cancellationToken);
     }

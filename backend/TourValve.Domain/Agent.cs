@@ -12,6 +12,10 @@ public class Agent
 
     public string Email { get; set; } = string.Empty;
 
+    public string CountryOfOrigin { get; set; } = string.Empty;
+
+    public string PhoneNumber { get; set; } = string.Empty;
+
     public string PasswordHash { get; set; } = string.Empty;
 
     // "ADMIN" or "AGENT"

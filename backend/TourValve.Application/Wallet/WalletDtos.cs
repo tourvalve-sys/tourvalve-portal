@@ -34,3 +34,26 @@ public record WalletLimitAuditDto(
     string Result,
     string? Reason
 );
+
+public record AgentWalletAdminDto(
+    Guid AgentId,
+    string Email,
+    bool AgentIsActive,
+    Guid WalletAccountId,
+    bool WalletIsActive,
+    string Currency,
+    decimal Balance
+);
+
+public record AdminWithdrawalRequestDto(
+    Guid Id,
+    Guid WalletAccountId,
+    Guid RequestedByAgentId,
+    decimal Amount,
+    string Status,
+    string Notes,
+    string PayoutReference,
+    DateTime RequestedAt,
+    DateTime? ProcessedAt,
+    string ProcessedByEmail
+);

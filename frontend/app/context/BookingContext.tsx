@@ -1,42 +1,55 @@
-﻿"use client";
+"use client";
 
 import { createContext, useContext, useState } from "react";
-
-interface FlightResult {
-    carrier: string;
-    flightNumber: string;
-    from: string;
-    to: string;
-    departure: string;
-    arrival: string;
-    price: string;
-}
+import type { FlightResult } from "@/lib/api";
 
 interface BookingContextType {
     selectedFlight: FlightResult | null;
-    setSelectedFlight: (flight: FlightResult) => void;
+    setSelectedFlight: (flight: FlightResult | null) => void;
+    travelerCounts: { adults: number; child: number; infant: number };
+    setTravelerCounts: (counts: { adults: number; child: number; infant: number }) => void;
 }
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
 export function BookingProvider({ children }: { children: React.ReactNode }) {
-
-    // ✅ Initialize directly from sessionStorage (no useEffect)
     const [selectedFlight, setSelectedFlightState] = useState<FlightResult | null>(() => {
-        if (typeof window !== "undefined") {
-            const stored = sessionStorage.getItem("selectedFlight");
-            return stored ? JSON.parse(stored) : null;
+        if (typeof window === "undefined") {
+            return null;
         }
-        return null;
+
+        const storedFlight = sessionStorage.getItem("selectedFlight");
+        return storedFlight ? JSON.parse(storedFlight) : null;
     });
 
-    const setSelectedFlight = (flight: FlightResult) => {
-        sessionStorage.setItem("selectedFlight", JSON.stringify(flight));
+    const setSelectedFlight = (flight: FlightResult | null) => {
+        if (flight) {
+            sessionStorage.setItem("selectedFlight", JSON.stringify(flight));
+        } else {
+            sessionStorage.removeItem("selectedFlight");
+        }
+
         setSelectedFlightState(flight);
     };
 
+    const [travelerCounts, setTravelerCountsState] = useState(() => {
+        if (typeof window === "undefined") {
+            return { adults: 1, child: 0, infant: 0 };
+        }
+
+        const storedTravelerCounts = sessionStorage.getItem("travelerCounts");
+        return storedTravelerCounts
+            ? JSON.parse(storedTravelerCounts)
+            : { adults: 1, child: 0, infant: 0 };
+    });
+
+    const setTravelerCounts = (counts: { adults: number; child: number; infant: number }) => {
+        sessionStorage.setItem("travelerCounts", JSON.stringify(counts));
+        setTravelerCountsState(counts);
+    };
+
     return (
-        <BookingContext.Provider value={{ selectedFlight, setSelectedFlight }}>
+        <BookingContext.Provider value={{ selectedFlight, setSelectedFlight, travelerCounts, setTravelerCounts }}>
             {children}
         </BookingContext.Provider>
     );

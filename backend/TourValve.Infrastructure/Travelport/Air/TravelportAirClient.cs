@@ -15,11 +15,17 @@ public class TravelportAirClient
         _config = config;
     }
 
+    // SYSTEM SERVICE
     public Task<string> PostToSystemServiceAsync(string xmlOrBody)
         => RawPostAsync("Travelport:SystemEndpoint", xmlOrBody, soapAction: null);
 
+    // AIR SERVICE
     public Task<string> PostToAirServiceAsync(string xmlOrBody, string? soapAction = null)
         => RawPostAsync("Travelport:AirEndpoint", xmlOrBody, soapAction);
+
+    // UNIVERSAL SERVICE (for AirCreateReservationReq)
+    public Task<string> PostToUniversalServiceAsync(string xmlOrBody, string? soapAction = null)
+        => RawPostAsync("Travelport:UniversalEndpoint", xmlOrBody, soapAction);
 
     private async Task<string> RawPostAsync(string endpointKey, string xmlOrBody, string? soapAction)
     {
@@ -32,14 +38,11 @@ public class TravelportAirClient
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
             throw new InvalidOperationException("Missing config: Travelport:Username / Travelport:Password");
 
-        // ✅ IMPORTANT: uAPI commonly expects "Universal API/<username>"
-        // If already provided (contains '/'), keep it. Otherwise prefix it.
+        // Travelport often expects "Universal API/<username>"
         var authUser = username.Contains("/")
             ? username
             : $"Universal API/{username}";
 
-        // If user pasted full SOAP envelope, send as-is.
-        // Otherwise, wrap body as SOAP + WSSE.
         var payload = xmlOrBody.Contains(":Envelope")
             ? xmlOrBody
             : BuildSoapEnvelopeWithWsse(authUser, password, xmlOrBody);
@@ -48,13 +51,15 @@ public class TravelportAirClient
         req.Content = new StringContent(payload, Encoding.UTF8, "text/xml");
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/xml"));
 
-        // Some setups still expect SOAPAction; safe to send if provided
         if (!string.IsNullOrWhiteSpace(soapAction))
             req.Headers.Add("SOAPAction", soapAction);
 
-        // ✅ HTTP Basic Auth (use normalized user)
-        var basicToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{authUser}:{password}"));
-        req.Headers.Authorization = new AuthenticationHeaderValue("Basic", basicToken);
+        var basicToken = Convert.ToBase64String(
+            Encoding.ASCII.GetBytes($"{authUser}:{password}")
+        );
+
+        req.Headers.Authorization =
+            new AuthenticationHeaderValue("Basic", basicToken);
 
         var resp = await _http.SendAsync(req);
         var body = await resp.Content.ReadAsStringAsync();
@@ -68,7 +73,7 @@ public class TravelportAirClient
     private static string BuildSoapEnvelopeWithWsse(string username, string password, string bodyXml)
     {
         const string passwordTextType =
-            "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText";
+        "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText";
 
         return $@"
 <soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/""

@@ -28,6 +28,9 @@ public class AgentService : IAgentService
 
         var normalizedEmail = email.Trim().ToLowerInvariant();
 
+        if (normalizedEmail == "admin@tourvalve.com" && role != "ADMIN")
+            throw new InvalidOperationException("This email is reserved for the administrator account.");
+
         // better: compare normalized stored emails directly
         var exists = await _db.Agents.AnyAsync(x => x.Email == normalizedEmail);
         if (exists)
