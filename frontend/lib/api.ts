@@ -33,6 +33,10 @@ export type FlightResult = {
     carryOnAllowance: string;
     checkedBaggageAllowance: string;
     baggageOfferTexts: string[];
+    cancellationPolicy: string;
+    changePolicy: string;
+    cancellationMaxFee: number;
+    changeMaxFee: number;
     providerCode: string;
     bookingWorkflow: string;
     supportsPortalCheckout: boolean;

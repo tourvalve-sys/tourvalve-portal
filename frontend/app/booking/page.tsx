@@ -9,6 +9,7 @@ import {
     Luggage,
     MapPin,
     Ticket,
+    X,
 } from "lucide-react";
 import {
     bookAtlasFlight,
@@ -48,6 +49,10 @@ type ServicePreferences = {
     frequentFlyerProgram: string;
     frequentFlyerNumber: string;
     selectedSeats: SeatSelection[];
+    cancellationPolicyOverride?: string;
+    changePolicyOverride?: string;
+    cancellationFeeOverride?: string;
+    changeFeeOverride?: string;
 };
 
 const frequentFlyerPrograms: Record<string, string[]> = {
@@ -71,6 +76,7 @@ const BOOKING_CONFIRM_CAPTIONS = [
     "Creating the PNR and syncing the booking record inside TourValve.",
     "Preparing your reservation confirmation and ticketing workspace.",
 ];
+const FARE_CATEGORY_ACK_PREFIX = "tourvalveFareCategoryAck:";
 
 function createPassenger(type: string): PassengerForm {
     return {
@@ -309,8 +315,13 @@ export default function BookingPage() {
         frequentFlyerProgram: "",
         frequentFlyerNumber: "",
         selectedSeats: [],
+        cancellationPolicyOverride: "",
+        changePolicyOverride: "",
+        cancellationFeeOverride: "",
+        changeFeeOverride: "",
     });
     const [activeSeatSegmentIndex, setActiveSeatSegmentIndex] = useState(0);
+    const [fareCategoryModalOpen, setFareCategoryModalOpen] = useState(false);
     const [seatMapLoading, setSeatMapLoading] = useState(false);
     const [seatMapError, setSeatMapError] = useState("");
     const [seatMap, setSeatMap] = useState<FlightSeatMapResponse | null>(null);
@@ -376,6 +387,57 @@ export default function BookingPage() {
 
         return Array.from(new Set(items));
     }, [selectedFlight]);
+
+    const itineraryLegs = useMemo(() => {
+        const origin = (journeyEndpoints.from || itinerarySegments[0]?.from || "").trim().toUpperCase();
+        const destination = (journeyEndpoints.to || itinerarySegments[itinerarySegments.length - 1]?.to || "").trim().toUpperCase();
+
+        if (!origin || !destination || itinerarySegments.length < 2) {
+            return { outboundSegments: itinerarySegments, returnSegments: [] as typeof itinerarySegments };
+        }
+
+        const returnStartIndex = itinerarySegments.findIndex((segment, index) =>
+            index > 0 && segment.from.trim().toUpperCase() === destination
+        );
+
+        if (returnStartIndex <= 0) {
+            return { outboundSegments: itinerarySegments, returnSegments: [] as typeof itinerarySegments };
+        }
+
+        const outboundSegments = itinerarySegments.slice(0, returnStartIndex);
+        const returnSegments = itinerarySegments.slice(returnStartIndex);
+
+        if (!outboundSegments.length || !returnSegments.length) {
+            return { outboundSegments: itinerarySegments, returnSegments: [] as typeof itinerarySegments };
+        }
+
+        const outboundLast = outboundSegments[outboundSegments.length - 1];
+        const returnLast = returnSegments[returnSegments.length - 1];
+
+        if (outboundLast?.to?.trim().toUpperCase() !== destination || returnLast?.to?.trim().toUpperCase() !== origin) {
+            return { outboundSegments: itinerarySegments, returnSegments: [] as typeof itinerarySegments };
+        }
+
+        return { outboundSegments, returnSegments };
+    }, [itinerarySegments, journeyEndpoints.from, journeyEndpoints.to]);
+
+    useEffect(() => {
+        if (!selectedFlight) {
+            return;
+        }
+
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        const key = `${FARE_CATEGORY_ACK_PREFIX}${selectedFlight.id}`;
+        if (sessionStorage.getItem(key) === "1") {
+            return;
+        }
+
+        setFareCategoryModalOpen(true);
+    }, [selectedFlight]);
+
     const bookingBlockedMessage = useMemo(() => {
         if (!selectedFlight) {
             return "";
@@ -693,6 +755,211 @@ export default function BookingPage() {
                     captions={BOOKING_CONFIRM_CAPTIONS}
                 />
             ) : null}
+            {fareCategoryModalOpen ? (
+                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[rgba(16,24,40,0.55)] px-4 py-10 backdrop-blur-sm">
+                    <div className="w-full max-w-5xl rounded-[2rem] border border-[rgba(255,255,255,0.4)] bg-white/95 shadow-[0_30px_80px_rgba(0,0,0,0.25)]">
+                        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[rgba(89,64,46,0.1)] px-6 py-5">
+                            <div className="min-w-0">
+                                <div className="subtle-kicker">Fare category</div>
+                                <div className="mt-2 text-2xl font-semibold text-[var(--ink)]">
+                                    {journeyEndpoints.from} {itineraryLegs.returnSegments.length ? "↔" : "→"} {journeyEndpoints.to}
+                                </div>
+                                <div className="mt-2 text-sm text-slate-500">
+                                    Review baggage allowance and flexibility before entering passenger details.
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setFareCategoryModalOpen(false)}
+                                className="ghost-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold"
+                                aria-label="Close fare category"
+                            >
+                                <X size={16} />
+                                Close
+                            </button>
+                        </div>
+
+                        <div className="grid gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                            <div className="space-y-4">
+                                <div className="rounded-[1.6rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(248,251,255,0.75)] p-5">
+                                    <div className="text-sm font-semibold text-[var(--ink)]">Itinerary</div>
+                                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                                        <div className="rounded-[1.4rem] bg-white/85 p-4 shadow-[0_12px_26px_rgba(31,42,68,0.06)]">
+                                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Depart</div>
+                                            {itineraryLegs.outboundSegments.length ? (
+                                                <>
+                                                    <div className="mt-3 text-xl font-semibold text-[var(--ink)]">
+                                                        {itineraryLegs.outboundSegments[0].from} → {itineraryLegs.outboundSegments[itineraryLegs.outboundSegments.length - 1].to}
+                                                    </div>
+                                                    <div className="mt-2 text-sm text-slate-500">
+                                                        {new Date(itineraryLegs.outboundSegments[0].departure).toLocaleString()}{" "}
+                                                        —{" "}
+                                                        {new Date(itineraryLegs.outboundSegments[itineraryLegs.outboundSegments.length - 1].arrival).toLocaleString()}
+                                                    </div>
+                                                    <div className="mt-3">
+                                                        <AirlineBrand
+                                                            carrier={itineraryLegs.outboundSegments[0].carrier}
+                                                            flightNumber={itineraryLegs.outboundSegments[0].flightNumber}
+                                                            compact
+                                                        />
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div className="mt-3 text-sm text-slate-500">Outbound leg details unavailable.</div>
+                                            )}
+                                        </div>
+
+                                        {itineraryLegs.returnSegments.length ? (
+                                            <div className="rounded-[1.4rem] bg-white/85 p-4 shadow-[0_12px_26px_rgba(31,42,68,0.06)]">
+                                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Return</div>
+                                                <div className="mt-3 text-xl font-semibold text-[var(--ink)]">
+                                                    {itineraryLegs.returnSegments[0].from} → {itineraryLegs.returnSegments[itineraryLegs.returnSegments.length - 1].to}
+                                                </div>
+                                                <div className="mt-2 text-sm text-slate-500">
+                                                    {new Date(itineraryLegs.returnSegments[0].departure).toLocaleString()}{" "}
+                                                    —{" "}
+                                                    {new Date(itineraryLegs.returnSegments[itineraryLegs.returnSegments.length - 1].arrival).toLocaleString()}
+                                                </div>
+                                                <div className="mt-3">
+                                                    <AirlineBrand
+                                                        carrier={itineraryLegs.returnSegments[0].carrier}
+                                                        flightNumber={itineraryLegs.returnSegments[0].flightNumber}
+                                                        compact
+                                                    />
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
+
+                                <div className="rounded-[1.6rem] border border-[rgba(89,64,46,0.1)] bg-white/90 p-5 shadow-[0_18px_40px_rgba(31,42,68,0.06)]">
+                                    <div className="flex flex-wrap items-start justify-between gap-4">
+                                        <div>
+                                            <div className="text-sm font-semibold text-[var(--ink)]">{selectedFlight.cabinClass || "Economy"} class</div>
+                                            <div className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-400">
+                                                Category from airline fare rules & allowances
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Total</div>
+                                            <div className="mt-1 text-2xl font-semibold text-[var(--success)]">
+                                                {selectedFlight.currency} {selectedFlight.price.toFixed(2)}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                                        <div className="rounded-[1.35rem] bg-[rgba(247,244,239,0.75)] p-4">
+                                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Baggage allowance</div>
+                                            {baggageHighlights.length ? (
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    {baggageHighlights.slice(0, 6).map((item) => (
+                                                        <span
+                                                            key={item}
+                                                            className="rounded-full border border-[rgba(45,120,92,0.14)] bg-white/90 px-3 py-2 text-xs font-medium text-[var(--success)] shadow-[0_8px_18px_rgba(40,116,79,0.08)]"
+                                                        >
+                                                            {item}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="mt-3 text-sm leading-6 text-slate-500">
+                                                    Baggage allowance details will follow airline fare rules. You can still add baggage in servicing if needed.
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="rounded-[1.35rem] bg-[rgba(241,248,255,0.92)] p-4">
+                                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Flexibility</div>
+                                            <div className="mt-3 space-y-2 text-sm text-slate-600">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span>Cancellation policy</span>
+                                                    <span className="font-semibold text-[var(--ink)]">
+                                                        {selectedFlight.cancellationPolicy || "Subject to fare rules"}
+                                                    </span>
+                                                </div>
+                                                {selectedFlight.cancellationMaxFee > 0 ? (
+                                                    <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+                                                        <span>Max cancellation fee</span>
+                                                        <span className="font-semibold text-slate-600">
+                                                            {selectedFlight.currency} {selectedFlight.cancellationMaxFee.toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                ) : null}
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span>Change policy</span>
+                                                    <span className="font-semibold text-[var(--ink)]">
+                                                        {selectedFlight.changePolicy || "Subject to fare rules"}
+                                                    </span>
+                                                </div>
+                                                {selectedFlight.changeMaxFee > 0 ? (
+                                                    <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+                                                        <span>Max change fee</span>
+                                                        <span className="font-semibold text-slate-600">
+                                                            {selectedFlight.currency} {selectedFlight.changeMaxFee.toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="rounded-[1.6rem] border border-[rgba(89,64,46,0.1)] bg-white/90 p-5 shadow-[0_18px_40px_rgba(31,42,68,0.06)]">
+                                    <div className="text-sm font-semibold text-[var(--ink)]">Price details</div>
+                                    <div className="mt-4 space-y-3 text-sm text-slate-600">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span>Tickets</span>
+                                            <span className="font-semibold text-[var(--ink)]">{selectedFlight.currency} {selectedFlight.price.toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span>Baggage</span>
+                                            <span className="text-slate-500">{baggageHighlights.length ? "Included / selectable" : "Not included"}</span>
+                                        </div>
+                                        <div className="border-t border-[rgba(89,64,46,0.12)] pt-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span className="font-semibold text-[var(--ink)]">Total</span>
+                                                <span className="text-lg font-semibold text-[var(--success)]">
+                                                    {selectedFlight.currency} {selectedFlight.price.toFixed(2)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        try {
+                                            if (typeof window !== "undefined") {
+                                                sessionStorage.setItem(`${FARE_CATEGORY_ACK_PREFIX}${selectedFlight.id}`, "1");
+                                            }
+                                        } catch {
+                                            // ignore storage failures
+                                        }
+                                        setFareCategoryModalOpen(false);
+                                    }}
+                                    className="gold-button w-full rounded-[1.35rem] py-4 text-base font-semibold"
+                                >
+                                    Continue
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedFlight(null);
+                                        router.push("/flight-search");
+                                    }}
+                                    className="ghost-button w-full rounded-[1.35rem] py-4 text-base font-semibold"
+                                >
+                                    Choose another fare
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         <div className="min-h-screen px-2 py-3 sm:px-4 md:p-6 fade-in">
             <div className="mb-6 sm:mb-8">
                 <div className="subtle-kicker mb-2 sm:mb-3">Booking Review</div>
@@ -718,6 +985,143 @@ export default function BookingPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
                 <div className="space-y-4 sm:space-y-6 lg:col-span-2">
+                    <div className="premium-panel rounded-[1.6rem] p-4 sm:rounded-[2rem] sm:p-6">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                                <div className="subtle-kicker mb-1">Baggage allowance</div>
+                                <h2 className="text-xl font-semibold text-[var(--ink)]">Baggage allowance</h2>
+                                <p className="mt-2 text-sm leading-7 text-slate-500">
+                                    Snapshot of carry-on and checked baggage from the airline fare data.
+                                </p>
+                            </div>
+                            <div className="hidden sm:flex items-center gap-2 rounded-full bg-[rgba(225,246,236,0.8)] px-4 py-2 text-xs font-semibold text-[var(--success)]">
+                                <Luggage size={16} />
+                                {baggageHighlights.length ? "Available" : "Not provided"}
+                            </div>
+                        </div>
+
+                        {baggageHighlights.length ? (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                                {baggageHighlights.map((item) => (
+                                    <span
+                                        key={item}
+                                        className="rounded-full border border-[rgba(45,120,92,0.14)] bg-white/92 px-3 py-2 text-xs font-medium text-[var(--success)] shadow-[0_8px_18px_rgba(40,116,79,0.08)]"
+                                    >
+                                        {item}
+                                    </span>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="mt-4 rounded-[1.35rem] bg-[rgba(241,248,255,0.9)] px-4 py-3 text-sm leading-7 text-slate-500">
+                                This itinerary did not return a baggage allowance snapshot. Final baggage details can still be confirmed during servicing.
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="premium-panel rounded-[1.6rem] p-4 sm:rounded-[2rem] sm:p-6">
+                        <div className="subtle-kicker mb-1">Cancellations & changes</div>
+                        <h2 className="text-xl font-semibold text-[var(--ink)]">Cancellations & changes</h2>
+                        <p className="mt-2 text-sm leading-7 text-slate-500">
+                            Display airline-provided fare flexibility. If no policy is returned, capture a TourValve policy override below.
+                        </p>
+
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                            <div className="rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/88 p-4 shadow-[0_14px_30px_rgba(31,42,68,0.05)]">
+                                <div className="text-sm font-semibold text-[var(--ink)]">Cancellations</div>
+                                <div className="mt-3 text-sm text-slate-600">
+                                    Policy:{" "}
+                                    <span className="font-semibold text-[var(--ink)]">
+                                        {servicePreferences.cancellationPolicyOverride?.trim()
+                                            || selectedFlight.cancellationPolicy
+                                            || "Subject to fare rules"}
+                                    </span>
+                                </div>
+                                <div className="mt-2 text-xs text-slate-500">
+                                    Max fee:{" "}
+                                    <span className="font-semibold text-slate-600">
+                                        {servicePreferences.cancellationFeeOverride?.trim()
+                                            ? `${selectedFlight.currency} ${servicePreferences.cancellationFeeOverride}`
+                                            : selectedFlight.cancellationMaxFee > 0
+                                                ? `${selectedFlight.currency} ${selectedFlight.cancellationMaxFee.toFixed(2)}`
+                                                : "Included / not specified"}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/88 p-4 shadow-[0_14px_30px_rgba(31,42,68,0.05)]">
+                                <div className="text-sm font-semibold text-[var(--ink)]">Changes</div>
+                                <div className="mt-3 text-sm text-slate-600">
+                                    Policy:{" "}
+                                    <span className="font-semibold text-[var(--ink)]">
+                                        {servicePreferences.changePolicyOverride?.trim()
+                                            || selectedFlight.changePolicy
+                                            || "Subject to fare rules"}
+                                    </span>
+                                </div>
+                                <div className="mt-2 text-xs text-slate-500">
+                                    Max fee:{" "}
+                                    <span className="font-semibold text-slate-600">
+                                        {servicePreferences.changeFeeOverride?.trim()
+                                            ? `${selectedFlight.currency} ${servicePreferences.changeFeeOverride}`
+                                            : selectedFlight.changeMaxFee > 0
+                                                ? `${selectedFlight.currency} ${selectedFlight.changeMaxFee.toFixed(2)}`
+                                                : "Included / not specified"}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {!selectedFlight.cancellationPolicy && !selectedFlight.changePolicy ? (
+                            <div className="mt-5 rounded-[1.5rem] bg-[rgba(255,247,236,0.7)] p-4">
+                                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
+                                    TourValve policy override
+                                </div>
+                                <div className="mt-2 text-sm text-slate-600">
+                                    No airline policy was returned for this fare. Set an override to display in the reservation review.
+                                </div>
+
+                                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                    <div>
+                                        <label className="mb-2 block text-sm text-slate-500">Cancellation policy</label>
+                                        <input
+                                            value={servicePreferences.cancellationPolicyOverride ?? ""}
+                                            onChange={(event) => setServicePreferences((current) => ({ ...current, cancellationPolicyOverride: event.target.value }))}
+                                            placeholder="e.g., Non-refundable"
+                                            className="w-full rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/90 p-3"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm text-slate-500">Max cancellation fee</label>
+                                        <input
+                                            value={servicePreferences.cancellationFeeOverride ?? ""}
+                                            onChange={(event) => setServicePreferences((current) => ({ ...current, cancellationFeeOverride: event.target.value }))}
+                                            placeholder={`e.g., ${selectedFlight.currency} 100.00`}
+                                            className="w-full rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/90 p-3"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm text-slate-500">Change policy</label>
+                                        <input
+                                            value={servicePreferences.changePolicyOverride ?? ""}
+                                            onChange={(event) => setServicePreferences((current) => ({ ...current, changePolicyOverride: event.target.value }))}
+                                            placeholder="e.g., Non-changeable"
+                                            className="w-full rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/90 p-3"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm text-slate-500">Max change fee</label>
+                                        <input
+                                            value={servicePreferences.changeFeeOverride ?? ""}
+                                            onChange={(event) => setServicePreferences((current) => ({ ...current, changeFeeOverride: event.target.value }))}
+                                            placeholder={`e.g., ${selectedFlight.currency} 100.00`}
+                                            className="w-full rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/90 p-3"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+                    </div>
+
                     <div className="premium-panel rounded-[1.6rem] p-4 sm:rounded-[2rem] sm:p-6">
                         <h2 className="mb-4 font-semibold">Passenger Details</h2>
 

@@ -9,5 +9,10 @@ public sealed class AtlasRule
 
     [JsonPropertyName("baggageElements")]
     public List<AtlasBaggageElement>? BaggageElements { get; set; }
-}
 
+    [JsonPropertyName("refundRules")]
+    public List<AtlasRefundRule>? RefundRules { get; set; }
+
+    [JsonPropertyName("changesRules")]
+    public List<AtlasChangeRule>? ChangesRules { get; set; }
+}

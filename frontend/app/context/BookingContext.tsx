@@ -97,6 +97,10 @@ function normalizeFlightResult(value: unknown): FlightResult | null {
         baggageOfferTexts: Array.isArray(flight.baggageOfferTexts)
             ? flight.baggageOfferTexts.filter((item): item is string => typeof item === "string")
             : [],
+        cancellationPolicy: coerceString(flight.cancellationPolicy),
+        changePolicy: coerceString(flight.changePolicy),
+        cancellationMaxFee: coerceNumber(flight.cancellationMaxFee),
+        changeMaxFee: coerceNumber(flight.changeMaxFee),
         providerCode: bookingSupport.providerCode,
         bookingWorkflow: bookingSupport.bookingWorkflow,
         supportsPortalCheckout: bookingSupport.supportsPortalCheckout,

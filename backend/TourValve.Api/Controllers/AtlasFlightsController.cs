@@ -122,6 +122,8 @@ public sealed class AtlasFlightsController : ControllerBase
         }).ToList();
 
         var totalBase = ComputeAtlasTotalBaseAmount(routing, adults, child, infant);
+        var baggageContext = BuildAtlasBaggageContext(routing.Rule);
+        var policyContext = BuildAtlasPolicyContext(routing.Rule);
 
         return new FlightDto
         {
@@ -149,9 +151,13 @@ public sealed class AtlasFlightsController : ControllerBase
             AirSegmentXml = string.Empty,
             AirSegmentXmls = new List<string>(),
             ItinerarySegments = itinerary,
-            CarryOnAllowance = string.Empty,
-            CheckedBaggageAllowance = string.Empty,
-            BaggageOfferTexts = new List<string>(),
+            CarryOnAllowance = baggageContext.CarryOnAllowance,
+            CheckedBaggageAllowance = baggageContext.CheckedBaggageAllowance,
+            BaggageOfferTexts = baggageContext.OfferTexts,
+            CancellationPolicy = policyContext.CancellationPolicy,
+            ChangePolicy = policyContext.ChangePolicy,
+            CancellationMaxFee = policyContext.CancellationMaxFee,
+            ChangeMaxFee = policyContext.ChangeMaxFee,
         };
     }
 
@@ -162,6 +168,120 @@ public sealed class AtlasFlightsController : ControllerBase
         var infantTotal = Math.Max(infant, 0) * (routing.InfantPrice + routing.InfantTax + routing.TransactionFeePerPax);
 
         return decimal.Round(adultTotal + childTotal + infantTotal, 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static (string CarryOnAllowance, string CheckedBaggageAllowance, List<string> OfferTexts) BuildAtlasBaggageContext(AtlasRule? rule)
+    {
+        var elements = rule?.BaggageElements ?? new List<AtlasBaggageElement>();
+        if (elements.Count == 0)
+        {
+            return (string.Empty, string.Empty, new List<string>());
+        }
+
+        var adultElements = elements.Where(element => element.PassengerType == 0).ToList();
+        if (adultElements.Count == 0)
+        {
+            adultElements = elements;
+        }
+
+        AtlasBaggageElement? carryOnElement = adultElements.FirstOrDefault(element =>
+            element.BaggageType.Contains("CabinBaggage", StringComparison.OrdinalIgnoreCase));
+
+        string carryOnAllowance = string.Empty;
+        if (carryOnElement is not null && (carryOnElement.BaggagePiece > 0 || carryOnElement.BaggageWeight > 0))
+        {
+            var parts = new List<string>();
+            if (carryOnElement.BaggagePiece > 0)
+            {
+                parts.Add($"{carryOnElement.BaggagePiece}pc");
+            }
+            if (carryOnElement.BaggageWeight > 0)
+            {
+                parts.Add($"{carryOnElement.BaggageWeight}kg");
+            }
+
+            var sizeLabel = string.IsNullOrWhiteSpace(carryOnElement.BaggageSize)
+                ? string.Empty
+                : $" ({carryOnElement.BaggageSize})";
+
+            carryOnAllowance = $"Carry-on: {string.Join(" ", parts)}{sizeLabel}";
+        }
+
+        var checkedWeight = adultElements
+            .Where(element => element.BaggageType.Contains("CheckIn", StringComparison.OrdinalIgnoreCase)
+                || element.BaggageType.Contains("Checked", StringComparison.OrdinalIgnoreCase))
+            .Select(element => element.BaggageWeight)
+            .Where(weight => weight > 0)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        var checkedAllowance = checkedWeight > 0 ? $"Checked: {checkedWeight}kg" : string.Empty;
+
+        var offerTexts = elements
+            .Where(element => !string.IsNullOrWhiteSpace(element.BaggageType))
+            .Select(element =>
+            {
+                if (element.BaggageType.Contains("CabinBaggage", StringComparison.OrdinalIgnoreCase))
+                {
+                    return carryOnAllowance;
+                }
+
+                if (element.BaggageWeight > 0)
+                {
+                    return $"{element.BaggageType}: {element.BaggageWeight}kg";
+                }
+
+                if (element.BaggagePiece > 0)
+                {
+                    return $"{element.BaggageType}: {element.BaggagePiece}pc";
+                }
+
+                return string.Empty;
+            })
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Distinct()
+            .ToList();
+
+        return (carryOnAllowance, checkedAllowance, offerTexts);
+    }
+
+    private static (string CancellationPolicy, string ChangePolicy, decimal CancellationMaxFee, decimal ChangeMaxFee) BuildAtlasPolicyContext(
+        AtlasRule? rule)
+    {
+        decimal cancellationMaxFee = 0m;
+        decimal changeMaxFee = 0m;
+
+        if (rule?.RefundRules?.Count > 0)
+        {
+            var amounts = rule.RefundRules
+                .SelectMany(refund => refund.RuleDetailList ?? new List<AtlasPenaltyRuleDetail>())
+                .Select(detail => detail.Amount)
+                .Concat(rule.RefundRules.Select(refund => refund.RefundFee))
+                .Concat(rule.RefundRules.Select(refund => refund.RefNoShowFee ?? 0m));
+
+            cancellationMaxFee = amounts.DefaultIfEmpty(0m).Max();
+        }
+
+        if (rule?.ChangesRules?.Count > 0)
+        {
+            var amounts = rule.ChangesRules
+                .SelectMany(change => change.RuleDetailList ?? new List<AtlasPenaltyRuleDetail>())
+                .Select(detail => detail.Amount)
+                .Concat(rule.ChangesRules.Select(change => change.ChangesFee))
+                .Concat(rule.ChangesRules.Select(change => change.RevNoShowFee ?? 0m));
+
+            changeMaxFee = amounts.DefaultIfEmpty(0m).Max();
+        }
+
+        var cancellationPolicy = rule?.RefundRules?.Count > 0
+            ? (cancellationMaxFee <= 0m ? "Refundable" : "Refundable with fee")
+            : string.Empty;
+
+        var changePolicy = rule?.ChangesRules?.Count > 0
+            ? (changeMaxFee <= 0m ? "Changeable" : "Changeable with fee")
+            : string.Empty;
+
+        return (cancellationPolicy, changePolicy, cancellationMaxFee, changeMaxFee);
     }
 
     private static string FormatAtlasTime(string value)

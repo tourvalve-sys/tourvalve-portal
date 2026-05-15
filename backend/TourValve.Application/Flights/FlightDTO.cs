@@ -33,6 +33,10 @@ public class FlightDto
     public string CarryOnAllowance { get; set; } = string.Empty;
     public string CheckedBaggageAllowance { get; set; } = string.Empty;
     public List<string> BaggageOfferTexts { get; set; } = new();
+    public string CancellationPolicy { get; set; } = string.Empty;
+    public string ChangePolicy { get; set; } = string.Empty;
+    public decimal CancellationMaxFee { get; set; }
+    public decimal ChangeMaxFee { get; set; }
     public string ProviderCode { get; set; } = string.Empty;
     public string BookingWorkflow { get; set; } = string.Empty;
     public bool SupportsPortalCheckout { get; set; }
