@@ -12,6 +12,7 @@ import {
     type ReactNode,
     type SetStateAction,
 } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import {
     ArrowLeftRight,
@@ -30,7 +31,7 @@ import {
 import { useRouter } from "next/navigation";
 import { getFlightSeatMap, priceFlight, searchAtlasFlights, searchFlights, type FlightResult, type FlightSeatMapResponse } from "@/lib/api";
 import { findAirportMatches, getAirportByCode, type AirportOption } from "@/lib/airports";
-import AirlineBrand, { getAirlineDisplayName } from "@/components/AirlineBrand";
+import AirlineBrand, { formatFlightDesignator, getAirlineDisplayName } from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
 import PromoCarousel from "@/components/PromoCarousel";
 import { inferPortalBookingSupport } from "@/lib/bookingWorkflow";
@@ -398,7 +399,7 @@ function buildPrebookSegmentLabel(segment: {
     from: string;
     to: string;
 }) {
-    const flightLabel = [segment.carrier, segment.flightNumber].filter(Boolean).join(" ").trim();
+    const flightLabel = formatFlightDesignator(segment.carrier, segment.flightNumber);
     return `${segment.from} -> ${segment.to}${flightLabel ? ` (${flightLabel})` : ""}`;
 }
 
@@ -884,6 +885,7 @@ export default function FlightSearch() {
     const firstResultCardRef = useRef<HTMLDivElement | null>(null);
     const prebookSeatMapSectionRef = useRef<HTMLDivElement | null>(null);
     const pendingResultsScrollRef = useRef(false);
+    const [prebookPortalTarget, setPrebookPortalTarget] = useState<HTMLElement | null>(null);
 
     const [form, setForm] = useState(restoredState?.form ?? createDefaultForm());
     const [multiCitySegments, setMultiCitySegments] = useState(
@@ -1066,6 +1068,10 @@ export default function FlightSearch() {
         setPrebookSeatMap(null);
         setPrebookSeatMapError("");
     }, [prebookActiveSegmentIndex, prebookFlightId]);
+
+    useEffect(() => {
+        setPrebookPortalTarget(typeof document === "undefined" ? null : document.body);
+    }, []);
 
     useEffect(() => {
         if (!prebookFlightId) {
@@ -2368,7 +2374,9 @@ export default function FlightSearch() {
                                     : lastSegment.to;
                                 const originAirport = getAirportByCode(firstSegment.from);
                                 const destinationAirport = getAirportByCode(routeDestinationCode);
-                                const flightLabel = [flight.carrier, flight.flightNumber].filter(Boolean).join(" ").trim() || "Live itinerary";
+                                const flightLabel = flight.flightNumber?.trim()
+                                    ? formatFlightDesignator(flight.carrier, flight.flightNumber)
+                                    : "Live itinerary";
                                 const routeLabel = returnSegments.length
                                     ? `${originAirport?.city ?? firstSegment.from} ↔ ${destinationAirport?.city ?? routeDestinationCode}`
                                     : `${originAirport?.city ?? firstSegment.from} -> ${destinationAirport?.city ?? routeDestinationCode}`;
@@ -2377,6 +2385,18 @@ export default function FlightSearch() {
                                 const departureDateLabel = formatFlightDate(firstSegment.departure);
                                 const arrivalDateLabel = formatFlightDate(lastSegment.arrival);
                                 const durationLabel = formatFlightDuration(firstSegment.departure, lastSegment.arrival);
+                                const returnFirstSegment = returnSegments[0] ?? null;
+                                const returnLastSegment = returnSegments.length
+                                    ? returnSegments[returnSegments.length - 1]
+                                    : null;
+                                const returnDepartureClock = returnFirstSegment ? formatFlightClock(returnFirstSegment.departure) : "";
+                                const returnArrivalClock = returnLastSegment ? formatFlightClock(returnLastSegment.arrival) : "";
+                                const returnDepartureDateLabel = returnFirstSegment ? formatFlightDate(returnFirstSegment.departure) : "";
+                                const returnArrivalDateLabel = returnLastSegment ? formatFlightDate(returnLastSegment.arrival) : "";
+                                const returnDurationLabel = returnFirstSegment && returnLastSegment
+                                    ? formatFlightDuration(returnFirstSegment.departure, returnLastSegment.arrival)
+                                    : "";
+                                const returnStopCount = Math.max(returnSegments.length - 1, 0);
                                 const stopoverChips = segmentsForTimeline.slice(0, -1).map((segment, segmentIndex) => {
                                     const nextSegment = segmentsForTimeline[segmentIndex + 1];
                                     const minutes = nextSegment ? computeMinutesBetween(segment.arrival, nextSegment.departure) : null;
@@ -2422,7 +2442,7 @@ export default function FlightSearch() {
                                                                 {flightLabel}
                                                             </span>
                                                         </div>
-                                                        <div className="mt-2 truncate text-base font-semibold leading-6 text-slate-800 sm:text-lg">
+                                                        <div className="mt-2 break-words text-base font-semibold leading-6 text-slate-800 sm:text-lg">
                                                             {routeLabel}
                                                         </div>
                                                     </div>
@@ -2613,6 +2633,61 @@ export default function FlightSearch() {
                                                             </div>
                                                         </div>
                                                     </div>
+
+                                                    {returnSegments.length > 0 && returnFirstSegment && returnLastSegment ? (
+                                                        <div className="mt-4 rounded-[1.2rem] border border-[rgba(125,63,228,0.14)] bg-[rgba(125,63,228,0.06)] px-4 py-4">
+                                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                                                                    Return leg
+                                                                </div>
+                                                                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                                    {returnFirstSegment.from} → {returnLastSegment.to}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)] sm:items-center">
+                                                                <div className="text-left">
+                                                                    <div className="text-2xl font-semibold tracking-tight text-[var(--ink)]">
+                                                                        {returnDepartureClock}
+                                                                    </div>
+                                                                    <div className="mt-1 text-[11px] leading-5 text-slate-500">
+                                                                        {returnDepartureDateLabel}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="min-w-0">
+                                                                    <div className="flex items-center justify-between gap-3">
+                                                                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                                            {returnFirstSegment.from}
+                                                                        </div>
+                                                                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                                            {returnLastSegment.to}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="mt-2 flex items-center gap-3">
+                                                                        <div className="h-px flex-1 border-t border-dashed border-[rgba(125,63,228,0.25)]" />
+                                                                        <PlaneTakeoff size={16} className="text-slate-400" />
+                                                                        <div className="h-px flex-1 border-t border-dashed border-[rgba(125,63,228,0.25)]" />
+                                                                    </div>
+                                                                    <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-500">
+                                                                        {returnDurationLabel ? <span>{returnDurationLabel}</span> : null}
+                                                                        <span className="rounded-full bg-white/70 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                                                                            {returnStopCount === 0 ? "Nonstop" : `${returnStopCount} stop${returnStopCount > 1 ? "s" : ""}`}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="text-right sm:text-right">
+                                                                    <div className="text-2xl font-semibold tracking-tight text-[var(--ink)]">
+                                                                        {returnArrivalClock}
+                                                                    </div>
+                                                                    <div className="mt-1 text-[11px] leading-5 text-slate-500">
+                                                                        {returnArrivalDateLabel}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                             </div>
 
@@ -2738,7 +2813,7 @@ export default function FlightSearch() {
                                                                                             <div className="flex flex-wrap items-start justify-between gap-4">
                                                                                                 <div className="min-w-0">
                                                                                                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                                                                                        Segment {segmentIndex + 1} • {segment.carrier} {segment.flightNumber}
+                                                                                                        Segment {segmentIndex + 1} • {formatFlightDesignator(segment.carrier, segment.flightNumber)}
                                                                                                     </div>
                                                                                                     <div className="mt-2 text-base font-semibold text-[var(--ink)]">
                                                                                                         {fromAirport?.city ?? segment.from} ({segment.from}) → {toAirport?.city ?? segment.to} ({segment.to})
@@ -2820,7 +2895,7 @@ export default function FlightSearch() {
                                                                                             <div className="flex flex-wrap items-start justify-between gap-4">
                                                                                                 <div className="min-w-0">
                                                                                                     <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                                                                                        Segment {segmentIndex + 1} • {segment.carrier} {segment.flightNumber}
+                                                                                                        Segment {segmentIndex + 1} • {formatFlightDesignator(segment.carrier, segment.flightNumber)}
                                                                                                     </div>
                                                                                                     <div className="mt-2 text-base font-semibold text-[var(--ink)]">
                                                                                                         {fromAirport?.city ?? segment.from} ({segment.from}) → {toAirport?.city ?? segment.to} ({segment.to})
@@ -2925,7 +3000,8 @@ export default function FlightSearch() {
                 </div>
             </div>
 
-            {prebookFlight && (
+            {prebookFlight && prebookPortalTarget
+                ? createPortal(
                 <PrebookStudioBoundary onReset={closePrebookStudio}>
                     <div
                         className="fixed inset-0 z-[2000] overflow-hidden bg-[rgba(17,22,31,0.58)] px-2 py-2 backdrop-blur-sm sm:px-4 sm:py-4"
@@ -3354,7 +3430,8 @@ export default function FlightSearch() {
                     </div>
                     </div>
                 </PrebookStudioBoundary>
-            )}
+                , prebookPortalTarget)
+                : null}
             </div>
         </>
     );

@@ -16,7 +16,7 @@ import {
     getFlightSeatMap,
     type FlightSeatMapResponse,
 } from "@/lib/api";
-import AirlineBrand from "@/components/AirlineBrand";
+import AirlineBrand, { formatFlightDesignator } from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
 import { inferPortalBookingSupport } from "@/lib/bookingWorkflow";
 import {
@@ -90,7 +90,7 @@ function buildSegmentLabel(segment: {
     from: string;
     to: string;
 }) {
-    const flightLabel = [segment.carrier, segment.flightNumber].filter(Boolean).join(" ").trim();
+    const flightLabel = formatFlightDesignator(segment.carrier, segment.flightNumber);
     return `${segment.from} -> ${segment.to}${flightLabel ? ` (${flightLabel})` : ""}`;
 }
 

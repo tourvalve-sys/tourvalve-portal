@@ -10,6 +10,7 @@ type AirlineBrandProps = {
 
 const carrierNames: Record<string, string> = {
     MH: "Malaysia Airlines",
+    FY: "Firefly",
     SQ: "Singapore Airlines",
     TR: "Scoot",
     "3K": "Jetstar Asia",
@@ -208,6 +209,34 @@ export function getAirlineDisplayName(carrier: string | undefined, flightNumber?
     return brandMap[normalized]?.name
         ?? carrierNames[normalized]
         ?? `Airline ${normalized}`;
+}
+
+export function formatFlightDesignator(carrier: string | undefined, flightNumber?: string) {
+    const normalizedCarrier = normalizeCarrierCode(carrier, flightNumber);
+    const rawFlightNumber = typeof flightNumber === "string" ? flightNumber.trim() : "";
+
+    if (!rawFlightNumber) {
+        return normalizedCarrier;
+    }
+
+    const upperFlightNumber = rawFlightNumber.toUpperCase();
+    const compact = upperFlightNumber.replace(/\s+/g, "");
+
+    if (normalizedCarrier && compact.startsWith(normalizedCarrier)) {
+        return compact;
+    }
+
+    const cleaned = upperFlightNumber.replace(/[^A-Z0-9]/g, "");
+
+    if (!normalizedCarrier) {
+        return cleaned || compact || rawFlightNumber;
+    }
+
+    if (cleaned.startsWith(normalizedCarrier)) {
+        return cleaned;
+    }
+
+    return `${normalizedCarrier} ${cleaned || compact || rawFlightNumber}`.trim();
 }
 
 export default function AirlineBrand({

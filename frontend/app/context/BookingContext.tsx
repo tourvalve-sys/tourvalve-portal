@@ -150,11 +150,13 @@ function normalizeFlightResult(value: unknown): FlightResult | null {
 
 function createPersistedFlightSnapshot(flight: FlightResult): FlightResult {
     const normalized = normalizeFlightResult(flight) ?? flight;
+    const providerCode = normalized.providerCode.trim().toUpperCase();
+    const pricingXmlLimit = providerCode === "ATLAS" ? 250000 : 120000;
 
     return {
         ...normalized,
-        airPricingContextXml: normalized.airPricingContextXml.length > 120000 ? "" : normalized.airPricingContextXml,
-        airPricingSolutionXml: normalized.airPricingSolutionXml.length > 120000 ? "" : normalized.airPricingSolutionXml,
+        airPricingContextXml: normalized.airPricingContextXml.length > pricingXmlLimit ? "" : normalized.airPricingContextXml,
+        airPricingSolutionXml: normalized.airPricingSolutionXml.length > pricingXmlLimit ? "" : normalized.airPricingSolutionXml,
         airSegmentXml: normalized.airSegmentXml.length > 40000 ? "" : normalized.airSegmentXml,
         airSegmentXmls: normalized.airSegmentXmls.map((segmentXml) =>
             segmentXml.length > 40000 ? "" : segmentXml
