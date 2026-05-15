@@ -403,6 +403,46 @@ function buildPrebookSegmentLabel(segment: {
     return `${segment.from} -> ${segment.to}${flightLabel ? ` (${flightLabel})` : ""}`;
 }
 
+function buildItineraryKey(segments: Array<{
+    carrier: string;
+    flightNumber: string;
+    from: string;
+    to: string;
+    departure: string;
+    arrival: string;
+}>) {
+    return segments
+        .map((segment) => [
+            segment.carrier.trim().toUpperCase(),
+            segment.flightNumber.trim().toUpperCase(),
+            segment.from.trim().toUpperCase(),
+            segment.to.trim().toUpperCase(),
+            segment.departure.trim(),
+            segment.arrival.trim(),
+        ].join("|"))
+        .join("~");
+}
+
+type ItinerarySegment = NonNullable<FlightResult["itinerarySegments"]>[number];
+
+type ReturnBundleOption = {
+    id: string;
+    flight: FlightResult;
+    outboundSegments: ItinerarySegment[];
+    returnSegments: ItinerarySegment[];
+    price: number;
+    currency: string;
+};
+
+type ReturnBundle = {
+    key: string;
+    outboundSegments: ItinerarySegment[];
+    options: ReturnBundleOption[];
+    baseOption: ReturnBundleOption;
+    basePrice: number;
+    currency: string;
+};
+
 function isPreviewSeatSelectable(seat: {
     code: string;
     availability: string;
@@ -872,6 +912,8 @@ export default function FlightSearch() {
     const [filters, setFilters] = useState<FilterState>(restoredState?.filters ?? createDefaultFilters());
     const [prebookFlightId, setPrebookFlightId] = useState<string | null>(null);
     const [expandedFlightId, setExpandedFlightId] = useState<string | null>(null);
+    const [activeReturnBundleKey, setActiveReturnBundleKey] = useState<string | null>(null);
+    const [selectedReturnOptionByBundleKey, setSelectedReturnOptionByBundleKey] = useState<Record<string, string>>({});
     const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
     const [prebookSeatMap, setPrebookSeatMap] = useState<FlightSeatMapResponse | null>(null);
     const [prebookSeatMapLoading, setPrebookSeatMapLoading] = useState(false);
@@ -1072,6 +1114,11 @@ export default function FlightSearch() {
     useEffect(() => {
         setPrebookPortalTarget(typeof document === "undefined" ? null : document.body);
     }, []);
+
+    useEffect(() => {
+        setActiveReturnBundleKey(null);
+        setSelectedReturnOptionByBundleKey({});
+    }, [lastSearchedKey, tripType]);
 
     useEffect(() => {
         if (!prebookFlightId) {
@@ -1537,7 +1584,7 @@ export default function FlightSearch() {
         .map((segment) => [segment.from || "Origin", segment.to || "Destination"].join(" -> "))
         .join("   |   ");
 
-    const getJourneySummary = (flight: FlightResult) => {
+    const getJourneySummary = useCallback((flight: FlightResult) => {
         const itinerarySegments = flight.itinerarySegments?.length
             ? flight.itinerarySegments
             : [{
@@ -1569,7 +1616,7 @@ export default function FlightSearch() {
             matchesReturnSearch,
             nonstopEligible,
         };
-    };
+    }, [tripType]);
 
     const splitJourneyLegs = useCallback((segments: FlightResult["itinerarySegments"]) => {
         if (tripType !== "return") {
@@ -1712,6 +1759,113 @@ export default function FlightSearch() {
             return 0;
         });
 
+    const returnBundles = useMemo<ReturnBundle[]>(() => {
+        if (tripType !== "return") {
+            return [];
+        }
+
+        const bundleMap = new Map<string, { outboundSegments: ItinerarySegment[]; options: ReturnBundleOption[]; firstIndex: number }>();
+
+        for (let index = 0; index < filteredResults.length; index += 1) {
+            const flight = filteredResults[index];
+            const { itinerarySegments } = getJourneySummary(flight);
+            const { outboundSegments, returnSegments } = splitJourneyLegs(itinerarySegments);
+
+            if (outboundSegments.length === 0 || returnSegments.length === 0) {
+                continue;
+            }
+
+            const key = buildItineraryKey(outboundSegments);
+            const option: ReturnBundleOption = {
+                id: flight.id,
+                flight,
+                outboundSegments,
+                returnSegments,
+                price: Number.isFinite(flight.price) ? flight.price : 0,
+                currency: flight.currency || "MYR",
+            };
+
+            const existing = bundleMap.get(key);
+            if (existing) {
+                existing.options.push(option);
+                continue;
+            }
+
+            bundleMap.set(key, {
+                outboundSegments,
+                options: [option],
+                firstIndex: index,
+            });
+        }
+
+        const bundles = [...bundleMap.entries()].map(([key, entry]) => {
+            const sortedOptions = [...entry.options].sort((left, right) => {
+                if (left.price !== right.price) {
+                    return left.price - right.price;
+                }
+
+                return new Date(left.returnSegments[0]?.departure ?? left.flight.departure).getTime()
+                    - new Date(right.returnSegments[0]?.departure ?? right.flight.departure).getTime();
+            });
+
+            const baseOption = sortedOptions[0] ?? entry.options[0];
+
+            return {
+                key,
+                outboundSegments: entry.outboundSegments,
+                options: sortedOptions,
+                baseOption,
+                basePrice: baseOption?.price ?? 0,
+                currency: baseOption?.currency || "MYR",
+                firstIndex: entry.firstIndex,
+            } as ReturnBundle & { firstIndex: number };
+        });
+
+        bundles.sort((left, right) => {
+            const leftIndex = (left as ReturnBundle & { firstIndex: number }).firstIndex;
+            const rightIndex = (right as ReturnBundle & { firstIndex: number }).firstIndex;
+
+            if (filters.sortBy === "cheapest") {
+                if (left.basePrice !== right.basePrice) {
+                    return left.basePrice - right.basePrice;
+                }
+                return leftIndex - rightIndex;
+            }
+
+            if (filters.sortBy === "earliest") {
+                const leftDeparture = left.outboundSegments[0]?.departure || left.baseOption.flight.departure;
+                const rightDeparture = right.outboundSegments[0]?.departure || right.baseOption.flight.departure;
+                const delta = new Date(leftDeparture).getTime() - new Date(rightDeparture).getTime();
+                return delta !== 0 ? delta : leftIndex - rightIndex;
+            }
+
+            return leftIndex - rightIndex;
+        });
+
+        return bundles.map((bundle) => ({
+            key: bundle.key,
+            outboundSegments: bundle.outboundSegments,
+            options: bundle.options,
+            baseOption: bundle.baseOption,
+            basePrice: bundle.basePrice,
+            currency: bundle.currency,
+        }));
+    }, [filteredResults, filters.sortBy, getJourneySummary, splitJourneyLegs, tripType]);
+
+    const displayResultItems = useMemo(() => {
+        if (tripType === "return" && returnBundles.length > 0) {
+            return returnBundles.map((bundle) => ({
+                kind: "returnBundle" as const,
+                bundle,
+            }));
+        }
+
+        return filteredResults.map((flight) => ({
+            kind: "flight" as const,
+            flight,
+        }));
+    }, [filteredResults, returnBundles, tripType]);
+
     const activeFilterChips = useMemo(() => {
         const chips: Array<{ key: string; label: string }> = [];
 
@@ -1772,7 +1926,7 @@ export default function FlightSearch() {
         }, 140);
 
         return () => window.clearTimeout(timer);
-    }, [filteredResults.length, isSearchDraftDirty, loading]);
+    }, [displayResultItems.length, isSearchDraftDirty, loading]);
 
     useEffect(() => {
         if (typeof document === "undefined") {
@@ -2227,7 +2381,8 @@ export default function FlightSearch() {
                             <div className="sticky top-24 z-30 rounded-[1.6rem] border border-[rgba(89,64,46,0.1)] bg-white/70 p-4 shadow-[0_18px_40px_rgba(31,42,68,0.08)] backdrop-blur-sm">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div className="text-sm font-semibold text-[var(--ink)]">
-                                        {filteredResults.length} result{filteredResults.length === 1 ? "" : "s"}
+                                        {displayResultItems.length} {tripType === "return" && returnBundles.length > 0 ? "outbound option" : "result"}
+                                        {displayResultItems.length === 1 ? "" : "s"}
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
                                         <button
@@ -2335,7 +2490,23 @@ export default function FlightSearch() {
                                 )}
                             </div>
                         ) : (
-                            filteredResults.map((flight, index) => {
+                            displayResultItems.map((item, index) => {
+                                const bundle = item.kind === "returnBundle" ? item.bundle : null;
+                                const isActiveReturnBundle = Boolean(bundle && activeReturnBundleKey === bundle.key);
+                                const selectedBundleOptionId = bundle
+                                    ? (selectedReturnOptionByBundleKey[bundle.key] || bundle.baseOption.id)
+                                    : "";
+                                const selectedBundleOption = bundle
+                                    ? (bundle.options.find((option) => option.id === selectedBundleOptionId) || bundle.baseOption)
+                                    : null;
+                                const flight = item.kind === "flight"
+                                    ? item.flight
+                                    : selectedBundleOption?.flight ?? bundle?.baseOption.flight;
+
+                                if (!flight) {
+                                    return null;
+                                }
+
                                 const isBookable = Boolean(flight.airPricingSolutionXml && flight.price > 0);
                                 const isAvailabilityCard = isAvailabilitySearch && !isBookable;
                                 const isPricing = pricingFlightId === flight.id;
@@ -2421,7 +2592,7 @@ export default function FlightSearch() {
 
                                 return (
                                     <div
-                                        key={flight.id}
+                                        key={bundle ? `bundle-${bundle.key}` : flight.id}
                                         ref={index === 0 ? firstResultCardRef : null}
                                         style={index === 0 ? { scrollMarginTop: "7rem" } : undefined}
                                         className={`premium-panel rounded-[1.55rem] p-4 sm:rounded-[1.9rem] sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
@@ -2688,6 +2859,93 @@ export default function FlightSearch() {
                                                             </div>
                                                         </div>
                                                     ) : null}
+
+                                                    {bundle && isActiveReturnBundle ? (
+                                                        <div className="mt-4 rounded-[1.2rem] border border-[rgba(23,68,152,0.16)] bg-[rgba(241,248,255,0.75)] px-4 py-4">
+                                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                                <div>
+                                                                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#174498]">
+                                                                        Choose return flight
+                                                                    </div>
+                                                                    <div className="mt-1 text-sm text-slate-600">
+                                                                        Top option stays at +RM0. Others show the extra fare.
+                                                                    </div>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setActiveReturnBundleKey(null)}
+                                                                    className="ghost-button rounded-2xl px-4 py-2 text-sm font-semibold"
+                                                                >
+                                                                    Close
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="mt-4 space-y-2">
+                                                                {bundle.options.map((option) => {
+                                                                    const selected = option.id === selectedBundleOptionId;
+                                                                    const delta = option.price - bundle.basePrice;
+                                                                    const deltaLabel = option.currency?.trim().toUpperCase() === "MYR"
+                                                                        ? Math.abs(delta) < 0.005
+                                                                            ? "+RM0"
+                                                                            : `+RM${delta.toFixed(2)}`
+                                                                        : Math.abs(delta) < 0.005
+                                                                            ? "+0"
+                                                                            : `+${formatMoney(option.currency, delta)}`;
+
+                                                                    const returnFirst = option.returnSegments[0];
+                                                                    const returnLast = option.returnSegments[option.returnSegments.length - 1] ?? returnFirst;
+                                                                    const returnStopCount = Math.max(option.returnSegments.length - 1, 0);
+                                                                    const returnStopLabel = returnStopCount === 0
+                                                                        ? "Nonstop"
+                                                                        : `${returnStopCount} stop${returnStopCount > 1 ? "s" : ""}`;
+
+                                                                    return (
+                                                                        <button
+                                                                            key={option.id}
+                                                                            type="button"
+                                                                            onClick={() => setSelectedReturnOptionByBundleKey((current) => ({
+                                                                                ...current,
+                                                                                [bundle.key]: option.id,
+                                                                            }))}
+                                                                            className={`w-full rounded-[1.05rem] border px-4 py-3 text-left transition ${
+                                                                                selected
+                                                                                    ? "border-[rgba(23,68,152,0.24)] bg-white/90 shadow-[0_14px_30px_rgba(26,56,117,0.12)]"
+                                                                                    : "border-[rgba(89,64,46,0.1)] bg-white/70 hover:bg-white/90"
+                                                                            }`}
+                                                                        >
+                                                                            <div className="flex flex-wrap items-start justify-between gap-4">
+                                                                                <div className="min-w-0">
+                                                                                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                                                        {formatFlightDesignator(returnFirst?.carrier, returnFirst?.flightNumber)}
+                                                                                    </div>
+                                                                                    <div className="mt-2 flex flex-wrap items-center gap-3 text-sm font-semibold text-[var(--ink)]">
+                                                                                        <span>{formatFlightClock(returnFirst.departure)}</span>
+                                                                                        <span className="text-slate-400">→</span>
+                                                                                        <span>{formatFlightClock(returnLast.arrival)}</span>
+                                                                                        <span className="rounded-full bg-[rgba(239,236,231,0.92)] px-3 py-1 text-[11px] font-semibold text-slate-600">
+                                                                                            {returnStopLabel}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div className="mt-2 text-xs text-slate-500">
+                                                                                        {returnFirst.from} → {returnLast.to} • {formatFlightDate(returnFirst.departure)}
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <div className="shrink-0 text-right">
+                                                                                    <div className={`text-sm font-semibold ${Math.abs(delta) < 0.005 ? "text-[var(--success)]" : "text-[var(--accent-strong)]"}`}>
+                                                                                        {deltaLabel}
+                                                                                    </div>
+                                                                                    <div className="mt-1 text-xs text-slate-500">
+                                                                                        Total {formatMoney(option.currency, option.price)}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                             </div>
 
@@ -2708,7 +2966,11 @@ export default function FlightSearch() {
                                                         )}
                                                         <div className="mt-1 text-sm text-slate-500">
                                                             {isBookable
-                                                                ? "Select to continue with pricing confirmation and booking."
+                                                                ? bundle && bundle.options.length > 1
+                                                                    ? isActiveReturnBundle
+                                                                        ? "Pick a return option, then continue to booking."
+                                                                        : "Select this outbound to see return flight options."
+                                                                    : "Select to continue with pricing confirmation and booking."
                                                                 : isAvailabilityCard
                                                                     ? "Price this schedule into a bookable fare."
                                                                     : "Try another itinerary or run pricing again."}
@@ -2742,14 +3004,25 @@ export default function FlightSearch() {
                                                             </button>
                                                         </div>
                                                         <button
-                                                            onClick={() => handleSelect(flight)}
+                                                            onClick={() => {
+                                                                if (bundle && isBookable && bundle.options.length > 1 && !isActiveReturnBundle) {
+                                                                    setActiveReturnBundleKey(bundle.key);
+                                                                    return;
+                                                                }
+
+                                                                handleSelect(flight);
+                                                            }}
                                                             disabled={isPricing || (!isBookable && !flight.airSegmentXml)}
                                                             className={`rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${(isPricing || (!isBookable && !flight.airSegmentXml)) ? "cursor-not-allowed opacity-70" : ""}`}
                                                         >
                                                             {isPricing
                                                                 ? "Pricing..."
                                                                 : isBookable
-                                                                    ? "Select"
+                                                                    ? bundle && bundle.options.length > 1
+                                                                        ? isActiveReturnBundle
+                                                                            ? "Continue"
+                                                                            : "Choose return"
+                                                                        : "Select"
                                                                     : isAvailabilityCard
                                                                         ? "Price & Book"
                                                                         : "Price Flight"}
