@@ -35,4 +35,16 @@ public class FlightDto
     public string AirSegmentXml { get; set; } = string.Empty;
     public List<string> AirSegmentXmls { get; set; } = new();
     public List<FlightSegmentDto> ItinerarySegments { get; set; } = new();
+
+    // Provider-agnostic metadata (do not display provider names in the agent UI).
+    public string ProviderCode { get; set; } = string.Empty;
+    public string BookingWorkflow { get; set; } = string.Empty;
+    public bool SupportsPortalCheckout { get; set; }
+    public bool SupportsPortalAutoIssue { get; set; }
+    public string BookingNotice { get; set; } = string.Empty;
+
+    // Optional merchandising snapshots (populated when available).
+    public string CarryOnAllowance { get; set; } = string.Empty;
+    public string CheckedBaggageAllowance { get; set; } = string.Empty;
+    public List<string> BaggageOfferTexts { get; set; } = new();
 }
