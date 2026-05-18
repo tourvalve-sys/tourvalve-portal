@@ -43,6 +43,8 @@ type SeatSelection = {
     segmentIndex?: number;
     seatCode: string;
     productCode?: string;
+    seatPrice?: number | null;
+    currency?: string;
 };
 
 type PaidAncillarySelection = {
@@ -224,6 +226,31 @@ function coerceFiniteNumber(value: unknown) {
     if (typeof value === "string" && value.trim()) {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
+}
+
+function parseInlineMoney(value: string, fallbackCurrency: string) {
+    const text = typeof value === "string" ? value.replace(/,/g, " ").trim() : "";
+    if (!text) {
+        return null;
+    }
+
+    const currencyMatch = text.match(/\b([A-Z]{3})\s*([0-9]+(?:\.[0-9]{1,2})?)/);
+    if (currencyMatch) {
+        return {
+            currency: currencyMatch[1].toUpperCase(),
+            amount: Number(currencyMatch[2]),
+        };
+    }
+
+    const rmMatch = text.match(/\bRM\s*([0-9]+(?:\.[0-9]{1,2})?)/i);
+    if (rmMatch) {
+        return {
+            currency: fallbackCurrency || "MYR",
+            amount: Number(rmMatch[1]),
+        };
     }
 
     return null;
@@ -561,6 +588,43 @@ export default function BookingPage() {
         .map((seat) => `${seat.segmentLabel}: ${seat.seatCode}`)
         .join(" | ");
 
+    const estimatedSeatAddOnTotal = useMemo(() => {
+        return servicePreferences.selectedSeats.reduce((sum, seat) => {
+            const price = typeof seat.seatPrice === "number" && Number.isFinite(seat.seatPrice) ? seat.seatPrice : 0;
+            return sum + price;
+        }, 0);
+    }, [servicePreferences.selectedSeats]);
+
+    const estimatedBaggageAddOnTotal = useMemo(() => {
+        const currency = selectedFlight?.currency ?? "MYR";
+        const paidBaggageTotal = servicePreferences.selectedAncillaries
+            .filter((item) => item.type === "BAGGAGE")
+            .reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
+
+        if (paidBaggageTotal > 0) {
+            return paidBaggageTotal;
+        }
+
+        const parsed = parseInlineMoney(servicePreferences.baggagePreference, currency);
+        if (!parsed || !Number.isFinite(parsed.amount) || parsed.amount <= 0) {
+            return 0;
+        }
+
+        if (parsed.currency && currency && parsed.currency.toUpperCase() !== currency.toUpperCase()) {
+            return 0;
+        }
+
+        return parsed.amount;
+    }, [selectedFlight?.currency, servicePreferences.baggagePreference, servicePreferences.selectedAncillaries]);
+
+    const estimatedReservationTotal = useMemo(() => {
+        const fareTotal = selectedFlight?.price ?? 0;
+        if (!Number.isFinite(fareTotal)) {
+            return estimatedSeatAddOnTotal + estimatedBaggageAddOnTotal;
+        }
+        return fareTotal + estimatedSeatAddOnTotal + estimatedBaggageAddOnTotal;
+    }, [estimatedBaggageAddOnTotal, estimatedSeatAddOnTotal, selectedFlight?.price]);
+
     const buildConfirmationState = (
         reservation: Awaited<ReturnType<typeof bookFlight>>
     ): BookingConfirmationState => ({
@@ -598,7 +662,7 @@ export default function BookingPage() {
     const loadSeatMap = async () => {
         const provider = (selectedFlight?.providerCode || "").trim().toUpperCase();
         if (provider === "ATLAS") {
-            setSeatMapError("Seat maps are not available in pre-book mode for low-cost fares yet.");
+            setSeatMapError("Seat maps are not available in pre-book mode for this fare yet.");
             return;
         }
 
@@ -632,6 +696,12 @@ export default function BookingPage() {
             return;
         }
 
+        const selectedSeat = normalizedSeatRows
+            .flatMap((row) => row.seats)
+            .find((seat) => seat.code === seatCode);
+        const seatPrice = selectedSeat?.seatPrice ?? null;
+        const seatCurrency = selectedSeat?.currency ?? selectedFlight?.currency ?? "MYR";
+
         const nextSelections = [
             ...servicePreferences.selectedSeats.filter(
                 (item) => item.segmentLabel !== activeSeatSegment.label
@@ -640,6 +710,8 @@ export default function BookingPage() {
                 segmentLabel: activeSeatSegment.label,
                 segmentIndex: activeSeatSegmentIndex + 1,
                 seatCode,
+                seatPrice,
+                currency: seatCurrency,
             },
         ];
 
@@ -1640,16 +1712,36 @@ export default function BookingPage() {
                                             Reservation Total
                                         </div>
                                         <div className="mt-1 text-sm text-slate-500">
-                                            Final amount to capture from wallet
+                                            Includes estimated seat and baggage add-ons
                                         </div>
                                     </div>
                                     <div className="text-left sm:text-right">
                                         <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                            Wallet capture
+                                            Estimated total
                                         </div>
                                         <div className="mt-1 text-[1.9rem] font-semibold text-[var(--ink)] sm:text-[2.25rem]">
-                                            {selectedFlight.currency} {selectedFlight.price.toFixed(2)}
+                                            {selectedFlight.currency} {estimatedReservationTotal.toFixed(2)}
                                         </div>
+                                    </div>
+                                </div>
+                                <div className="mt-4 grid gap-2 rounded-[1.1rem] bg-white/70 px-4 py-3 text-sm text-slate-600">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <span>Fare</span>
+                                        <span className="font-semibold text-[var(--ink)]">
+                                            {selectedFlight.currency} {selectedFlight.price.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-4">
+                                        <span>Seats (est.)</span>
+                                        <span className="font-semibold text-[var(--ink)]">
+                                            {selectedFlight.currency} {estimatedSeatAddOnTotal.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-4">
+                                        <span>Baggage (est.)</span>
+                                        <span className="font-semibold text-[var(--ink)]">
+                                            {selectedFlight.currency} {estimatedBaggageAddOnTotal.toFixed(2)}
+                                        </span>
                                     </div>
                                 </div>
                             </div>

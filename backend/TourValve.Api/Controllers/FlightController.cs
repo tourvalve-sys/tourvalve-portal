@@ -1326,6 +1326,18 @@ public class FlightsController : ControllerBase
             throw new InvalidOperationException($"Seat map requires additional segment attributes: {string.Join(", ", missing)}");
     }
 
+    private sealed record SeatMapSeatDto(
+        string Code,
+        string Availability,
+        bool Paid,
+        List<string> Characteristics,
+        decimal? SeatPrice,
+        string Currency,
+        decimal? Taxes,
+        string OptionalServiceRef,
+        string ServiceSubCode,
+        string Source);
+
     private static object ParseSeatMapResponse(string xml)
     {
         var doc = XDocument.Parse(xml);
@@ -1410,7 +1422,7 @@ public class FlightsController : ControllerBase
                             )
                         ))
                     .Select(facility => MapSeatFacility(facility, optionalServices, row.Attribute("Number")?.Value ?? string.Empty))
-                    .Where(seat => !string.IsNullOrWhiteSpace(seat.code))
+                    .Where(seat => !string.IsNullOrWhiteSpace(seat.Code))
                     .ToList()
             })
             .Where(row => row.seats.Count > 0)
@@ -1432,7 +1444,7 @@ public class FlightsController : ControllerBase
                     number = group.Key,
                     seats = group
                         .Select(x => x.seat)
-                        .OrderBy(x => ExtractSeatColumnSortValue(x.code))
+                        .OrderBy(x => ExtractSeatColumnSortValue(x.Code))
                         .ToList()
                 })
                 .Where(row => row.seats.Count > 0)
@@ -1482,7 +1494,7 @@ public class FlightsController : ControllerBase
         };
     }
 
-    private static (string code, string availability, bool paid, List<string> characteristics, decimal? seatPrice, string currency, decimal? taxes, string optionalServiceRef, string serviceSubCode, string source) MapSeatFacility(
+    private static SeatMapSeatDto MapSeatFacility(
         XElement facility,
         IReadOnlyDictionary<string, XElement> optionalServices,
         string rowNumberHint)
@@ -1526,7 +1538,7 @@ public class FlightsController : ControllerBase
         var isPaid = bool.TryParse(facility.Attribute("Paid")?.Value, out var paid) && paid;
         isPaid = isPaid || !string.IsNullOrWhiteSpace(optionalServiceRef) || seatPrice.HasValue;
 
-        return (
+        return new SeatMapSeatDto(
             seatCode,
             facility.Attribute("Availability")?.Value ?? string.Empty,
             isPaid,
