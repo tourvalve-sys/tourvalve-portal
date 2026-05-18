@@ -349,7 +349,7 @@ public class BookingTicketingService
         if (messages.Count > 0)
             return string.Join(" ", messages.Take(3));
 
-        return "Travelport did not return any valid e-ticket numbers after ticket issuance. The booking should remain confirmed until live e-ticket numbers are present.";
+        return "The provider did not return any valid e-ticket numbers after ticket issuance. The booking should remain confirmed until live e-ticket numbers are present.";
     }
 
     public static bool IsTicketingEvidencePending(string? message)

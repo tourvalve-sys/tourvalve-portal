@@ -20,6 +20,7 @@ import {
 import AirlineBrand, { formatFlightDesignator } from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
 import { inferPortalBookingSupport } from "@/lib/bookingWorkflow";
+import { scrubProviderMentions } from "@/lib/scrubProviderMentions";
 import {
     LATEST_BOOKING_CONFIRMATION_KEY,
     type BookingConfirmationState,
@@ -528,7 +529,7 @@ export default function BookingPage() {
     };
 
     const getErrorMessage = (value: unknown) =>
-        value instanceof Error ? value.message : "Booking failed";
+        scrubProviderMentions(value instanceof Error ? value.message : "Booking failed");
 
     const todayDate = new Date().toISOString().split("T")[0];
 
@@ -579,7 +580,7 @@ export default function BookingPage() {
     const loadSeatMap = async () => {
         const provider = (selectedFlight?.providerCode || "").trim().toUpperCase();
         if (provider === "ATLAS") {
-            setSeatMapError("Seat maps are not available in pre-book mode for Atlas LCC fares yet.");
+            setSeatMapError("Seat maps are not available in pre-book mode for low-cost fares yet.");
             return;
         }
 

@@ -8,6 +8,7 @@ import {
     LATEST_BOOKING_CONFIRMATION_KEY,
     type BookingConfirmationState,
 } from "@/lib/bookingConfirmation";
+import { scrubProviderMentions } from "@/lib/scrubProviderMentions";
 
 function BookingConfirmationPageContent() {
     const router = useRouter();
@@ -197,13 +198,13 @@ function BookingConfirmationPageContent() {
 
                     {confirmation.portalSyncPending ? (
                         <div className="rounded-[1.4rem] border border-[rgba(176,122,67,0.2)] bg-[rgba(255,247,236,0.88)] px-5 py-4 text-sm leading-7 text-[var(--ink)]">
-                            Travelport confirmed the booking and the locator is ready, but the portal booking ledger is still syncing the local record. You can continue with the live locator details below and refresh the bookings module shortly.
+                            The booking is confirmed and the locator is ready, but the portal booking ledger is still syncing the local record. You can continue with the live locator details below and refresh the bookings module shortly.
                         </div>
                     ) : null}
 
                     {!ticketIssued && confirmation.ticketingMessage ? (
                         <div className="rounded-[1.4rem] border border-[rgba(50,93,147,0.16)] bg-[rgba(239,246,255,0.88)] px-5 py-4 text-sm leading-7 text-[var(--ink)]">
-                            {confirmation.ticketingMessage}
+                            {scrubProviderMentions(confirmation.ticketingMessage)}
                         </div>
                     ) : null}
 

@@ -31,10 +31,10 @@ public sealed class TravelportTerminalService
             throw new InvalidOperationException("Terminal command is required.");
 
         if (string.IsNullOrWhiteSpace(_config.TargetBranch))
-            throw new InvalidOperationException("Travelport TargetBranch is required for TerminalService.");
+            throw new InvalidOperationException("TargetBranch is required for TerminalService.");
 
         if (string.IsNullOrWhiteSpace(_config.TerminalEndpoint))
-            throw new InvalidOperationException("Travelport TerminalEndpoint is missing. Set Travelport:TerminalEndpoint to the TerminalService endpoint.");
+            throw new InvalidOperationException("TerminalEndpoint is missing for TerminalService.");
 
         var normalizedHost = (host ?? "1G").Trim();
         var normalizedCommand = terminalCommand.Trim();
@@ -52,7 +52,7 @@ public sealed class TravelportTerminalService
             hostToken = ExtractHostToken(createRsp);
 
             if (string.IsNullOrWhiteSpace(hostToken))
-                throw new InvalidOperationException("Travelport did not return a HostToken for the Terminal session.");
+                throw new InvalidOperationException("The provider did not return a HostToken for the Terminal session.");
 
             var terminalReqXml = BuildTerminalRequest(normalizedCommand, normalizedHost, hostToken, traceId);
             terminalRspXml = await _client.PostToTerminalServiceAsync(terminalReqXml, TerminalSoapAction);

@@ -31,7 +31,7 @@ public sealed class AtlasFlightsController : ControllerBase
         {
             return BadRequest(new
             {
-                error = "Atlas LCC search currently supports one-way and return searches only."
+                error = "Low-cost search currently supports one-way and return searches only."
             });
         }
 
@@ -80,8 +80,8 @@ public sealed class AtlasFlightsController : ControllerBase
         {
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
-                error = "Atlas LCC search failed.",
-                detail = ex.Message
+                error = "Low-cost search failed.",
+                detail = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase)
             });
         }
 
@@ -140,7 +140,7 @@ public sealed class AtlasFlightsController : ControllerBase
             BookingWorkflow = "ATLAS_LCC_RESERVATION",
             SupportsPortalCheckout = true,
             SupportsPortalAutoIssue = false,
-            BookingNotice = "Reservation is supported for this Atlas LCC fare. Ticketing happens later from the AirTicketing workspace.",
+            BookingNotice = "Reservation is supported for this low-cost fare. Ticketing happens later from the AirTicketing workspace.",
             BasePrice = totalBase,
             Price = totalBase,
             MarkupAmount = 0m,

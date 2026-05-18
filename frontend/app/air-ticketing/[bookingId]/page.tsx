@@ -127,7 +127,7 @@ export default function AirTicketingWorkspacePage() {
     };
 
     const handleVoid = async () => {
-        if (!window.confirm("Void this issued ticket in Travelport? Only use this when the ticket is still unpaid.")) return;
+        if (!window.confirm("Void this issued ticket with the provider? Only use this when the ticket is still unpaid.")) return;
         await runAction("void", () => voidBookingAirTicket(bookingId));
     };
 
@@ -167,7 +167,7 @@ export default function AirTicketingWorkspacePage() {
                             Booking reference: {booking.bookingReference}
                         </p>
                         <p className="mt-2 text-xs leading-6 text-slate-500 md:text-sm">
-                            Use this airline PNR with the passenger name on airline manage-booking portals. The universal locator is for Travelport record retrieval.
+                            Use this airline PNR with the passenger name on airline manage-booking portals. The universal locator is for provider record retrieval.
                         </p>
                     </div>
 
@@ -300,7 +300,7 @@ export default function AirTicketingWorkspacePage() {
                         </div>
 
                         <div className="mt-4 text-xs leading-6 text-slate-500">
-                            Travelport void is only allowed for unpaid tickets in this workspace. Paid tickets stay protected from accidental voiding.
+                            Voiding is only allowed for unpaid tickets in this workspace. Paid tickets stay protected from accidental voiding.
                         </div>
                     </div>
                 </div>
@@ -338,7 +338,6 @@ export default function AirTicketingWorkspacePage() {
                         <div className="mt-5 space-y-2 text-sm text-slate-600">
                             <div>Form of payment: <span className="font-semibold text-[var(--ink)]">{labelizeFormOfPayment(booking.airTicketingFormOfPayment)}</span></div>
                             <div>Ticketing date: <span className="font-semibold text-[var(--ink)]">{booking.airTicketingDate || "-"}</span></div>
-                            <div>Provider code: <span className="font-semibold text-[var(--ink)]">{booking.providerCode || "-"}</span></div>
                             <div>Airline PNR: <span className="font-semibold text-[var(--ink)]">{pnr}</span></div>
                             <div>Universal locator: <span className="font-semibold text-[var(--ink)]">{booking.universalRecordLocator || "-"}</span></div>
                             <div>Provider locator: <span className="font-semibold text-[var(--ink)]">{booking.providerLocator || "-"}</span></div>
@@ -455,7 +454,7 @@ export default function AirTicketingWorkspacePage() {
 
                             {debugInfo.lastFailureSummary ? (
                                 <div className="mt-4 rounded-[1.5rem] bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                                    <div className="subtle-kicker">Last Travelport failure summary</div>
+                                    <div className="subtle-kicker">Last provider failure summary</div>
                                     <div className="mt-2 leading-7">{debugInfo.lastFailureSummary}</div>
                                 </div>
                             ) : null}

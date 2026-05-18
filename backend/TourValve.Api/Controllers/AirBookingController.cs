@@ -93,10 +93,10 @@ public sealed class AirBookingController : ControllerBase
         }
 
         if (_config.MockMode)
-            return BadRequest(new { error = "Travelport mock mode is disabled for this project. Set Travelport.MockMode to false for live booking." });
+            return BadRequest(new { error = "Live booking is not available in this environment right now." });
 
         if (!_config.HasLiveCredentials())
-            return BadRequest(new { error = "Live Travelport credentials are missing. Update Travelport settings before booking." });
+            return BadRequest(new { error = "Live booking is not configured for this workspace yet." });
 
         var actorIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(actorIdValue, out var actorId))
@@ -150,7 +150,7 @@ public sealed class AirBookingController : ControllerBase
             if (rawResponse.Contains("<!doctype", StringComparison.OrdinalIgnoreCase) ||
                 rawResponse.Contains("<html", StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException("Travelport returned an HTTP 404 page for this booking request. The reservation call was routed to an endpoint that does not serve this payload.");
+                throw new InvalidOperationException("The provider returned an unexpected HTML page for this booking request. The reservation call may have been routed to an endpoint that does not serve this payload.");
             }
 
             var reservationIssue = ExtractReservationResponseIssue(rawResponse);
@@ -168,8 +168,8 @@ public sealed class AirBookingController : ControllerBase
 
             if (string.IsNullOrWhiteSpace(primaryLocator))
             {
-                WriteBookingDebugSnapshot("LOCATOR_MISSING", reservationRequestXml, rawResponse, "Travelport returned a reservation response, but no locator / PNR could be extracted from it.");
-                throw new InvalidOperationException("Travelport returned a reservation response, but no locator / PNR could be extracted from it.");
+                WriteBookingDebugSnapshot("LOCATOR_MISSING", reservationRequestXml, rawResponse, "The provider returned a reservation response, but no locator / PNR could be extracted from it.");
+                throw new InvalidOperationException("The provider returned a reservation response, but no locator / PNR could be extracted from it.");
             }
 
             var portalBooking = await TryCreatePortalBookingAsync(
@@ -230,7 +230,7 @@ public sealed class AirBookingController : ControllerBase
 
             await _audit.WriteAsync(actorId, actorEmail, "BOOKING", "CREATE_FAILED", "AirBooking", "LIVE", request.FlightNumber, detail, "WARN");
             await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"We could not complete {request.Carrier} {request.FlightNumber}. {detail}", "WARN", "/booking");
-            await _notifications.CreateAsync(null, "ADMIN", "TRAVELPORT", "Travelport error", $"Booking failed for {request.Carrier} {request.FlightNumber}. {detail}", "WARN", "/bookings");
+            await _notifications.CreateAsync(null, "ADMIN", "TRAVELPORT", "Provider error", $"Booking failed for {request.Carrier} {request.FlightNumber}. {detail}", "WARN", "/bookings");
 
             return BadRequest(new
             {
@@ -736,7 +736,7 @@ public sealed class AirBookingController : ControllerBase
 
             if (hasNonTicketableSegment)
             {
-                return "Travelport returned a non-ticketable reservation status for this itinerary, so the portal stopped before saving a broken booking. Please search again or choose another fare.";
+                return "The provider returned a non-ticketable reservation status for this itinerary, so the portal stopped before saving a broken booking. Please search again or choose another fare.";
             }
 
             return null;
@@ -815,7 +815,7 @@ public sealed class AirBookingController : ControllerBase
     private async Task<BookingPricingRefreshResult> RefreshPricingForBookingAsync(AirBookingRequest request, string providerCode)
     {
         if (string.IsNullOrWhiteSpace(request.AirPricingSolutionXml))
-            throw new InvalidOperationException("The selected itinerary is missing Travelport pricing information. Search again and choose a priced result before booking.");
+            throw new InvalidOperationException("The selected itinerary is missing pricing information. Search again and choose a priced result before booking.");
 
         if (string.IsNullOrWhiteSpace(request.AirPricingContextXml))
         {
@@ -845,7 +845,7 @@ public sealed class AirBookingController : ControllerBase
                     pricedDoc.Root?.ToString(SaveOptions.DisableFormatting) ?? pricedResponse);
             }
 
-            throw new InvalidOperationException("Travelport repricing did not return a matching reservation-ready fare for this itinerary. Search again and choose another result.");
+            throw new InvalidOperationException("Repricing did not return a matching reservation-ready fare for this itinerary. Search again and choose another result.");
         }
         catch (Exception ex)
         {
@@ -1571,7 +1571,7 @@ public sealed class AirBookingController : ControllerBase
             return "This itinerary needs supplier-direct payment handling, so it cannot complete the TourValve wallet auto-ticketing flow yet.";
 
         if (raw.Contains("NO FARES", StringComparison.OrdinalIgnoreCase))
-            return "Travelport could not keep a live fare attached to this itinerary during reservation creation. Search again and choose a newly priced fare before booking.";
+            return "The provider could not keep a live fare attached to this itinerary during reservation creation. Search again and choose a newly priced fare before booking.";
 
         if (raw.Contains("SECURED SELL NOT AVAILABLE", StringComparison.OrdinalIgnoreCase) ||
             raw.Contains("UNABLE TO SELL", StringComparison.OrdinalIgnoreCase) ||
@@ -1579,11 +1579,11 @@ public sealed class AirBookingController : ControllerBase
             return "The carrier did not return a secure-sell reservation for this itinerary, so TourValve stopped before creating a broken booking. Search again or choose another fare.";
 
         if (raw.Contains("NO VALIDATING CARRIER", StringComparison.OrdinalIgnoreCase))
-            return "Travelport could not assign a validating carrier to this itinerary, so the reservation cannot complete from the portal right now. Search again or choose another fare.";
+            return "The provider could not assign a validating carrier to this itinerary, so the reservation cannot complete from the portal right now. Search again or choose another fare.";
 
         if (raw.Contains("stored fare pricing", StringComparison.OrdinalIgnoreCase) ||
             raw.Contains("pricing information", StringComparison.OrdinalIgnoreCase))
-            return "Travelport did not keep a ticketable stored fare on this booking. Reprice and rebook the itinerary before trying to issue a ticket.";
+            return "The provider did not keep a ticketable stored fare on this booking. Reprice and rebook the itinerary before trying to issue a ticket.";
 
         if (raw.Contains("travelport.com/schema", StringComparison.OrdinalIgnoreCase) ||
             raw.Contains("faultstring", StringComparison.OrdinalIgnoreCase) ||

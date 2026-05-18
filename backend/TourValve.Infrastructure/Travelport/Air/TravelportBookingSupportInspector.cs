@@ -87,7 +87,7 @@ public static class TravelportBookingSupportInspector
                 false,
                 false,
                 false,
-                "This itinerary is not returning hosted Travelport reservation content for portal checkout yet. Search again or choose another GDS-hosted fare.");
+                "This itinerary is not returning hosted reservation content for portal checkout yet. Search again or choose another GDS-hosted fare.");
         }
 
         if (hasNonTicketableSegment || hasBlockingProviderStatus)
@@ -99,7 +99,7 @@ public static class TravelportBookingSupportInspector
                 false,
                 false,
                 false,
-                "This itinerary is returning a non-ticketable provider status from Travelport, so it cannot complete portal reservation and auto-issuance safely. Search again or choose another fare.");
+                "This itinerary is returning a non-ticketable provider status, so it cannot complete portal reservation and auto-issuance safely. Search again or choose another fare.");
         }
 
         return new TravelportBookingSupportAnalysis(

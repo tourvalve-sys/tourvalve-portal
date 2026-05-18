@@ -666,7 +666,7 @@ public class BookingsController : ControllerBase
                 var xml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
                 var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
 
-                await _audit.WriteAsync(GetRequesterAgentId(), actorEmail, "BOOKING", "RETRIEVE", "Booking", booking.Id.ToString(), booking.BookingReference, $"Retrieved Travelport record {booking.UniversalRecordLocator}.");
+                await _audit.WriteAsync(GetRequesterAgentId(), actorEmail, "BOOKING", "RETRIEVE", "Booking", booking.Id.ToString(), booking.BookingReference, $"Retrieved live record {booking.UniversalRecordLocator}.");
 
                 return Ok(UniversalRecordService.BuildSummary(xml));
             });
@@ -696,7 +696,7 @@ public class BookingsController : ControllerBase
 
                 return Ok(new
                 {
-                    message = "Booking cancelled through Travelport.",
+                    message = "Booking cancelled successfully.",
                     rawResponse = xml
                 });
             });
@@ -721,12 +721,12 @@ public class BookingsController : ControllerBase
                 var xml = await _records.AddRemarkAsync(booking.UniversalRecordLocator, request.Remark.Trim());
                 var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
 
-                await _audit.WriteAsync(GetRequesterAgentId(), actorEmail, "BOOKING", "MODIFY", "Booking", booking.Id.ToString(), booking.BookingReference, $"Added Travelport remark: {request.Remark.Trim()}");
+                await _audit.WriteAsync(GetRequesterAgentId(), actorEmail, "BOOKING", "MODIFY", "Booking", booking.Id.ToString(), booking.BookingReference, $"Added remark: {request.Remark.Trim()}");
                 await _notifications.CreateAsync(booking.AgentId, "AGENT", "BOOKING", "Booking updated", $"Booking {booking.BookingReference} was updated with an operational remark.", "INFO", "/bookings");
 
                 return Ok(new
                 {
-                    message = "Booking modified through Travelport.",
+                    message = "Booking modified successfully.",
                     rawResponse = xml
                 });
             });
@@ -771,7 +771,7 @@ public class BookingsController : ControllerBase
 
                 return Ok(new
                 {
-                    message = "Post-book servicing request added to the Travelport record.",
+                    message = "Post-book servicing request added to the record.",
                     rawResponse = xml
                 });
             });
@@ -799,7 +799,7 @@ public class BookingsController : ControllerBase
                 message = result.TicketNumbers.Count > 0
                     ? "Ticket issued successfully."
                     : string.Equals(result.WorkflowStatus, AirTicketingWorkflowService.WorkflowAwaitingEvidence, StringComparison.OrdinalIgnoreCase)
-                        ? "Ticketing has been submitted to Travelport, but ticket numbers are not available yet. Refresh this workspace shortly to confirm e-ticket numbers."
+                        ? "Ticketing has been submitted, but ticket numbers are not available yet. Refresh this workspace shortly to confirm e-ticket numbers."
                         : "Ticketing request completed. Verify ticket numbers from the refreshed live record.",
                 ticketNumbers = result.TicketNumbers,
                 ticketedAt = result.TicketedAt,
@@ -1168,22 +1168,33 @@ public class BookingsController : ControllerBase
             var actorId = GetRequesterAgentId();
             var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
             var friendly = ExtractTravelportMessage(ex);
+            var safeFriendly = ScrubProviderMentions(friendly);
 
-            await _audit.WriteAsync(actorId, actorEmail, "BOOKING", $"{action}_FAILED", "Booking", booking.Id.ToString(), booking.BookingReference, friendly, "WARN");
-            await _notifications.CreateAsync(booking.AgentId, "AGENT", "TRAVELPORT", "Travelport error", $"Booking {booking.BookingReference}: {friendly}", "WARN", "/bookings");
-            await _notifications.CreateAsync(null, "ADMIN", "TRAVELPORT", notificationTitle, $"Booking {booking.BookingReference}: {friendly}", "WARN", "/bookings");
+            await _audit.WriteAsync(actorId, actorEmail, "BOOKING", $"{action}_FAILED", "Booking", booking.Id.ToString(), booking.BookingReference, safeFriendly, "WARN");
+            await _notifications.CreateAsync(booking.AgentId, "AGENT", "TRAVELPORT", "Provider error", $"Booking {booking.BookingReference}: {safeFriendly}", "WARN", "/bookings");
+            await _notifications.CreateAsync(null, "ADMIN", "TRAVELPORT", ScrubProviderMentions(notificationTitle), $"Booking {booking.BookingReference}: {safeFriendly}", "WARN", "/bookings");
 
             return BadRequest(new
             {
                 error = action switch
                 {
                     "CANCEL" => "Cancellation could not be completed right now.",
-                    "RETRIEVE" => "We could not retrieve the live Travelport record.",
-                    _ => "Travelport could not complete this servicing action."
+                    "RETRIEVE" => "We could not retrieve the live record.",
+                    _ => "We could not complete this servicing action."
                 },
-                detail = friendly
+                detail = safeFriendly
             });
         }
+    }
+
+    private static string ScrubProviderMentions(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return string.Empty;
+
+        return message
+            .Replace("Travelport", "Provider", StringComparison.OrdinalIgnoreCase)
+            .Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task CreateWalletAlertIfNeeded(Guid agentId)
@@ -1356,7 +1367,7 @@ public class BookingsController : ControllerBase
     {
         var message = ex.Message;
         if (string.IsNullOrWhiteSpace(message))
-            return "Travelport returned an unexpected servicing error.";
+            return "The provider returned an unexpected servicing error.";
 
         if (message.Contains("<faultstring>", StringComparison.OrdinalIgnoreCase))
         {
@@ -1388,7 +1399,7 @@ public class BookingsController : ControllerBase
         var ticketEvidenceSource = storedTicketNumbers.Count > 0
             ? "BOOKING_RECORD"
             : verifiedTicketNumbers.Count > 0
-                ? "TRAVELPORT_RECORD"
+                ? "PROVIDER_RECORD"
                 : "NONE";
 
         var analysis = TravelportBookingSupportInspector.Analyze(
@@ -1439,7 +1450,7 @@ public class BookingsController : ControllerBase
             return "Keep this itinerary out of portal auto-ticketing. Supplier-direct content should stay on manual or supplier payment servicing.";
 
         if (!hasStoredPricing)
-            return "Travelport does not show reservation-ready stored pricing in the current record. Reprice and rebook from fresh live search before issuing.";
+            return "The provider does not show reservation-ready stored pricing in the current record. Reprice and rebook from fresh live search before issuing.";
 
         if (hasTicketEvidence)
             return "Ticket evidence is present. Use the airline PNR with the passenger surname on the airline portal.";

@@ -85,7 +85,7 @@ public sealed class AtlasBookingController : ControllerBase
         var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? request.ContactEmail ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(request.AirPricingSolutionXml))
-            return BadRequest(new { error = "Atlas routing identifier is missing. Search again and re-select the fare before booking." });
+            return BadRequest(new { error = "Routing identifier is missing. Search again and re-select the fare before booking." });
 
         var routingIdentifier = request.AirPricingSolutionXml.Trim();
 
@@ -101,17 +101,18 @@ public sealed class AtlasBookingController : ControllerBase
         catch (AtlasApiException ex)
         {
             await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "VERIFY_FAILED", "AtlasBooking", "LIVE", request.FlightNumber, ex.Message, "WARN");
-            await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"Atlas verify failed. {ex.Message}", "WARN", "/booking");
+            var safeDetail = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
+            await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"Fare verification failed. {safeDetail}", "WARN", "/booking");
 
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
-                error = "Atlas could not verify this fare right now.",
-                detail = ex.Message
+                error = "We could not verify this fare right now.",
+                detail = safeDetail
             });
         }
 
         if (string.IsNullOrWhiteSpace(verify.SessionId))
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = "Atlas verify did not return a sessionId." });
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = "Fare verification did not return a session id." });
 
         AtlasOrderResponse order;
         try
@@ -121,12 +122,13 @@ public sealed class AtlasBookingController : ControllerBase
         catch (AtlasApiException ex)
         {
             await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "ORDER_FAILED", "AtlasBooking", "LIVE", request.FlightNumber, ex.Message, "WARN");
-            await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"Atlas reservation request failed. {ex.Message}", "WARN", "/booking");
+            var safeDetail = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
+            await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"Reservation request failed. {safeDetail}", "WARN", "/booking");
 
             return BadRequest(new
             {
                 error = "The live booking could not be completed right now.",
-                detail = ex.Message
+                detail = safeDetail
             });
         }
 

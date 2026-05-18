@@ -87,7 +87,7 @@ public class FlightsController : ControllerBase
             {
                 return StatusCode(StatusCodes.Status504GatewayTimeout, new
                 {
-                    error = "Live Travelport multi-city search timed out.",
+                    error = "Live multi-city search timed out.",
                     detail = BuildMultiCityTimeoutMessage(req.Segments.Count)
                 });
             }
@@ -114,7 +114,7 @@ public class FlightsController : ControllerBase
 
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
-                error = "Live Travelport search failed.",
+                error = "Live search failed.",
                 detail = BuildProviderFriendlyDetail(detail, "search")
             });
         }
@@ -134,8 +134,8 @@ public class FlightsController : ControllerBase
                 return StatusCode(StatusCodes.Status504GatewayTimeout, new
                 {
                     error = string.IsNullOrWhiteSpace(req.Cabin)
-                        ? "Live Travelport multi-city search took too long to return a usable itinerary."
-                        : $"Live Travelport multi-city {normalizedCabin?.ToLowerInvariant() ?? "requested"} cabin search took too long to return a usable itinerary.",
+                        ? "Live multi-city search took too long to return a usable itinerary."
+                        : $"Live multi-city {normalizedCabin?.ToLowerInvariant() ?? "requested"} cabin search took too long to return a usable itinerary.",
                     detail = BuildMultiCityTimeoutMessage(req.Segments.Count)
                 });
             }
@@ -152,8 +152,8 @@ public class FlightsController : ControllerBase
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
                 error = string.IsNullOrWhiteSpace(req.Cabin)
-                    ? "Travelport returned no usable flights for this search."
-                    : $"Travelport returned no usable {normalizedCabin?.ToLowerInvariant() ?? "requested"} cabin fares for this search.",
+                    ? "No usable flights were returned for this search."
+                    : $"No usable {normalizedCabin?.ToLowerInvariant() ?? "requested"} cabin fares were returned for this search.",
                 detail = BuildProviderFriendlyDetail(response, "search")
             });
         }
@@ -190,7 +190,7 @@ public class FlightsController : ControllerBase
         {
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
-                error = "Live Travelport pricing failed.",
+                error = "Live pricing failed.",
                 detail = BuildProviderFriendlyDetail(ex.Message, "pricing")
             });
         }
@@ -205,7 +205,7 @@ public class FlightsController : ControllerBase
         {
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
-                error = "Travelport did not return a bookable fare for this availability.",
+                error = "No bookable fare was returned for this availability.",
                 detail = BuildProviderFriendlyDetail(pricedResponse, "pricing")
             });
         }
@@ -245,7 +245,7 @@ public class FlightsController : ControllerBase
         {
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
-                error = "Live Travelport seat map failed.",
+                error = "Live seat map failed.",
                 detail = BuildProviderFriendlyDetail(ex.Message, "seat map")
             });
         }
@@ -328,10 +328,10 @@ public class FlightsController : ControllerBase
     private void EnsureLiveTravelportConfigured()
     {
         if (_travelportConfig.MockMode)
-            throw new InvalidOperationException("Travelport mock mode is disabled for this project. Set Travelport.MockMode to false and configure live credentials.");
+            throw new InvalidOperationException("Live shopping is not available in this environment right now.");
 
         if (!_travelportConfig.HasLiveCredentials())
-            throw new InvalidOperationException("Live Travelport credentials are missing. Update Travelport settings before searching.");
+            throw new InvalidOperationException("Live shopping is not configured for this workspace yet.");
     }
 
     private static DateTime ParseDate(string value) => DateTime.Parse(value);
@@ -1354,15 +1354,15 @@ public class FlightsController : ControllerBase
                 structuralHints,
                 parserAssessment =
                     rowNodes.Count == 0 && facilityNodes.Count == 0 && optionalServices.Count > 0
-                        ? "Travelport returned optional seat products, but no drawable row or facility seat-map nodes."
+                        ? "The provider returned optional seat products, but no drawable row or facility seat-map nodes."
                         : rowNodes.Count == 0 && facilityNodes.Count == 0
-                        ? "Travelport responded without row/facility seat-map nodes."
+                        ? "The provider responded without row/facility seat-map nodes."
                         : rowNodes.Count == 0 && seatLikeFacilities.Count > 0
-                            ? "Travelport returned seat-like facilities without row containers. Parser extension may be needed for this carrier response."
+                            ? "The provider returned seat-like facilities without row containers. Parser extension may be needed for this carrier response."
                             : rowNodes.Count > 0 && seatLikeFacilities.Count == 0
-                                ? "Travelport returned row nodes, but no seat-like facilities were detected inside them."
+                                ? "The provider returned row nodes, but no seat-like facilities were detected inside them."
                                 : rows.Count == 0
-                                    ? "Travelport returned seat-map structure, but no selectable seat rows were rendered from it."
+                                    ? "The provider returned seat-map structure, but no selectable seat rows were rendered from it."
                                     : rowNodes.Count == 0 && seatLikeFacilities.Count > 0
                                         ? "Seat-map rows were synthesized from supplier seat facilities."
                                         : "Seat-map rows were parsed successfully."

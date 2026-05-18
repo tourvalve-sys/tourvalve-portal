@@ -479,13 +479,13 @@ public sealed class BookingSeatMapService
                 StructuralHints = structuralHints,
                 ParserAssessment =
                     rowNodes.Count == 0 && facilityNodes.Count == 0
-                        ? "Travelport responded without row or facility seat-map nodes."
+                        ? "The provider responded without row or facility seat-map nodes."
                         : rowNodes.Count == 0 && seatLikeFacilities.Count > 0
-                            ? "Travelport returned seat-like facilities without row containers. Parser extension may still be needed for this carrier response."
+                            ? "The provider returned seat-like facilities without row containers. Parser extension may still be needed for this carrier response."
                             : rowNodes.Count > 0 && seatLikeFacilities.Count == 0
-                                ? "Travelport returned rows, but no seat-like facilities were detected inside them."
+                                ? "The provider returned rows, but no seat-like facilities were detected inside them."
                                 : rows.Count == 0
-                                    ? "Travelport returned seat-map structure, but no selectable seat rows were rendered from it."
+                                    ? "The provider returned seat-map structure, but no selectable seat rows were rendered from it."
                                     : rowNodes.Count == 0 && seatLikeFacilities.Count > 0
                                         ? "Seat-map rows were synthesized from supplier seat facilities."
                                         : "Seat-map rows were parsed successfully."

@@ -350,7 +350,7 @@ public class AirTicketingWorkflowService
                 "Ticket issued",
                 result.TicketNumbers.Count > 0
                     ? $"Booking {booking.BookingReference} has been ticketed. Ticket numbers: {string.Join(", ", result.TicketNumbers)}."
-                    : $"Booking {booking.BookingReference} has been ticketed. Verify ticket numbers from the live Travelport record.",
+                    : $"Booking {booking.BookingReference} has been ticketed. Verify ticket numbers from the live record.",
                 string.IsNullOrWhiteSpace(paymentWarning) ? "SUCCESS" : "WARN");
 
             return new AirTicketingIssueResult(
@@ -553,7 +553,7 @@ public class AirTicketingWorkflowService
             await NotifyAsync(
                 booking,
                 "Ticket voided",
-                $"Booking {booking.BookingReference} has been voided in Travelport.",
+                $"Booking {booking.BookingReference} has been voided successfully.",
                 "SUCCESS");
 
             return new AirTicketingVoidResult(
@@ -909,7 +909,7 @@ public class AirTicketingWorkflowService
     {
         var message = ex.Message;
         if (string.IsNullOrWhiteSpace(message))
-            return "Travelport returned an unexpected ticketing error.";
+            return "The provider returned an unexpected ticketing error.";
 
         if (message.Contains("<faultstring>", StringComparison.OrdinalIgnoreCase))
         {

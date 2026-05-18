@@ -1,4 +1,5 @@
 import type { FlightResult } from "@/lib/api";
+import { scrubProviderMentions } from "@/lib/scrubProviderMentions";
 
 const HOST_PROVIDERS = new Set(["1G", "1V", "1P"]);
 const SUPPLIER_DIRECT_PROVIDERS = new Set(["ACH", "RCH"]);
@@ -56,7 +57,7 @@ export function inferPortalBookingSupport(input: BookingWorkflowInput): BookingW
             supportsPortalAutoIssue: false,
             bookingNotice: supportsPortalCheckout
                 ? ""
-                : "This Atlas LCC itinerary needs a fresh search before it can be reserved. Please search again and reselect the fare.",
+                : "This low-cost itinerary needs a fresh search before it can be reserved. Please search again and reselect the fare.",
         };
     }
     const hasStoredPricing = hasReservationPricingInfo(solutionXml) || hasReservationPricingInfo(contextXml);
@@ -103,8 +104,7 @@ export function inferPortalBookingSupport(input: BookingWorkflowInput): BookingW
             hasStoredPricing,
             requiresSupplierPayment,
             providerIsHosted,
-            hasNonTicketableSegment || hasBlockingProviderStatus,
-            derivedProviderCode
+            hasNonTicketableSegment || hasBlockingProviderStatus
         );
 
     return {
@@ -143,28 +143,23 @@ function buildFallbackNotice(
     hasStoredPricing: boolean,
     requiresSupplierPayment: boolean,
     providerIsHosted: boolean,
-    hasNonTicketableStatus: boolean,
-    providerCode: string
+    hasNonTicketableStatus: boolean
 ): string {
     if (!hasStoredPricing) {
         return "This itinerary does not include reservation-ready stored pricing yet. Search again and choose a fully priced fare before confirming the booking.";
     }
 
     if (requiresSupplierPayment) {
-        const providerLabel = providerCode && !HOST_PROVIDERS.has(providerCode.toUpperCase())
-            ? `${providerCode} supplier content`
-            : "supplier-direct content";
-
-        return `This itinerary uses ${providerLabel}, so TourValve cannot auto-ticket it through wallet checkout yet. Please choose a GDS-hosted fare for instant portal issuance.`;
+        return "This itinerary uses supplier-direct content, so TourValve cannot auto-ticket it through wallet checkout yet. Please choose a GDS-hosted fare for instant portal issuance.";
     }
 
     if (!providerIsHosted) {
-        return "This itinerary is not returning hosted Travelport reservation content for portal checkout yet. Please choose another fare.";
+        return "This itinerary is not returning hosted reservation content for portal checkout yet. Please choose another fare.";
     }
 
     if (hasNonTicketableStatus) {
-        return "This itinerary is returning a non-ticketable provider status from Travelport, so it cannot be reserved safely from the portal. Please search again or choose another fare.";
+        return "This itinerary is returning a non-ticketable provider status, so it cannot be reserved safely from the portal. Please search again or choose another fare.";
     }
 
-    return "This itinerary is not ready for the TourValve portal checkout flow yet. Search again or choose another fare.";
+    return scrubProviderMentions("This itinerary is not ready for the TourValve portal checkout flow yet. Search again or choose another fare.");
 }

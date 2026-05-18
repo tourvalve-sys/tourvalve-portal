@@ -29,8 +29,9 @@ import {
     X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { getFlightSeatMap, priceFlight, searchAtlasFlights, searchFlights, type FlightResult, type FlightSeatMapResponse } from "@/lib/api";
+import { getCurrentUser, getFlightSeatMap, priceFlight, searchAtlasFlights, searchFlights, type CurrentUser, type FlightResult, type FlightSeatMapResponse } from "@/lib/api";
 import { findAirportMatches, getAirportByCode, type AirportOption } from "@/lib/airports";
+import { scrubProviderMentions } from "@/lib/scrubProviderMentions";
 import AirlineBrand, { formatFlightDesignator, getAirlineDisplayName } from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
 import PromoCarousel from "@/components/PromoCarousel";
@@ -591,7 +592,7 @@ function formatMinutesDuration(minutes: number | null) {
 
 function formatSeatMapRawPreview(raw: unknown) {
     if (typeof raw !== "string" || !raw.trim()) {
-        return "No raw Travelport response was returned for this request.";
+        return "No raw provider response was returned for this request.";
     }
 
     return raw.replace(/\s+/g, " ").trim().slice(0, 1200);
@@ -890,6 +891,16 @@ export default function FlightSearch() {
     const persistedUiState = readPersistedFlightSearchState();
     const sanitizedContextState = sanitizeInMemoryFlightSearchState(flightSearchState);
     const restoredState = sanitizedContextState ?? persistedUiState;
+    const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+    const canViewProviderDiagnostics = currentUser?.role === "ADMIN";
+
+    useEffect(() => {
+        getCurrentUser()
+            .then(setCurrentUser)
+            .catch(() => {
+                // Non-blocking: flight shopping should still work even if user lookup fails.
+            });
+    }, []);
 
     const [tripType, setTripType] = useState<"oneway" | "return" | "multicity">(
         restoredState?.tripType ?? "oneway"
@@ -1178,7 +1189,7 @@ export default function FlightSearch() {
     };
 
     const getErrorMessage = (value: unknown) =>
-        value instanceof Error ? value.message : "Flight search failed";
+        scrubProviderMentions(value instanceof Error ? value.message : "Flight search failed");
 
     const selectSearchMode = (mode: SearchMode) => {
         if (contentSource === "atlas" && mode === "availability") {
@@ -1307,7 +1318,7 @@ export default function FlightSearch() {
 
     const handleSearch = async () => {
         if (contentSource === "atlas" && tripType === "multicity") {
-            setError("Atlas LCC shopping currently supports one-way and return searches only.");
+            setError("Low-cost shopping currently supports one-way and return searches only.");
             return;
         }
 
@@ -2261,11 +2272,11 @@ export default function FlightSearch() {
                         </div>
                     </div>
 
-                    <div id="flight-search-form" className="mb-5 rounded-[1.4rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.7)] px-4 py-4 sm:rounded-[1.6rem]">
+                        <div id="flight-search-form" className="mb-5 rounded-[1.4rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.7)] px-4 py-4 sm:rounded-[1.6rem]">
                         <div className="mb-4">
                             <div className="subtle-kicker">Inventory Provider</div>
                             <div className="mt-1 text-sm leading-6 text-slate-600">
-                                Switch between GDS-hosted Travelport content and Atlas low-cost carrier (LCC) content.
+                                Switch between full-service GDS content and low-cost carrier (LCC) content.
                             </div>
                             <div className="mt-3 grid gap-3 md:grid-cols-2">
                                 <button
@@ -2277,7 +2288,7 @@ export default function FlightSearch() {
                                             : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
                                     }`}
                                 >
-                                    <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">Travelport (GDS)</div>
+                                    <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">Full service (GDS)</div>
                                     <div className="mt-2 text-sm leading-6 text-slate-600">
                                         Full GDS shopping + availability diagnostics + hosted ticketing workflow.
                                     </div>
@@ -2291,7 +2302,7 @@ export default function FlightSearch() {
                                             : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
                                     }`}
                                 >
-                                    <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Atlas (LCC)</div>
+                                    <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Low cost (LCC)</div>
                                     <div className="mt-2 text-sm leading-6 text-slate-600">
                                         Low-cost carrier inventory. Reservation-first flow; ticketing happens later.
                                     </div>
@@ -2334,7 +2345,7 @@ export default function FlightSearch() {
                             >
                                 <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Air Availability</div>
                                 <div className="mt-2 text-sm leading-6 text-slate-600">
-                                    Travelport-only schedules for manual pricing when low fares are missing.
+                                    GDS-only schedules for manual pricing when low fares are missing.
                                 </div>
                             </button>
                         </div>
@@ -3355,7 +3366,7 @@ export default function FlightSearch() {
                                         })}
                                     </div>
                                     <div className="mt-3 rounded-[1rem] bg-[rgba(241,248,255,0.92)] px-3 py-3 text-xs leading-6 text-slate-500">
-                                        These baggage details come from the live priced Travelport shopping response when the airline exposes them before booking.
+                                        These baggage details come from the live priced provider response when the airline exposes them before booking.
                                     </div>
                                 </div>
 
@@ -3424,7 +3435,7 @@ export default function FlightSearch() {
                                         <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Live seat map</div>
                                         <h3 className="mt-2 text-2xl font-semibold text-[var(--ink)]">Choose seats before checkout.</h3>
                                         <div className="mt-2 text-sm text-slate-500">
-                                            This panel requests a live Travelport `SeatMapReq` and renders the returned `SeatMapRsp` when the airline exposes drawable rows and facilities.
+                                            This panel requests a live seat map and renders it when the airline exposes drawable rows and facilities.
                                         </div>
                                     </div>
                                     <button
@@ -3473,7 +3484,7 @@ export default function FlightSearch() {
                                         <div className="flex flex-wrap items-center justify-between gap-3">
                                             <div>
                                                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                                    Live Travelport response
+                                                    Live seat map response
                                                 </div>
                                                 <div className="mt-1 text-sm font-semibold text-[var(--ink)]">
                                                     {prebookSeatMap.source || "PRE_BOOK_SEATMAP"} - {prebookSeatMap.carrier || prebookFlight.carrier} {prebookSeatMap.flightNumber || prebookFlight.flightNumber}
@@ -3515,14 +3526,16 @@ export default function FlightSearch() {
                                             </div>
                                         ) : null}
 
-                                        <details className="mt-4 rounded-[1rem] border border-[rgba(23,68,152,0.08)] bg-[rgba(248,250,255,0.86)] px-3 py-3 text-xs leading-6 text-slate-600">
-                                            <summary className="cursor-pointer font-semibold text-[var(--ink)]">
-                                                View raw Travelport XML preview
-                                            </summary>
-                                            <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-[0.85rem] bg-slate-950 p-3 text-[11px] leading-5 text-slate-100">
-                                                {formatSeatMapRawPreview(prebookSeatMap.rawResponse)}
-                                            </pre>
-                                        </details>
+                                        {canViewProviderDiagnostics ? (
+                                            <details className="mt-4 rounded-[1rem] border border-[rgba(23,68,152,0.08)] bg-[rgba(248,250,255,0.86)] px-3 py-3 text-xs leading-6 text-slate-600">
+                                                <summary className="cursor-pointer font-semibold text-[var(--ink)]">
+                                                    View raw response preview
+                                                </summary>
+                                                <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-[0.85rem] bg-slate-950 p-3 text-[11px] leading-5 text-slate-100">
+                                                    {formatSeatMapRawPreview(prebookSeatMap.rawResponse)}
+                                                </pre>
+                                            </details>
+                                        ) : null}
                                     </div>
                                 )}
 
