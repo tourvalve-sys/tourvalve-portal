@@ -798,6 +798,21 @@ public sealed class AirBookingController : ControllerBase
             parts.Add($"Seat Map: {seat}");
         }
 
+        var addOns = preferences.SelectedAncillaries
+            .Where(x => !string.IsNullOrWhiteSpace(x.Type) && !string.IsNullOrWhiteSpace(x.Code))
+            .ToList();
+        if (addOns.Count > 0)
+        {
+            foreach (var item in addOns.Take(6))
+            {
+                var segment = string.IsNullOrWhiteSpace(item.SegmentLabel) ? string.Empty : $" ({item.SegmentLabel.Trim()})";
+                parts.Add($"Add-on: {item.Type.Trim().ToUpperInvariant()} {item.Code.Trim()}{segment}");
+            }
+
+            if (addOns.Count > 6)
+                parts.Add($"Add-on: +{addOns.Count - 6} more");
+        }
+
         if (!string.IsNullOrWhiteSpace(preferences.MealPreference))
             parts.Add($"Meal: {preferences.MealPreference.Trim()}");
 

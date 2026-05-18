@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security;
 using System.Xml.Linq;
 using Microsoft.AspNetCore.Mvc;
+using TourValve.Application.Bookings.Ancillaries;
 using TourValve.Application.Flights;
 using TourValve.Application.Flights.DTO;
 using TourValve.Infrastructure.Travelport.Air;
@@ -254,6 +255,116 @@ public class FlightsController : ControllerBase
             return Content(response, "application/xml");
 
         return Ok(ParseSeatMapResponse(response));
+    }
+
+    [HttpPost("prebook-ancillary-offers")]
+    public async Task<IActionResult> PrebookAncillaryOffers([FromBody] PrebookAncillaryOffersRequest req, [FromQuery] bool debugRaw = false)
+    {
+        var segments = (req.AirSegmentXmls ?? new List<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        if (segments.Count == 0 && !string.IsNullOrWhiteSpace(req.AirSegmentXml))
+            segments.Add(req.AirSegmentXml);
+
+        if (segments.Count == 0)
+            return BadRequest(new { error = "Air segment data is required to retrieve ancillary offers." });
+
+        if (req.Adults <= 0)
+            return BadRequest(new { error = "At least one adult passenger is required." });
+
+        EnsureLiveTravelportConfigured();
+
+        string response;
+
+        try
+        {
+            response = await _air.PostToAirServiceAsync(
+                BuildPrebookMerchandisingOfferAvailabilityXml(segments, req.Adults, req.Child, req.Infant),
+                "http://www.travelport.com/schema/air_v51_0/AirMerchandisingOfferAvailabilityReq"
+            );
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                error = "Ancillary offer retrieval failed.",
+                detail = BuildProviderFriendlyDetail(ex.Message, "ancillaries")
+            });
+        }
+
+        if (debugRaw)
+            return Content(response, "application/xml");
+
+        var segmentLabels = BuildPrebookSegmentLabels(segments);
+        return Ok(ParsePrebookOfferAvailabilityResponse(response, segmentLabels));
+    }
+
+    private static Dictionary<string, string> BuildPrebookSegmentLabels(IReadOnlyList<string> airSegmentXmls)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < airSegmentXmls.Count; i++)
+        {
+            var segmentXml = airSegmentXmls[i];
+            if (string.IsNullOrWhiteSpace(segmentXml))
+                continue;
+
+            XElement segment;
+            try
+            {
+                segment = XElement.Parse(segmentXml);
+            }
+            catch
+            {
+                continue;
+            }
+
+            var carrier = segment.Attribute("Carrier")?.Value?.Trim() ?? string.Empty;
+            var flightNumber = segment.Attribute("FlightNumber")?.Value?.Trim() ?? string.Empty;
+            var origin = segment.Attribute("Origin")?.Value?.Trim() ?? string.Empty;
+            var destination = segment.Attribute("Destination")?.Value?.Trim() ?? string.Empty;
+            var key = segment.Attribute("Key")?.Value?.Trim();
+
+            if (string.IsNullOrWhiteSpace(key))
+                key = $"SEG-{i + 1}";
+
+            var designator = FormatFlightDesignator(carrier, flightNumber);
+            var label = $"{origin} -> {destination}{(string.IsNullOrWhiteSpace(designator) ? "" : $" ({designator})")}";
+
+            if (!map.ContainsKey(key))
+                map[key] = label;
+        }
+
+        return map;
+    }
+
+    private static string FormatFlightDesignator(string carrier, string flightNumber)
+    {
+        var normalizedCarrier = (carrier ?? string.Empty).Trim().ToUpperInvariant();
+        var rawFlightNumber = (flightNumber ?? string.Empty).Trim();
+
+        if (string.IsNullOrWhiteSpace(rawFlightNumber))
+            return normalizedCarrier;
+
+        var upper = rawFlightNumber.ToUpperInvariant();
+        var compact = string.Concat(upper.Where(ch => !char.IsWhiteSpace(ch)));
+
+        if (!string.IsNullOrWhiteSpace(normalizedCarrier) &&
+            compact.StartsWith(normalizedCarrier, StringComparison.OrdinalIgnoreCase))
+        {
+            return compact;
+        }
+
+        var cleaned = new string(upper.Where(char.IsLetterOrDigit).ToArray());
+
+        if (string.IsNullOrWhiteSpace(normalizedCarrier))
+            return string.IsNullOrWhiteSpace(cleaned) ? compact : cleaned;
+
+        if (cleaned.StartsWith(normalizedCarrier, StringComparison.OrdinalIgnoreCase))
+            return cleaned;
+
+        return $"{normalizedCarrier} {(string.IsNullOrWhiteSpace(cleaned) ? compact : cleaned)}".Trim();
     }
 
     private IActionResult? ValidateSearch(FlightSearchRequest req)
@@ -1570,6 +1681,243 @@ public class FlightsController : ControllerBase
         return $"{date:yyyy-MM-dd}T12:00:00";
     }
 
+    private string BuildPrebookMerchandisingOfferAvailabilityXml(
+        IReadOnlyList<string> airSegmentXmls,
+        int adults,
+        int child,
+        int infant)
+    {
+        var travelers = new List<(string key, string code, string first, string last)>();
+
+        var travelerIndex = 1;
+        for (var i = 0; i < adults; i++)
+        {
+            travelers.Add(($"TRV-{travelerIndex}", "ADT", "Passenger", travelerIndex.ToString(CultureInfo.InvariantCulture)));
+            travelerIndex++;
+        }
+
+        for (var i = 0; i < Math.Max(child, 0); i++)
+        {
+            travelers.Add(($"TRV-{travelerIndex}", "CNN", "Passenger", travelerIndex.ToString(CultureInfo.InvariantCulture)));
+            travelerIndex++;
+        }
+
+        for (var i = 0; i < Math.Max(infant, 0); i++)
+        {
+            travelers.Add(($"TRV-{travelerIndex}", "INF", "Passenger", travelerIndex.ToString(CultureInfo.InvariantCulture)));
+            travelerIndex++;
+        }
+
+        var travelersXml = string.Join(
+            Environment.NewLine,
+            travelers.Select(traveler => $@"
+    <air:SearchTraveler Key=""{Escape(traveler.key)}"" Code=""{Escape(traveler.code)}"">
+      <com:Name First=""{Escape(traveler.first)}"" Last=""{Escape(traveler.last)}"" />
+    </air:SearchTraveler>").ToArray());
+
+        var segmentsXml = string.Join(
+            Environment.NewLine,
+            airSegmentXmls
+                .Select((segmentXml, index) => BuildMerchandisingSegmentXml(segmentXml, index))
+                .Where(x => !string.IsNullOrWhiteSpace(x)));
+
+        return $@"
+<air:AirMerchandisingOfferAvailabilityReq
+    xmlns:air=""http://www.travelport.com/schema/air_v51_0""
+    xmlns:com=""http://www.travelport.com/schema/common_v51_0""
+    xmlns:univ=""http://www.travelport.com/schema/universal_v51_0""
+    AuthorizedBy=""{Escape(_travelportConfig.Username.Replace("Universal API/", "", StringComparison.OrdinalIgnoreCase))}""
+    TargetBranch=""{Escape(_travelportConfig.TargetBranch)}""
+    TraceId=""TV-PREBOOK-AMOA-{DateTime.UtcNow:yyyyMMddHHmmss}"">
+  <com:BillingPointOfSaleInfo OriginApplication=""UAPI"" />
+  <air:AirSolution>
+{travelersXml}
+{segmentsXml}
+  </air:AirSolution>
+</air:AirMerchandisingOfferAvailabilityReq>".Trim();
+    }
+
+    private static string BuildMerchandisingSegmentXml(string segmentXml, int index)
+    {
+        if (string.IsNullOrWhiteSpace(segmentXml))
+            return string.Empty;
+
+        XElement segment;
+        try
+        {
+            segment = XElement.Parse(segmentXml);
+        }
+        catch
+        {
+            return string.Empty;
+        }
+
+        var carrier = segment.Attribute("Carrier")?.Value?.Trim() ?? string.Empty;
+        var flightNumber = segment.Attribute("FlightNumber")?.Value?.Trim() ?? string.Empty;
+        var origin = segment.Attribute("Origin")?.Value?.Trim() ?? string.Empty;
+        var destination = segment.Attribute("Destination")?.Value?.Trim() ?? string.Empty;
+        var departureTime = segment.Attribute("DepartureTime")?.Value?.Trim() ?? string.Empty;
+        var arrivalTime = segment.Attribute("ArrivalTime")?.Value?.Trim() ?? string.Empty;
+        var group = segment.Attribute("Group")?.Value?.Trim();
+        var providerCode = segment.Attribute("ProviderCode")?.Value?.Trim();
+        var classOfService = segment.Attribute("ClassOfService")?.Value?.Trim();
+
+        if (string.IsNullOrWhiteSpace(carrier) || string.IsNullOrWhiteSpace(flightNumber) || string.IsNullOrWhiteSpace(origin) ||
+            string.IsNullOrWhiteSpace(destination) || string.IsNullOrWhiteSpace(departureTime) || string.IsNullOrWhiteSpace(arrivalTime))
+        {
+            return string.Empty;
+        }
+
+        var key = segment.Attribute("Key")?.Value?.Trim();
+        if (string.IsNullOrWhiteSpace(key))
+            key = $"SEG-{index + 1}";
+
+        var providerAttr = string.IsNullOrWhiteSpace(providerCode) ? string.Empty : $@" ProviderCode=""{Escape(providerCode)}""";
+        var groupAttr = string.IsNullOrWhiteSpace(group) ? string.Empty : $@" Group=""{Escape(group)}""";
+        var cosAttr = string.IsNullOrWhiteSpace(classOfService) ? string.Empty : $@" ClassOfService=""{Escape(classOfService)}""";
+
+        return $@"
+    <air:AirSegment
+      Key=""{Escape(key)}""{groupAttr}{providerAttr}{cosAttr}
+      Carrier=""{Escape(carrier)}""
+      FlightNumber=""{Escape(flightNumber)}""
+      Origin=""{Escape(origin)}""
+      Destination=""{Escape(destination)}""
+      DepartureTime=""{Escape(departureTime)}""
+      ArrivalTime=""{Escape(arrivalTime)}"" />".TrimEnd();
+    }
+
+    private static BookingAncillaryOfferCatalog ParsePrebookOfferAvailabilityResponse(string xml, IReadOnlyDictionary<string, string> segmentLabels)
+    {
+        var catalog = new BookingAncillaryOfferCatalog
+        {
+            Source = "AMOA_PREBOOK",
+            Message = "No live airline-priced ancillary offers were returned by the supplier for this itinerary."
+        };
+
+        XDocument doc;
+        try
+        {
+            doc = XDocument.Parse(xml);
+        }
+        catch
+        {
+            catalog.Message = "The ancillary offer response could not be parsed.";
+            return catalog;
+        }
+
+        var optionalServices = doc.Descendants()
+            .Where(x => x.Name.LocalName == "OptionalService")
+            .Select(element => MapPrebookOptionalService(element, segmentLabels))
+            .Where(x => x is not null)
+            .Cast<BookingAncillaryOfferDto>()
+            .GroupBy(x => $"{x.Type}|{x.Code}|{x.SegmentLabel}|{x.BaseAmount}|{x.Currency}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+        foreach (var offer in optionalServices)
+        {
+            if (!catalog.Categories.TryGetValue(offer.Type, out var list))
+            {
+                list = new List<BookingAncillaryOfferDto>();
+                catalog.Categories[offer.Type] = list;
+            }
+
+            list.Add(offer);
+        }
+
+        catalog.Diagnostics.TotalLiveOffers = optionalServices.Count;
+        catalog.Diagnostics.BaggageOffers = catalog.Categories["BAGGAGE"].Count;
+        catalog.Diagnostics.MealOffers = catalog.Categories["MEAL"].Count;
+        catalog.Diagnostics.SeatOffers = catalog.Categories["SEAT"].Count;
+        catalog.HasLivePricedOffers = optionalServices.Count > 0;
+
+        if (catalog.HasLivePricedOffers)
+            catalog.Message = "Live airline-priced ancillary options were returned by the supplier for this itinerary.";
+        else
+        {
+            var responseMessages = doc.Descendants()
+                .Where(x => x.Name.LocalName == "ResponseMessage")
+                .Select(x => x.Value?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (responseMessages.Count > 0)
+                catalog.Message = responseMessages[0]!;
+        }
+
+        return catalog;
+    }
+
+    private static BookingAncillaryOfferDto? MapPrebookOptionalService(XElement element, IReadOnlyDictionary<string, string> segmentLabels)
+    {
+        var type = NormalizeOptionalServiceType(element.Attribute("Type")?.Value);
+        if (type is null)
+            return null;
+
+        var totalPrice = element.Attribute("TotalPrice")?.Value?.Trim();
+        var basePrice = element.Attribute("BasePrice")?.Value?.Trim();
+        var priceText = string.IsNullOrWhiteSpace(totalPrice) ? basePrice : totalPrice;
+        if (!TryParseCurrencyAmount(priceText, out var amount, out var currency) || !amount.HasValue)
+            return null;
+
+        var description = element.Descendants().FirstOrDefault(x => x.Name.LocalName == "Description")?.Value?.Trim()
+            ?? element.Attribute("DisplayText")?.Value?.Trim()
+            ?? element.Attribute("Type")?.Value?.Trim()
+            ?? "Ancillary option";
+
+        var segmentRefs = element.Descendants()
+            .Where(x => x.Name.LocalName == "ServiceData")
+            .Select(x => x.Attribute("AirSegmentRef")?.Value?.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var segmentLabel = segmentRefs.Count == 0
+            ? string.Empty
+            : string.Join(
+                ", ",
+                segmentRefs.Select(segmentRef => segmentLabels.TryGetValue(segmentRef ?? string.Empty, out var label) ? label : segmentRef));
+
+        return new BookingAncillaryOfferDto
+        {
+            Id = element.Attribute("Key")?.Value?.Trim() ?? Guid.NewGuid().ToString("N"),
+            Type = type,
+            Code = element.Attribute("ServiceSubCode")?.Value?.Trim()
+                   ?? element.Attribute("SSRCode")?.Value?.Trim()
+                   ?? element.Attribute("Key")?.Value?.Trim()
+                   ?? type,
+            Title = description,
+            Subtitle = "Live airline-priced option",
+            Description = description,
+            BaseAmount = amount.Value,
+            Currency = currency,
+            IsLive = true,
+            Source = "AMOA_PREBOOK",
+            SegmentLabel = segmentLabel,
+            SupplierText = description,
+            Highlight = "Live",
+            RawReference = element.Attribute("Key")?.Value?.Trim() ?? string.Empty
+        };
+    }
+
+    private static string? NormalizeOptionalServiceType(string? rawType)
+    {
+        var type = (rawType ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(type))
+            return null;
+
+        if (type.Contains("Bag", StringComparison.OrdinalIgnoreCase))
+            return "BAGGAGE";
+        if (type.Contains("Meal", StringComparison.OrdinalIgnoreCase) || type.Contains("Beverage", StringComparison.OrdinalIgnoreCase))
+            return "MEAL";
+        if (type.Contains("Seat", StringComparison.OrdinalIgnoreCase))
+            return "SEAT";
+
+        return null;
+    }
+
     private static string Escape(string value) => SecurityElement.Escape(value) ?? string.Empty;
 }
 
@@ -1580,4 +1928,13 @@ public sealed class FlightSeatMapRequest
     public string AirPricingContextXml { get; set; } = string.Empty;
     public string FrequentFlyerProgram { get; set; } = string.Empty;
     public string FrequentFlyerNumber { get; set; } = string.Empty;
+}
+
+public sealed class PrebookAncillaryOffersRequest
+{
+    public string AirSegmentXml { get; set; } = string.Empty;
+    public List<string> AirSegmentXmls { get; set; } = new();
+    public int Adults { get; set; } = 1;
+    public int Child { get; set; }
+    public int Infant { get; set; }
 }

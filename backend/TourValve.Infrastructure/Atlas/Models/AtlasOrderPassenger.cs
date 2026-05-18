@@ -37,5 +37,18 @@ public sealed class AtlasOrderPassenger
     // 2-letter country code (e.g., MY, ID). Some LCC flows require this.
     [JsonPropertyName("nationality")]
     public string? Nationality { get; set; }
+
+    // Optional pre-book ancillaries (e.g., baggage / seat productCode selections).
+    [JsonPropertyName("ancillaries")]
+    public List<AtlasOrderAncillary>? Ancillaries { get; set; }
+}
+
+public sealed class AtlasOrderAncillary
+{
+    [JsonPropertyName("productCode")]
+    public string ProductCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("segmentIndex")]
+    public int SegmentIndex { get; set; }
 }
 

@@ -29,7 +29,21 @@ import {
     X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { getCurrentUser, getFlightSeatMap, priceFlight, searchAtlasFlights, searchFlights, type CurrentUser, type FlightResult, type FlightSeatMapResponse } from "@/lib/api";
+import {
+    getAtlasPrebookAncillaries,
+    getCurrentUser,
+    getFlightSeatMap,
+    getPrebookAncillaryOffers,
+    priceFlight,
+    searchAtlasFlights,
+    searchFlights,
+    type AtlasAncillaryProductElement,
+    type AtlasPrebookAncillariesResponse,
+    type CurrentUser,
+    type FlightResult,
+    type FlightSeatMapResponse,
+    type PrebookAncillaryOfferCatalog,
+} from "@/lib/api";
 import { findAirportMatches, getAirportByCode, type AirportOption } from "@/lib/airports";
 import { scrubProviderMentions } from "@/lib/scrubProviderMentions";
 import AirlineBrand, { formatFlightDesignator, getAirlineDisplayName } from "@/components/AirlineBrand";
@@ -324,7 +338,19 @@ const createDefaultFlightSearchUiState = (): FlightSearchUiState => ({
 
 type PrebookSeatSelection = {
     segmentLabel: string;
+    segmentIndex?: number;
     seatCode: string;
+    productCode?: string;
+};
+
+type PrebookPaidAncillarySelection = {
+    type: "BAGGAGE" | "MEAL" | "SEAT";
+    segmentLabel: string;
+    segmentIndex?: number;
+    code: string;
+    title: string;
+    amount: number;
+    currency: string;
 };
 
 const prebookMealOptions = [
@@ -692,6 +718,21 @@ function sanitizeFlightResult(flight: FlightResult): FlightResult {
                                     typeof seat.seatCode === "string"
                             )
                           : [],
+                      paidAncillaries: Array.isArray(flight.prebookSelections.paidAncillaries)
+                          ? flight.prebookSelections.paidAncillaries.filter(
+                                (
+                                    item
+                                ): item is NonNullable<NonNullable<FlightResult["prebookSelections"]>["paidAncillaries"]>[number] =>
+                                    Boolean(item) &&
+                                    typeof item === "object" &&
+                                    typeof item.type === "string" &&
+                                    typeof item.segmentLabel === "string" &&
+                                    typeof item.code === "string" &&
+                                    typeof item.title === "string" &&
+                                    typeof item.amount === "number" &&
+                                    typeof item.currency === "string"
+                            )
+                          : [],
                   }
                 : undefined,
     };
@@ -933,6 +974,14 @@ export default function FlightSearch() {
     const [prebookSelectedSeats, setPrebookSelectedSeats] = useState<PrebookSeatSelection[]>([]);
     const [prebookBaggageChoice, setPrebookBaggageChoice] = useState("");
     const [prebookMealChoice, setPrebookMealChoice] = useState("Standard");
+    const [prebookAncillaryCatalog, setPrebookAncillaryCatalog] = useState<PrebookAncillaryOfferCatalog | null>(null);
+    const [prebookAncillaryLoading, setPrebookAncillaryLoading] = useState(false);
+    const [prebookAncillaryError, setPrebookAncillaryError] = useState("");
+    const [prebookAtlasSeatMaps, setPrebookAtlasSeatMaps] = useState<AtlasPrebookAncillariesResponse["seatMaps"] | null>(null);
+    const [prebookAtlasLuggage, setPrebookAtlasLuggage] = useState<AtlasAncillaryProductElement[]>([]);
+    const [prebookAtlasAncillaryLoading, setPrebookAtlasAncillaryLoading] = useState(false);
+    const [prebookAtlasAncillaryError, setPrebookAtlasAncillaryError] = useState("");
+    const [prebookPaidAncillaries, setPrebookPaidAncillaries] = useState<PrebookPaidAncillarySelection[]>([]);
     const searchModeRef = useRef<SearchMode>(restoredState?.searchMode ?? "lowfare");
     const resultsSectionRef = useRef<HTMLDivElement | null>(null);
     const firstResultCardRef = useRef<HTMLDivElement | null>(null);
@@ -1106,6 +1155,74 @@ export default function FlightSearch() {
         () => (prebookFlight ? getBaggageHighlights(prebookFlight) : []),
         [prebookFlight]
     );
+    const prebookPaidBaggageOptions = useMemo<PrebookPaidAncillarySelection[]>(() => {
+        if (!prebookFlight) {
+            return [];
+        }
+
+        const provider = prebookFlight.providerCode.trim().toUpperCase();
+        const segmentLabel = prebookActiveSegment?.label ?? `${prebookFlight.from} -> ${prebookFlight.to}`;
+        const segmentIndex = prebookActiveSegmentIndex + 1;
+
+        if (provider === "ATLAS") {
+            return prebookAtlasLuggage
+                .filter((item) => item.segmentIndex === segmentIndex)
+                .filter((item) => {
+                    const category = (item.categoryCode ?? "").toLowerCase();
+                    const productName = (item.productName ?? "").toLowerCase();
+                    return category.includes("standardcheckinbaggage") || productName.includes("standardcheckinbaggage");
+                })
+                .filter((item) => Boolean(item.productCode))
+                .map((item) => {
+                    const aux = item.auxBaggageElement ?? null;
+                    const weightLabel = aux?.weight ? `${aux.weight}kg` : "";
+                    const pieceLabel = aux?.piece ? `${aux.piece}pc` : "";
+                    const title =
+                        weightLabel || pieceLabel
+                            ? `Checked baggage ${[pieceLabel, weightLabel].filter(Boolean).join(" ")}`
+                            : item.productName || "Checked baggage";
+
+                    return {
+                        type: "BAGGAGE",
+                        segmentLabel,
+                        segmentIndex: item.segmentIndex,
+                        code: item.productCode,
+                        title,
+                        amount: typeof item.price === "number" ? item.price : Number(item.price ?? 0),
+                        currency: item.currency || prebookFlight.currency,
+                    };
+                });
+        }
+
+        const offers = prebookAncillaryCatalog?.categories?.BAGGAGE ?? [];
+        return offers
+            .filter((offer) => {
+                const offerSegment = (offer.segmentLabel ?? "").trim();
+                if (!offerSegment) {
+                    return true;
+                }
+
+                return offerSegment
+                    .split(",")
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                    .includes(segmentLabel);
+            })
+            .map((offer) => ({
+            type: "BAGGAGE",
+            segmentLabel: (offer.segmentLabel ?? "").trim() || segmentLabel,
+            code: offer.code,
+            title: offer.title || "Baggage option",
+            amount: offer.baseAmount,
+            currency: offer.currency || prebookFlight.currency,
+        }));
+    }, [
+        prebookActiveSegment?.label,
+        prebookActiveSegmentIndex,
+        prebookAncillaryCatalog,
+        prebookAtlasLuggage,
+        prebookFlight,
+    ]);
     const prebookSeatRows = useMemo(
         () => normalizeSeatRows(prebookSeatMap),
         [prebookSeatMap]
@@ -1220,6 +1337,14 @@ export default function FlightSearch() {
         setPrebookFlightId(null);
         setPrebookSeatMap(null);
         setPrebookSeatMapError("");
+        setPrebookAncillaryCatalog(null);
+        setPrebookAncillaryError("");
+        setPrebookAncillaryLoading(false);
+        setPrebookAtlasSeatMaps(null);
+        setPrebookAtlasLuggage([]);
+        setPrebookAtlasAncillaryError("");
+        setPrebookAtlasAncillaryLoading(false);
+        setPrebookPaidAncillaries([]);
         setPrebookActiveSegmentIndex(0);
         setPrebookSelectedSeats([]);
         setPrebookBaggageChoice("");
@@ -1230,6 +1355,12 @@ export default function FlightSearch() {
         setPrebookFlightId(flight.id);
         setPrebookSeatMap(null);
         setPrebookSeatMapError("");
+        setPrebookAncillaryCatalog(null);
+        setPrebookAncillaryError("");
+        setPrebookAtlasSeatMaps(null);
+        setPrebookAtlasLuggage([]);
+        setPrebookAtlasAncillaryError("");
+        setPrebookPaidAncillaries(flight.prebookSelections?.paidAncillaries ?? []);
         setPrebookActiveSegmentIndex(0);
         setPrebookSelectedSeats(flight.prebookSelections?.selectedSeats ?? []);
         setPrebookBaggageChoice(
@@ -1242,7 +1373,7 @@ export default function FlightSearch() {
         );
     };
 
-    const choosePrebookSeat = (seatCode: string) => {
+    const choosePrebookSeat = (seatCode: string, productCode?: string) => {
         if (!prebookActiveSegment) {
             return;
         }
@@ -1251,13 +1382,69 @@ export default function FlightSearch() {
             ...current.filter((seat) => seat.segmentLabel !== prebookActiveSegment.label),
             {
                 segmentLabel: prebookActiveSegment.label,
+                segmentIndex: prebookActiveSegmentIndex + 1,
                 seatCode,
+                ...(productCode ? { productCode } : {}),
             },
         ]);
     };
 
+    const prebookSelectedPaidBaggage = useMemo(() => {
+        if (!prebookFlight) {
+            return null;
+        }
+
+        const segmentIndex = prebookActiveSegmentIndex + 1;
+        const segmentLabel = prebookActiveSegment?.label ?? "";
+
+        return (
+            prebookPaidAncillaries.find((item) =>
+                item.type === "BAGGAGE" &&
+                ((typeof item.segmentIndex === "number" && item.segmentIndex === segmentIndex) ||
+                    (!item.segmentIndex && item.segmentLabel === segmentLabel))
+            ) ?? null
+        );
+    }, [prebookActiveSegment?.label, prebookActiveSegmentIndex, prebookFlight, prebookPaidAncillaries]);
+
+    const prebookPaidAddOnTotal = useMemo(() => {
+        if (!prebookPaidAncillaries.length) {
+            return 0;
+        }
+
+        return prebookPaidAncillaries.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
+    }, [prebookPaidAncillaries]);
+
+    const choosePrebookPaidBaggage = (option: PrebookPaidAncillarySelection | null) => {
+        if (!prebookFlight) {
+            return;
+        }
+
+        const segmentIndex = prebookActiveSegmentIndex + 1;
+        const segmentLabel = prebookActiveSegment?.label ?? "";
+
+        setPrebookPaidAncillaries((current) => {
+            const filtered = current.filter((item) => {
+                if (item.type !== "BAGGAGE") {
+                    return true;
+                }
+
+                if (typeof item.segmentIndex === "number") {
+                    return item.segmentIndex !== segmentIndex;
+                }
+
+                return item.segmentLabel !== segmentLabel;
+            });
+
+            if (!option) {
+                return filtered;
+            }
+
+            return [...filtered, option];
+        });
+    };
+
     const loadPrebookSeatMap = useCallback(async () => {
-        if (!prebookFlight || !prebookActiveSegment?.airSegmentXml) {
+        if (!prebookFlight || prebookFlight.providerCode.trim().toUpperCase() === "ATLAS" || !prebookActiveSegment?.airSegmentXml) {
             setPrebookSeatMapError("This flight leg does not include enough live segment data for seat mapping.");
             return;
         }
@@ -1283,13 +1470,117 @@ export default function FlightSearch() {
         }
     }, [prebookActiveSegment, prebookFlight]);
 
+    const loadPrebookAncillaryOffers = useCallback(async () => {
+        if (!prebookFlight || prebookFlight.providerCode.trim().toUpperCase() === "ATLAS") {
+            return;
+        }
+
+        try {
+            setPrebookAncillaryLoading(true);
+            setPrebookAncillaryError("");
+            const response = await getPrebookAncillaryOffers({
+                airSegmentXml: prebookFlight.airSegmentXml,
+                airSegmentXmls: prebookFlight.airSegmentXmls,
+                adults: form.adults,
+                child: form.child,
+                infant: form.infant,
+            });
+            setPrebookAncillaryCatalog(response);
+        } catch (value: unknown) {
+            setPrebookAncillaryCatalog(null);
+            setPrebookAncillaryError(getErrorMessage(value));
+        } finally {
+            setPrebookAncillaryLoading(false);
+        }
+    }, [form.adults, form.child, form.infant, prebookFlight]);
+
+    const loadPrebookAtlasAncillaries = useCallback(async () => {
+        if (!prebookFlight || prebookFlight.providerCode.trim().toUpperCase() !== "ATLAS") {
+            return;
+        }
+
+        try {
+            setPrebookAtlasAncillaryLoading(true);
+            setPrebookAtlasAncillaryError("");
+
+            const response = await getAtlasPrebookAncillaries(prebookFlight.airPricingSolutionXml);
+            setPrebookAtlasLuggage(response.luggage ?? []);
+            setPrebookAtlasSeatMaps(response.seatMaps ?? null);
+
+            if (response.luggageError) {
+                setPrebookAtlasAncillaryError(response.luggageError);
+            } else if (response.seatError) {
+                setPrebookAtlasAncillaryError(response.seatError);
+            }
+        } catch (value: unknown) {
+            setPrebookAtlasLuggage([]);
+            setPrebookAtlasSeatMaps(null);
+            setPrebookAtlasAncillaryError(getErrorMessage(value));
+        } finally {
+            setPrebookAtlasAncillaryLoading(false);
+        }
+    }, [prebookFlight]);
+
     useEffect(() => {
-        if (!prebookFlight || !prebookActiveSegment?.airSegmentXml) {
+        if (!prebookFlight || !prebookFlightId) {
+            return;
+        }
+
+        const provider = prebookFlight.providerCode.trim().toUpperCase();
+        if (provider === "ATLAS") {
+            void loadPrebookAtlasAncillaries();
+        } else {
+            void loadPrebookAncillaryOffers();
+        }
+    }, [loadPrebookAncillaryOffers, loadPrebookAtlasAncillaries, prebookFlight, prebookFlightId]);
+
+    useEffect(() => {
+        if (!prebookFlight || prebookFlight.providerCode.trim().toUpperCase() === "ATLAS") {
+            return;
+        }
+
+        if (!prebookActiveSegment?.airSegmentXml) {
             return;
         }
 
         void loadPrebookSeatMap();
     }, [loadPrebookSeatMap, prebookActiveSegment?.airSegmentXml, prebookFlight]);
+
+    useEffect(() => {
+        if (!prebookFlight || prebookFlight.providerCode.trim().toUpperCase() !== "ATLAS") {
+            return;
+        }
+
+        const atlasSeatMaps = prebookAtlasSeatMaps?.seatMaps ?? [];
+        if (atlasSeatMaps.length === 0) {
+            setPrebookSeatMap(null);
+            if (prebookAtlasAncillaryError) {
+                setPrebookSeatMapError(prebookAtlasAncillaryError);
+            }
+            return;
+        }
+
+        const targetSegmentIndex = prebookActiveSegmentIndex + 1;
+        const candidate =
+            atlasSeatMaps.find((item) => item.segmentIndex === targetSegmentIndex) ??
+            atlasSeatMaps[prebookActiveSegmentIndex] ??
+            atlasSeatMaps[0];
+
+        setPrebookSeatMap({
+            carrier: candidate.carrier,
+            flightNumber: candidate.flightNumber,
+            from: candidate.from,
+            to: candidate.to,
+            message: candidate.message,
+            diagnostics: undefined,
+            rows: candidate.rows,
+            rawResponse: "",
+            segmentLabel: prebookActiveSegment?.label,
+            source: "ATLAS_SEAT_AVAILABILITY",
+            isPostBooking: false,
+        });
+        setPrebookSeatMapError("");
+    }, [prebookActiveSegment?.label, prebookActiveSegmentIndex, prebookAtlasAncillaryError, prebookAtlasSeatMaps, prebookFlight]);
 
     const continueToBookingWithSelections = (flight: FlightResult) => {
         if (!flight.supportsPortalCheckout) {
@@ -1310,6 +1601,7 @@ export default function FlightSearch() {
                 baggagePreference: prebookBaggageChoice || "Standard cabin only",
                 mealPreference: prebookMealChoice || "Standard",
                 selectedSeats: prebookSelectedSeats,
+                paidAncillaries: prebookPaidAncillaries,
             },
         });
         closePrebookStudio();
@@ -3372,6 +3664,85 @@ export default function FlightSearch() {
 
                                 <div className="mt-5 rounded-[1.35rem] bg-white/88 p-4 shadow-[0_14px_30px_rgba(26,56,117,0.08)]">
                                     <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
+                                        <Luggage size={16} className="text-[var(--accent-strong)]" />
+                                        Add checked baggage
+                                    </div>
+                                    <div className="mt-3 rounded-[1rem] bg-[rgba(241,248,255,0.92)] px-3 py-3 text-xs leading-6 text-slate-500">
+                                        Choose an extra checked-baggage add-on for the active flight leg. Selections are carried forward into reservation and servicing.
+                                    </div>
+
+                                    {prebookAncillaryLoading || prebookAtlasAncillaryLoading ? (
+                                        <div className="mt-3 rounded-[1rem] bg-[rgba(223,235,255,0.92)] px-3 py-3 text-xs font-semibold text-[#174498]">
+                                            Loading live add-ons...
+                                        </div>
+                                    ) : null}
+
+                                    {prebookAncillaryError || prebookAtlasAncillaryError ? (
+                                        <div className="mt-3 rounded-[1rem] bg-[rgba(255,236,236,0.92)] px-3 py-3 text-xs leading-6 text-[var(--danger)]">
+                                            {prebookAncillaryError || prebookAtlasAncillaryError}
+                                        </div>
+                                    ) : null}
+
+                                    <div className="mt-3 space-y-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => choosePrebookPaidBaggage(null)}
+                                            className={`w-full rounded-[1.1rem] border px-3 py-3 text-left text-sm transition ${
+                                                prebookSelectedPaidBaggage
+                                                    ? "border-[rgba(89,64,46,0.08)] bg-white text-slate-600 hover:border-[rgba(176,122,67,0.2)]"
+                                                    : "border-[rgba(45,120,92,0.24)] bg-[rgba(225,246,236,0.96)] text-[var(--success)] shadow-[0_10px_22px_rgba(40,116,79,0.12)]"
+                                            }`}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="font-semibold">No extra checked baggage</div>
+                                                    <div className="mt-1 text-xs text-slate-500">Keep cabin baggage only for this leg.</div>
+                                                </div>
+                                                <div className="shrink-0 text-xs font-semibold">{formatMoney(prebookFlight.currency, 0)}</div>
+                                            </div>
+                                        </button>
+
+                                        {prebookPaidBaggageOptions.length ? (
+                                            prebookPaidBaggageOptions.map((option) => {
+                                                const active = prebookSelectedPaidBaggage?.code === option.code;
+                                                return (
+                                                    <button
+                                                        key={`${option.segmentLabel}-${option.code}`}
+                                                        type="button"
+                                                        onClick={() => choosePrebookPaidBaggage(option)}
+                                                        className={`w-full rounded-[1.1rem] border px-3 py-3 text-left text-sm transition ${
+                                                            active
+                                                                ? "border-[rgba(23,68,152,0.2)] bg-[rgba(223,235,255,0.92)] text-[#174498] shadow-[0_10px_22px_rgba(26,56,117,0.12)]"
+                                                                : "border-[rgba(89,64,46,0.08)] bg-white text-slate-600 hover:border-[rgba(176,122,67,0.2)]"
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="min-w-0 truncate font-semibold">{option.title}</span>
+                                                                    {active ? <Check size={14} className="shrink-0 text-[#174498]" /> : null}
+                                                                </div>
+                                                                <div className="mt-1 text-xs text-slate-500">
+                                                                    Applies to: {option.segmentLabel}
+                                                                </div>
+                                                            </div>
+                                                            <div className="shrink-0 text-xs font-semibold">
+                                                                {formatMoney(option.currency || prebookFlight.currency, option.amount)}
+                                                            </div>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })
+                                        ) : (
+                                            <div className="rounded-[1rem] border border-[rgba(89,64,46,0.08)] bg-white px-3 py-3 text-xs leading-6 text-slate-500">
+                                                No paid baggage add-ons were returned for this itinerary yet.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="mt-5 rounded-[1.35rem] bg-white/88 p-4 shadow-[0_14px_30px_rgba(26,56,117,0.08)]">
+                                    <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
                                         <Sparkles size={16} className="text-[var(--accent-strong)]" />
                                         Meal preference
                                     </div>
@@ -3440,11 +3811,21 @@ export default function FlightSearch() {
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={() => void loadPrebookSeatMap()}
-                                        disabled={prebookSeatMapLoading || !prebookActiveSegment?.airSegmentXml}
+                                        onClick={() => {
+                                            if (prebookFlight?.providerCode.trim().toUpperCase() === "ATLAS") {
+                                                void loadPrebookAtlasAncillaries();
+                                            } else {
+                                                void loadPrebookSeatMap();
+                                            }
+                                        }}
+                                        disabled={
+                                            prebookSeatMapLoading ||
+                                            prebookAtlasAncillaryLoading ||
+                                            (prebookFlight?.providerCode.trim().toUpperCase() !== "ATLAS" && !prebookActiveSegment?.airSegmentXml)
+                                        }
                                         className="rounded-2xl bg-[linear-gradient(135deg,#1e7df0,#0b58b6)] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(12,78,163,0.22)] transition hover:translate-y-[-1px] disabled:opacity-60"
                                     >
-                                        {prebookSeatMapLoading ? "Loading seat map..." : "Refresh seat map"}
+                                        {prebookSeatMapLoading || prebookAtlasAncillaryLoading ? "Loading seat map..." : "Refresh seat map"}
                                     </button>
                                 </div>
 
@@ -3566,7 +3947,7 @@ export default function FlightSearch() {
                                                                                     key={`${row.number}-${seat.code}-left`}
                                                                                     type="button"
                                                                                     disabled={!isPreviewSeatSelectable(seat)}
-                                                                                    onClick={() => choosePrebookSeat(seat.code)}
+                                                                                    onClick={() => choosePrebookSeat(seat.code, seat.productCode ?? undefined)}
                                                                                     className={`min-h-[72px] rounded-[1rem] border px-2 py-2 text-left text-xs transition ${
                                                                                         selected
                                                                                             ? "border-[rgba(30,134,82,0.3)] bg-[#1fb76b] text-white shadow-[0_12px_22px_rgba(31,183,107,0.2)]"
@@ -3601,7 +3982,7 @@ export default function FlightSearch() {
                                                                                     key={`${row.number}-${seat.code}-right`}
                                                                                     type="button"
                                                                                     disabled={!isPreviewSeatSelectable(seat)}
-                                                                                    onClick={() => choosePrebookSeat(seat.code)}
+                                                                                    onClick={() => choosePrebookSeat(seat.code, seat.productCode ?? undefined)}
                                                                                     className={`min-h-[72px] rounded-[1rem] border px-2 py-2 text-left text-xs transition ${
                                                                                         selected
                                                                                             ? "border-[rgba(30,134,82,0.3)] bg-[#1fb76b] text-white shadow-[0_12px_22px_rgba(31,183,107,0.2)]"
@@ -3689,6 +4070,33 @@ export default function FlightSearch() {
                                         <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Included baggage</div>
                                         <div className="mt-1 text-sm font-semibold text-[var(--ink)]">
                                             {getBaggageHighlights(prebookFlight)[0] || "Allowance confirmed after pricing"}
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 rounded-[1.2rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">
+                                        <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Paid add-ons</div>
+                                        <div className="mt-2 space-y-2 text-sm text-slate-600">
+                                            {prebookPaidAncillaries.filter((item) => item.type === "BAGGAGE").length ? (
+                                                prebookPaidAncillaries
+                                                    .filter((item) => item.type === "BAGGAGE")
+                                                    .map((item) => (
+                                                        <div key={`${item.segmentLabel}-${item.code}`} className="flex items-center justify-between gap-3">
+                                                            <span className="min-w-0 truncate">{item.title}</span>
+                                                            <span className="font-semibold text-[var(--ink)]">
+                                                                {formatMoney(item.currency || prebookFlight.currency, item.amount)}
+                                                            </span>
+                                                        </div>
+                                                    ))
+                                            ) : (
+                                                <div>No paid add-ons selected.</div>
+                                            )}
+                                            {prebookPaidAddOnTotal > 0 ? (
+                                                <div className="flex items-center justify-between gap-3 border-t border-[rgba(32,63,92,0.08)] pt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                                    <span>Total</span>
+                                                    <span className="text-[var(--ink)]">
+                                                        {formatMoney(prebookFlight.currency, prebookPaidAddOnTotal)}
+                                                    </span>
+                                                </div>
+                                            ) : null}
                                         </div>
                                     </div>
                                     <div className="mt-4 rounded-[1.2rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">

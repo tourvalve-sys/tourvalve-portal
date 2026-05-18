@@ -147,6 +147,21 @@ function normalizeFlightResult(value: unknown): FlightResult | null {
                                 typeof seat.seatCode === "string"
                         )
                         : [],
+                    paidAncillaries: Array.isArray(flight.prebookSelections.paidAncillaries)
+                        ? flight.prebookSelections.paidAncillaries.filter(
+                            (
+                                item
+                            ): item is NonNullable<NonNullable<FlightResult["prebookSelections"]>["paidAncillaries"]>[number] =>
+                                Boolean(item) &&
+                                typeof item === "object" &&
+                                typeof item.type === "string" &&
+                                typeof item.segmentLabel === "string" &&
+                                typeof item.code === "string" &&
+                                typeof item.title === "string" &&
+                                typeof item.amount === "number" &&
+                                typeof item.currency === "string"
+                        )
+                        : [],
                 }
                 : undefined,
     };

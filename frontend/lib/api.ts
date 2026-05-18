@@ -59,7 +59,18 @@ export type FlightResult = {
         mealPreference: string;
         selectedSeats: Array<{
             segmentLabel: string;
+            segmentIndex?: number;
             seatCode: string;
+            productCode?: string;
+        }>;
+        paidAncillaries?: Array<{
+            type: "BAGGAGE" | "MEAL" | "SEAT";
+            segmentLabel: string;
+            segmentIndex?: number;
+            code: string;
+            title: string;
+            amount: number;
+            currency: string;
         }>;
     };
 };
@@ -120,7 +131,18 @@ export type AirBookingServicePreferencesPayload = {
     frequentFlyerNumber: string;
     selectedSeats: Array<{
         segmentLabel: string;
+        segmentIndex?: number;
         seatCode: string;
+        productCode?: string;
+    }>;
+    selectedAncillaries?: Array<{
+        type: "BAGGAGE" | "MEAL" | "SEAT";
+        segmentLabel: string;
+        segmentIndex?: number;
+        code: string;
+        title: string;
+        amount: number;
+        currency: string;
     }>;
 };
 
@@ -164,12 +186,114 @@ export type FlightSeatMapResponse = {
             optionalServiceRef?: string;
             serviceSubCode?: string;
             source?: string;
+            productCode?: string | null;
         }>;
     }>;
     rawResponse: string;
     segmentLabel?: string;
     source?: string;
     isPostBooking?: boolean;
+};
+
+export type AncillaryOfferDto = {
+    id: string;
+    type: string;
+    code: string;
+    title: string;
+    subtitle: string;
+    description: string;
+    baseAmount: number;
+    currency: string;
+    isLive: boolean;
+    source: string;
+    segmentLabel: string;
+    supplierText: string;
+    highlight: string;
+    bullets: string[];
+    comparison: Array<{
+        label: string;
+        value: string;
+        included: boolean;
+    }>;
+    rules: string[];
+    rawReference: string;
+};
+
+export type PrebookAncillaryOfferCatalog = {
+    retrievedAt: string;
+    hasLivePricedOffers: boolean;
+    fallbackAvailable: boolean;
+    source: string;
+    message: string;
+    diagnostics: {
+        totalLiveOffers: number;
+        baggageOffers: number;
+        mealOffers: number;
+        seatOffers: number;
+    };
+    categories: Record<string, AncillaryOfferDto[]>;
+};
+
+export type PrebookAncillaryOffersPayload = {
+    airSegmentXml: string;
+    airSegmentXmls?: string[];
+    adults: number;
+    child: number;
+    infant: number;
+};
+
+export type AtlasAncillaryProductElement = {
+    segmentIndex: number;
+    endSegmentIndex?: number | null;
+    productCode: string;
+    productName: string;
+    productType: number;
+    canPurchaseWithTicket?: number | null;
+    canPurchasePostTicket?: number | null;
+    price: number;
+    currency: string;
+    vendorPrice?: number | null;
+    vendorCurrency?: string | null;
+    auxBaggageElement?: {
+        piece: number;
+        weight: number;
+        allWeight: boolean;
+        size: string;
+    } | null;
+    maxQty?: number | null;
+    minQty?: number | null;
+    categoryCode?: string | null;
+    ancillaryCode?: string | null;
+};
+
+export type AtlasPrebookAncillariesResponse = {
+    sessionId: string;
+    luggage: AtlasAncillaryProductElement[];
+    luggageError?: string | null;
+    seatMaps?: {
+        message: string;
+        seatMaps: Array<{
+            segmentIndex: number;
+            carrier: string;
+            flightNumber: string;
+            from: string;
+            to: string;
+            message: string;
+            rows: Array<{
+                number: string;
+                seats: Array<{
+                    code: string;
+                    availability: string;
+                    paid: boolean;
+                    characteristics: string[];
+                    seatPrice?: number | null;
+                    currency?: string;
+                    productCode?: string | null;
+                }>;
+            }>;
+        }>;
+    } | null;
+    seatError?: string | null;
 };
 
 export type BookingSeatMapPayload = {
@@ -974,6 +1098,28 @@ export async function getFlightSeatMap(
     });
 
     return readJson<FlightSeatMapResponse>(res);
+}
+
+export async function getPrebookAncillaryOffers(
+    payload: PrebookAncillaryOffersPayload
+): Promise<PrebookAncillaryOfferCatalog> {
+    const res = await authFetch(`${API_BASE}/api/flights/prebook-ancillary-offers`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+
+    return readJson<PrebookAncillaryOfferCatalog>(res);
+}
+
+export async function getAtlasPrebookAncillaries(
+    routingIdentifier: string
+): Promise<AtlasPrebookAncillariesResponse> {
+    const res = await authFetch(`${API_BASE}/api/atlas/flights/prebook-ancillaries`, {
+        method: "POST",
+        body: JSON.stringify({ routingIdentifier }),
+    });
+
+    return readJson<AtlasPrebookAncillariesResponse>(res);
 }
 
 export async function getBookingSeatMap(

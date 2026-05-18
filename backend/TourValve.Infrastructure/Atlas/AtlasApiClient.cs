@@ -33,6 +33,12 @@ public sealed class AtlasApiClient
     public async Task<AtlasOrderResponse> OrderAsync(AtlasOrderRequest request, CancellationToken cancellationToken)
         => await SendAsync<AtlasOrderRequest, AtlasOrderResponse>("/order.do", request, cancellationToken);
 
+    public async Task<AtlasGetLuggageResponse> GetLuggageAsync(AtlasGetLuggageRequest request, CancellationToken cancellationToken)
+        => await SendAsync<AtlasGetLuggageRequest, AtlasGetLuggageResponse>("/getLuggage.do", request, cancellationToken);
+
+    public async Task<AtlasSeatAvailabilityResponse> SeatAvailabilityAsync(AtlasSeatAvailabilityRequest request, CancellationToken cancellationToken)
+        => await SendAsync<AtlasSeatAvailabilityRequest, AtlasSeatAvailabilityResponse>("/seatAvailability.do", request, cancellationToken);
+
     public async Task<AtlasPayResponse> PayAsync(AtlasPayRequest request, CancellationToken cancellationToken)
         => await SendAsync<AtlasPayRequest, AtlasPayResponse>("/pay.do", request, cancellationToken);
 

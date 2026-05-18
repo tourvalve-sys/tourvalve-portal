@@ -117,19 +117,45 @@ public sealed class AtlasBookingController : ControllerBase
         AtlasOrderResponse order;
         try
         {
-            order = await _atlas.OrderAsync(BuildOrderRequest(verify.SessionId, request), cancellationToken);
+            order = await _atlas.OrderAsync(BuildOrderRequest(verify.SessionId, request, verify.Routing, includeAncillaries: true), cancellationToken);
         }
         catch (AtlasApiException ex)
         {
-            await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "ORDER_FAILED", "AtlasBooking", "LIVE", request.FlightNumber, ex.Message, "WARN");
-            var safeDetail = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
-            await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"Reservation request failed. {safeDetail}", "WARN", "/booking");
+            var requestedAncillaries = request.ServicePreferences.SelectedAncillaries.Any(x => !string.IsNullOrWhiteSpace(x.Code))
+                || request.ServicePreferences.SelectedSeats.Any(x => !string.IsNullOrWhiteSpace(x.ProductCode));
 
-            return BadRequest(new
+            if (requestedAncillaries)
             {
-                error = "The live booking could not be completed right now.",
-                detail = safeDetail
-            });
+                try
+                {
+                    order = await _atlas.OrderAsync(BuildOrderRequest(verify.SessionId, request, verify.Routing, includeAncillaries: false), cancellationToken);
+                    await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "ORDER_ANCILLARY_SKIPPED", "AtlasBooking", "LIVE", request.FlightNumber, ex.Message, "WARN");
+                }
+                catch
+                {
+                    await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "ORDER_FAILED", "AtlasBooking", "LIVE", request.FlightNumber, ex.Message, "WARN");
+                    var safeDetail = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
+                    await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"Reservation request failed. {safeDetail}", "WARN", "/booking");
+
+                    return BadRequest(new
+                    {
+                        error = "The live booking could not be completed right now.",
+                        detail = safeDetail
+                    });
+                }
+            }
+            else
+            {
+                await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "ORDER_FAILED", "AtlasBooking", "LIVE", request.FlightNumber, ex.Message, "WARN");
+                var safeDetail = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
+                await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"Reservation request failed. {safeDetail}", "WARN", "/booking");
+
+                return BadRequest(new
+                {
+                    error = "The live booking could not be completed right now.",
+                    detail = safeDetail
+                });
+            }
         }
 
         var refs = (
@@ -250,11 +276,20 @@ public sealed class AtlasBookingController : ControllerBase
         });
     }
 
-    private AtlasOrderRequest BuildOrderRequest(string sessionId, AirBookingRequest request)
+    private AtlasOrderRequest BuildOrderRequest(string sessionId, AirBookingRequest request, AtlasRouting? routing, bool includeAncillaries)
     {
         var contactName = request.Passengers.Count == 0
             ? "TourValve"
             : $"{request.Passengers[0].LastName}/{request.Passengers[0].FirstName}";
+
+        var passengerAncillaries = includeAncillaries
+            ? BuildPassengerAncillaries(request, routing)
+            : null;
+        var ancillaryPassengerIndex = passengerAncillaries is null
+            ? -1
+            : request.Passengers.FindIndex(passenger => MapPassengerType(passenger.TravelerType) != 2);
+        if (passengerAncillaries is not null && ancillaryPassengerIndex < 0)
+            ancillaryPassengerIndex = 0;
 
         return new AtlasOrderRequest
         {
@@ -271,7 +306,10 @@ public sealed class AtlasBookingController : ControllerBase
                 CardType = "PP",
                 CardIssuePlace = _options.DefaultCardIssuePlace,
                 CardExpired = FormatAtlasDate(passenger.PassportExpiryDate, fallbackOffsetDays: 3650 + (index * 10)),
-                Nationality = _options.DefaultNationality
+                Nationality = _options.DefaultNationality,
+                Ancillaries = passengerAncillaries is not null && index == ancillaryPassengerIndex && MapPassengerType(passenger.TravelerType) != 2
+                    ? passengerAncillaries
+                    : null
             }).ToList(),
             Contact = new AtlasOrderContact
             {
@@ -280,6 +318,84 @@ public sealed class AtlasBookingController : ControllerBase
                 Mobile = request.ContactPhone
             }
         };
+    }
+
+    private static List<AtlasOrderAncillary>? BuildPassengerAncillaries(AirBookingRequest request, AtlasRouting? routing)
+    {
+        var seatAncillaries = request.ServicePreferences.SelectedSeats
+            .Where(x => !string.IsNullOrWhiteSpace(x.ProductCode))
+            .Select(x => new AtlasOrderAncillary
+            {
+                ProductCode = x.ProductCode!.Trim(),
+                SegmentIndex = x.SegmentIndex ?? 0
+            })
+            .Where(x => x.SegmentIndex > 0)
+            .ToList();
+
+        var baggageAncillaries = request.ServicePreferences.SelectedAncillaries
+            .Where(x => string.Equals((x.Type ?? string.Empty).Trim(), "BAGGAGE", StringComparison.OrdinalIgnoreCase))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Code))
+            .Select(x => new AtlasOrderAncillary
+            {
+                ProductCode = x.Code.Trim(),
+                SegmentIndex = x.SegmentIndex ?? 0
+            })
+            .Where(x => x.SegmentIndex > 0)
+            .ToList();
+
+        var combined = new List<AtlasOrderAncillary>();
+        combined.AddRange(seatAncillaries);
+        combined.AddRange(baggageAncillaries);
+
+        if (routing is not null)
+        {
+            combined = ExpandAncillariesAcrossTransfers(combined, routing);
+        }
+
+        return combined.Count == 0 ? null : combined;
+    }
+
+    private static List<AtlasOrderAncillary> ExpandAncillariesAcrossTransfers(List<AtlasOrderAncillary> ancillaries, AtlasRouting routing)
+    {
+        if (ancillaries.Count == 0)
+            return ancillaries;
+
+        var outboundIndexes = routing.FromSegments.Select(x => x.SegmentIndex).Distinct().ToList();
+        var inboundIndexes = routing.RetSegments?.Select(x => x.SegmentIndex).Distinct().ToList() ?? new List<int>();
+        var allIndexes = outboundIndexes.Concat(inboundIndexes).Distinct().ToList();
+
+        var expanded = new List<AtlasOrderAncillary>();
+
+        foreach (var item in ancillaries)
+        {
+            expanded.Add(item);
+
+            if (item.SegmentIndex <= 0)
+                continue;
+
+            var indicesToCover = outboundIndexes.Contains(item.SegmentIndex)
+                ? outboundIndexes
+                : inboundIndexes.Contains(item.SegmentIndex)
+                    ? inboundIndexes
+                    : allIndexes;
+
+            foreach (var segmentIndex in indicesToCover)
+            {
+                if (segmentIndex == item.SegmentIndex)
+                    continue;
+
+                if (expanded.Any(x => x.ProductCode == item.ProductCode && x.SegmentIndex == segmentIndex))
+                    continue;
+
+                expanded.Add(new AtlasOrderAncillary
+                {
+                    ProductCode = item.ProductCode,
+                    SegmentIndex = segmentIndex
+                });
+            }
+        }
+
+        return expanded;
     }
 
     private static int MapPassengerType(string travelerType)

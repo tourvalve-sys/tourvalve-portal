@@ -40,7 +40,19 @@ type PassengerForm = {
 
 type SeatSelection = {
     segmentLabel: string;
+    segmentIndex?: number;
     seatCode: string;
+    productCode?: string;
+};
+
+type PaidAncillarySelection = {
+    type: "BAGGAGE" | "MEAL" | "SEAT";
+    segmentLabel: string;
+    segmentIndex?: number;
+    code: string;
+    title: string;
+    amount: number;
+    currency: string;
 };
 
 type ServicePreferences = {
@@ -50,6 +62,7 @@ type ServicePreferences = {
     frequentFlyerProgram: string;
     frequentFlyerNumber: string;
     selectedSeats: SeatSelection[];
+    selectedAncillaries: PaidAncillarySelection[];
     cancellationPolicyOverride?: string;
     changePolicyOverride?: string;
     cancellationFeeOverride?: string;
@@ -316,6 +329,7 @@ export default function BookingPage() {
         frequentFlyerProgram: "",
         frequentFlyerNumber: "",
         selectedSeats: [],
+        selectedAncillaries: [],
         cancellationPolicyOverride: "",
         changePolicyOverride: "",
         cancellationFeeOverride: "",
@@ -500,6 +514,10 @@ export default function BookingPage() {
                 selectedFlight.prebookSelections?.selectedSeats?.length
                     ? selectedFlight.prebookSelections.selectedSeats
                     : current.selectedSeats,
+            selectedAncillaries:
+                selectedFlight.prebookSelections?.paidAncillaries?.length
+                    ? selectedFlight.prebookSelections.paidAncillaries
+                    : current.selectedAncillaries,
         }));
     }, [selectedFlight]);
 
@@ -620,6 +638,7 @@ export default function BookingPage() {
             ),
             {
                 segmentLabel: activeSeatSegment.label,
+                segmentIndex: activeSeatSegmentIndex + 1,
                 seatCode,
             },
         ];

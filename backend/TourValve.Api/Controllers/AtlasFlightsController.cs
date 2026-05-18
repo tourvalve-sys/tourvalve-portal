@@ -24,6 +24,93 @@ public sealed class AtlasFlightsController : ControllerBase
         _markup = markup;
     }
 
+    [HttpPost("prebook-ancillaries")]
+    public async Task<IActionResult> PrebookAncillaries([FromBody] AtlasPrebookAncillariesRequest req, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(req.RoutingIdentifier))
+        {
+            return BadRequest(new { error = "Routing identifier is required." });
+        }
+
+        AtlasVerifyResponse verify;
+        try
+        {
+            verify = await _atlas.VerifyAsync(new AtlasVerifyRequest
+            {
+                RoutingIdentifier = req.RoutingIdentifier.Trim(),
+                RequestSource = _options.RequestSource
+            }, cancellationToken);
+        }
+        catch (AtlasApiException ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                error = "Low-cost verification failed.",
+                detail = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase)
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(verify.SessionId))
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                error = "Low-cost verification failed.",
+                detail = "The provider did not return a valid pre-book session id."
+            });
+        }
+
+        var routing = verify.Routing;
+        if (routing is null || routing.FromSegments.Count == 0)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                error = "Low-cost verification failed.",
+                detail = "The provider did not return a complete itinerary for this fare."
+            });
+        }
+
+        AtlasGetLuggageResponse? luggage = null;
+        string luggageError = string.Empty;
+        try
+        {
+            luggage = await _atlas.GetLuggageAsync(new AtlasGetLuggageRequest
+            {
+                OfferId = verify.SessionId.Trim(),
+                RequestSource = _options.RequestSource
+            }, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            luggageError = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
+        }
+
+        AtlasSeatAvailabilityResponse? seatAvailability = null;
+        string seatError = string.Empty;
+        try
+        {
+            seatAvailability = await _atlas.SeatAvailabilityAsync(
+                BuildSeatAvailabilityRequest(verify.SessionId.Trim(), routing),
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            seatError = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var seatMaps = seatAvailability is null
+            ? null
+            : MapSeatAvailabilityToSeatMaps(seatAvailability, routing);
+
+        return Ok(new
+        {
+            sessionId = verify.SessionId,
+            luggage = luggage?.Data?.AncillaryProductElements ?? new List<AtlasAncillaryProductElement>(),
+            luggageError = string.IsNullOrWhiteSpace(luggageError) ? null : luggageError,
+            seatMaps,
+            seatError = string.IsNullOrWhiteSpace(seatError) ? null : seatError
+        });
+    }
+
     [HttpPost("search")]
     public async Task<IActionResult> Search([FromBody] FlightSearchRequest req, CancellationToken cancellationToken)
     {
@@ -98,6 +185,100 @@ public sealed class AtlasFlightsController : ControllerBase
             flights,
             diagnosticMessage = string.Empty
         });
+    }
+
+    private AtlasSeatAvailabilityRequest BuildSeatAvailabilityRequest(string sessionId, AtlasRouting routing)
+    {
+        static AtlasSeatAvailabilitySegment MapSegment(AtlasSegment segment) => new()
+        {
+            FlightNumber = segment.FlightNumber,
+            SegmentIndex = segment.SegmentIndex,
+            DepAirport = segment.DepAirport,
+            ArrAirport = segment.ArrAirport,
+            CabinClass = segment.CabinClass > 0 ? segment.CabinClass : 1,
+            DepTime = segment.DepTime
+        };
+
+        var carrier = routing.FromSegments.FirstOrDefault()?.Carrier ?? string.Empty;
+
+        return new AtlasSeatAvailabilityRequest
+        {
+            SessionId = sessionId,
+            Carrier = carrier,
+            RequestSource = _options.RequestSource,
+            OutboundSegments = routing.FromSegments.Select(MapSegment).ToList(),
+            InboundSegments = routing.RetSegments?.Select(MapSegment).ToList() ?? new List<AtlasSeatAvailabilitySegment>()
+        };
+    }
+
+    private static object MapSeatAvailabilityToSeatMaps(AtlasSeatAvailabilityResponse response, AtlasRouting routing)
+    {
+        var segments = new List<AtlasSegment>();
+        segments.AddRange(routing.FromSegments);
+        if (routing.RetSegments?.Count > 0)
+            segments.AddRange(routing.RetSegments);
+
+        var segmentLookup = segments
+            .GroupBy(segment => segment.SegmentIndex)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        var seatMaps = (response.Cabins ?? new List<AtlasSeatAvailabilityCabinResult>())
+            .Where(cabin => cabin is not null)
+            .Select(cabin =>
+            {
+                segmentLookup.TryGetValue(cabin.SegmentIndex, out var segment);
+
+                var rows = (cabin.Cabin?.Rows ?? new List<AtlasSeatAvailabilityRow>())
+                    .Select(row => new
+                    {
+                        number = row.Number.ToString(CultureInfo.InvariantCulture),
+                        seats = (row.Seats ?? new List<AtlasSeatAvailabilitySeat>())
+                            .Select(seat =>
+                            {
+                                var seatCode = $"{row.Number}{(seat.Column ?? string.Empty).Trim()}".Trim();
+                                var amount = seat.Price ?? 0m;
+                                return new
+                                {
+                                    code = seatCode,
+                                    availability = string.Equals(seat.SeatStatus?.Trim(), "F", StringComparison.OrdinalIgnoreCase) ? "Available" : "Unavailable",
+                                    paid = amount > 0m,
+                                    characteristics = (seat.SeatCharacteristics ?? new List<string>()).Where(x => !string.IsNullOrWhiteSpace(x)).ToList(),
+                                    seatPrice = amount > 0m ? amount : (decimal?)null,
+                                    currency = string.IsNullOrWhiteSpace(seat.Currency) ? "MYR" : seat.Currency!.Trim(),
+                                    taxes = (decimal?)null,
+                                    optionalServiceRef = (string?)null,
+                                    serviceSubCode = (string?)null,
+                                    source = "ATLAS_SEAT_AVAILABILITY",
+                                    productCode = seat.ProductCode
+                                };
+                            })
+                            .ToList()
+                    })
+                    .ToList();
+
+                return new
+                {
+                    segmentIndex = cabin.SegmentIndex,
+                    carrier = segment?.Carrier ?? string.Empty,
+                    flightNumber = segment?.FlightNumber ?? string.Empty,
+                    from = segment?.DepAirport ?? string.Empty,
+                    to = segment?.ArrAirport ?? string.Empty,
+                    message = rows.Count > 0 ? "Seat map returned successfully." : "Seat map not available for this segment.",
+                    rows
+                };
+            })
+            .ToList();
+
+        return new
+        {
+            message = seatMaps.Count > 0 ? "Seat availability returned successfully." : "Seat availability not available for this itinerary.",
+            seatMaps
+        };
+    }
+
+    public sealed class AtlasPrebookAncillariesRequest
+    {
+        public string RoutingIdentifier { get; set; } = string.Empty;
     }
 
     private static FlightDto MapRoutingToFlightDto(AtlasRouting routing, int adults, int child, int infant)
