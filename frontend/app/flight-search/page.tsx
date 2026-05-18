@@ -51,7 +51,6 @@ import PageLoader from "@/components/PageLoader";
 import PromoCarousel from "@/components/PromoCarousel";
 import { inferPortalBookingSupport } from "@/lib/bookingWorkflow";
 import { flightSearchPromoSlides } from "@/lib/promotions";
-import { getUserFromToken } from "@/lib/auth";
 import { useBooking } from "../context/BookingContext";
 
 type FilterState = {
@@ -929,8 +928,6 @@ function sanitizeInMemoryFlightSearchState(value: unknown): SanitizedFlightSearc
 export default function FlightSearch() {
     const router = useRouter();
     const { flightSearchState, setFlightSearchState, setSelectedFlight, setTravelerCounts } = useBooking();
-    const currentUser = useMemo(() => getUserFromToken(), []);
-    const canViewProviderDiagnostics = currentUser?.role === "ADMIN";
     const today = new Date().toISOString().split("T")[0];
     const persistedUiState = readPersistedFlightSearchState();
     const sanitizedContextState = sanitizeInMemoryFlightSearchState(flightSearchState);
