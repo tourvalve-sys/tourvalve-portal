@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
+
 export const dynamic = "force-static";
+
+export const metadata: Metadata = {
+    title: "Terms & Conditions",
+};
 
 export default function TermsAndConditionsPage() {
     return (
