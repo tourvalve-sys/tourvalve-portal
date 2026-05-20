@@ -37,6 +37,9 @@ public class FlightDto
     public string ChangePolicy { get; set; } = string.Empty;
     public decimal CancellationMaxFee { get; set; }
     public decimal ChangeMaxFee { get; set; }
+
+    public decimal TransactionFee { get; set; }
+    public decimal TransactionFeePerPax { get; set; }
     public string ProviderCode { get; set; } = string.Empty;
     public string BookingWorkflow { get; set; } = string.Empty;
     public bool SupportsPortalCheckout { get; set; }

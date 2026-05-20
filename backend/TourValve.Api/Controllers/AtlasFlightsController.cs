@@ -339,6 +339,8 @@ public sealed class AtlasFlightsController : ControllerBase
             ChangePolicy = policyContext.ChangePolicy,
             CancellationMaxFee = policyContext.CancellationMaxFee,
             ChangeMaxFee = policyContext.ChangeMaxFee,
+            TransactionFee = routing.TransactionFee,
+            TransactionFeePerPax = routing.TransactionFeePerPax,
         };
     }
 

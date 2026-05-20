@@ -11,7 +11,10 @@ public sealed class AtlasPayRequest
     [JsonPropertyName("paymentMethod")]
     public int PaymentMethod { get; set; } = 1;
 
+    // Required when paymentMethod requests credit-card/VCC pass-through.
+    [JsonPropertyName("creditCard")]
+    public AtlasCreditCard? CreditCard { get; set; }
+
     [JsonPropertyName("requestSource")]
     public string? RequestSource { get; set; }
 }
-
