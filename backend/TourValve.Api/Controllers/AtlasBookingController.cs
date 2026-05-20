@@ -111,13 +111,19 @@ public sealed class AtlasBookingController : ControllerBase
             });
         }
 
-        if (string.IsNullOrWhiteSpace(verify.SessionId))
+        var orderSessionId = string.IsNullOrWhiteSpace(request.PricingSessionId)
+            ? verify.SessionId
+            : request.PricingSessionId;
+
+        if (string.IsNullOrWhiteSpace(orderSessionId))
             return StatusCode(StatusCodes.Status502BadGateway, new { error = "Fare verification did not return a session id." });
+
+        orderSessionId = orderSessionId.Trim();
 
         AtlasOrderResponse order;
         try
         {
-            order = await _atlas.OrderAsync(BuildOrderRequest(verify.SessionId, request, verify.Routing, includeAncillaries: true), cancellationToken);
+            order = await _atlas.OrderAsync(BuildOrderRequest(orderSessionId, request, verify.Routing, includeAncillaries: true), cancellationToken);
         }
         catch (AtlasApiException ex)
         {
@@ -128,7 +134,7 @@ public sealed class AtlasBookingController : ControllerBase
             {
                 try
                 {
-                    order = await _atlas.OrderAsync(BuildOrderRequest(verify.SessionId, request, verify.Routing, includeAncillaries: false), cancellationToken);
+                    order = await _atlas.OrderAsync(BuildOrderRequest(orderSessionId, request, verify.Routing, includeAncillaries: false), cancellationToken);
                     await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "ORDER_ANCILLARY_SKIPPED", "AtlasBooking", "LIVE", request.FlightNumber, ex.Message, "WARN");
                 }
                 catch
@@ -343,14 +349,14 @@ public sealed class AtlasBookingController : ControllerBase
             .Where(x => x.SegmentIndex > 0)
             .ToList();
 
+        if (routing is not null && baggageAncillaries.Count > 0)
+        {
+            baggageAncillaries = ExpandAncillariesAcrossTransfers(baggageAncillaries, routing);
+        }
+
         var combined = new List<AtlasOrderAncillary>();
         combined.AddRange(seatAncillaries);
         combined.AddRange(baggageAncillaries);
-
-        if (routing is not null)
-        {
-            combined = ExpandAncillariesAcrossTransfers(combined, routing);
-        }
 
         return combined.Count == 0 ? null : combined;
     }
