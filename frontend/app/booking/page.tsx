@@ -588,6 +588,18 @@ export default function BookingPage() {
         .map((seat) => `${seat.segmentLabel}: ${seat.seatCode}`)
         .join(" | ");
 
+    const selectedPaidBaggageAddOns = useMemo(() => {
+        const fallbackCurrency = selectedFlight?.currency || "MYR";
+
+        return servicePreferences.selectedAncillaries
+            .filter((item) => item.type === "BAGGAGE")
+            .filter((item) => typeof item.amount === "number" && Number.isFinite(item.amount) && item.amount > 0)
+            .map((item) => ({
+                ...item,
+                currency: typeof item.currency === "string" && item.currency.trim().length > 0 ? item.currency : fallbackCurrency,
+            }));
+    }, [selectedFlight?.currency, servicePreferences.selectedAncillaries]);
+
     const estimatedSeatAddOnTotal = useMemo(() => {
         return servicePreferences.selectedSeats.reduce((sum, seat) => {
             const price = typeof seat.seatPrice === "number" && Number.isFinite(seat.seatPrice) ? seat.seatPrice : 0;
@@ -646,7 +658,7 @@ export default function BookingPage() {
         airTicketingStatus: reservation.airTicketingStatus || "",
         airlinePortalReady: reservation.airlinePortalReady,
         ticketingMessage: reservation.ticketingMessage || reservation.message,
-        amount: selectedFlight?.price ?? 0,
+        amount: estimatedReservationTotal,
         currency: selectedFlight?.currency ?? "MYR",
         carrier: selectedFlight?.carrier ?? "",
         flightNumber: selectedFlight?.flightNumber ?? "",
@@ -770,7 +782,7 @@ export default function BookingPage() {
                 to: journeyEndpoints.to,
                 departure: primarySegment?.departure || selectedFlight.departure,
                 arrival: finalSegment?.arrival || selectedFlight.arrival,
-                price: selectedFlight.price,
+                price: estimatedReservationTotal,
                 basePrice: selectedFlight.basePrice || selectedFlight.price,
                 markupAmount: selectedFlight.markupAmount || 0,
                 currency: selectedFlight.currency,
@@ -935,7 +947,7 @@ export default function BookingPage() {
                                         <div className="text-right">
                                             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Total</div>
                                             <div className="mt-1 text-2xl font-semibold text-[var(--success)]">
-                                                {selectedFlight.currency} {selectedFlight.price.toFixed(2)}
+                                                {selectedFlight.currency} {estimatedReservationTotal.toFixed(2)}
                                             </div>
                                         </div>
                                     </div>
@@ -1014,7 +1026,7 @@ export default function BookingPage() {
                                             <div className="flex items-center justify-between gap-3">
                                                 <span className="font-semibold text-[var(--ink)]">Total</span>
                                                 <span className="text-lg font-semibold text-[var(--success)]">
-                                                    {selectedFlight.currency} {selectedFlight.price.toFixed(2)}
+                                                    {selectedFlight.currency} {estimatedReservationTotal.toFixed(2)}
                                                 </span>
                                             </div>
                                         </div>
@@ -1350,6 +1362,33 @@ export default function BookingPage() {
                                     <option>2 checked bags</option>
                                     <option>Sports / oversized baggage</option>
                                 </select>
+                                {selectedPaidBaggageAddOns.length ? (
+                                    <div className="mt-3 rounded-[1.1rem] bg-[rgba(247,244,239,0.78)] px-3 py-3 text-sm text-slate-600">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                            Add-on baggage selected
+                                        </div>
+                                        <div className="mt-2 space-y-2">
+                                            {selectedPaidBaggageAddOns.map((item) => (
+                                                <div key={`${item.segmentLabel}-${item.code}`} className="flex items-center justify-between gap-3">
+                                                    <span className="min-w-0 truncate">
+                                                        {(item.segmentLabel || "").trim()
+                                                            ? `${item.segmentLabel}: ${item.title}`
+                                                            : item.title}
+                                                    </span>
+                                                    <span className="font-semibold text-[var(--ink)]">
+                                                        {item.currency} {item.amount.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                            <div className="flex items-center justify-between gap-3 border-t border-[rgba(89,64,46,0.12)] pt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                                <span>Total</span>
+                                                <span className="text-[var(--ink)]">
+                                                    {selectedFlight.currency} {estimatedBaggageAddOnTotal.toFixed(2)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
 
                             <div className="soft-panel rounded-[1.35rem] p-4 sm:rounded-[1.5rem]">
@@ -1633,13 +1672,13 @@ export default function BookingPage() {
 
                                     <div className="rounded-[1.5rem] border border-[rgba(45,120,92,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(247,252,249,0.88))] px-4 py-4 text-left shadow-[0_16px_34px_rgba(62,43,25,0.08)] sm:text-center">
                                         <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-                                            Fare Total
+                                            Checkout Total
                                         </div>
                                         <div className="mt-3 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--success)]">
                                             {selectedFlight.currency}
                                         </div>
                                         <div className="mt-1 text-[2.15rem] font-semibold leading-none text-[var(--success)] sm:text-[2.4rem]">
-                                            {selectedFlight.price.toFixed(2)}
+                                            {estimatedReservationTotal.toFixed(2)}
                                         </div>
                                     </div>
                                 </div>

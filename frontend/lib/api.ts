@@ -62,6 +62,8 @@ export type FlightResult = {
             segmentIndex?: number;
             seatCode: string;
             productCode?: string;
+            seatPrice?: number | null;
+            currency?: string;
         }>;
         paidAncillaries?: Array<{
             type: "BAGGAGE" | "MEAL" | "SEAT";

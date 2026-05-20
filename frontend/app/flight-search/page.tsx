@@ -341,6 +341,8 @@ type PrebookSeatSelection = {
     segmentIndex?: number;
     seatCode: string;
     productCode?: string;
+    seatPrice?: number | null;
+    currency?: string;
 };
 
 type PrebookPaidAncillarySelection = {
@@ -1373,10 +1375,20 @@ export default function FlightSearch() {
         );
     };
 
-    const choosePrebookSeat = (seatCode: string, productCode?: string) => {
+    const choosePrebookSeat = (
+        seatCode: string,
+        productCode?: string,
+        seatPrice?: number | null,
+        currency?: string
+    ) => {
         if (!prebookActiveSegment) {
             return;
         }
+
+        const normalizedSeatPrice =
+            typeof seatPrice === "number" && Number.isFinite(seatPrice) ? seatPrice : null;
+        const normalizedCurrency =
+            typeof currency === "string" && currency.trim() ? currency.trim() : undefined;
 
         setPrebookSelectedSeats((current) => [
             ...current.filter((seat) => seat.segmentLabel !== prebookActiveSegment.label),
@@ -1385,6 +1397,8 @@ export default function FlightSearch() {
                 segmentIndex: prebookActiveSegmentIndex + 1,
                 seatCode,
                 ...(productCode ? { productCode } : {}),
+                ...(normalizedSeatPrice !== null ? { seatPrice: normalizedSeatPrice } : {}),
+                ...(normalizedCurrency ? { currency: normalizedCurrency } : {}),
             },
         ]);
     };
@@ -1413,6 +1427,46 @@ export default function FlightSearch() {
 
         return prebookPaidAncillaries.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
     }, [prebookPaidAncillaries]);
+
+    const prebookSeatAddOnTotal = useMemo(() => {
+        if (!prebookSelectedSeats.length) {
+            return 0;
+        }
+
+        return prebookSelectedSeats.reduce((sum, seat) => {
+            const seatAmount = typeof seat.seatPrice === "number" && Number.isFinite(seat.seatPrice) ? seat.seatPrice : 0;
+            return sum + seatAmount;
+        }, 0);
+    }, [prebookSelectedSeats]);
+
+    const prebookAddOnTotal = useMemo(() => {
+        return prebookPaidAddOnTotal + prebookSeatAddOnTotal;
+    }, [prebookPaidAddOnTotal, prebookSeatAddOnTotal]);
+
+    const prebookCheckoutTotal = useMemo(() => {
+        if (!prebookFlight) {
+            return 0;
+        }
+
+        return prebookFlight.price + prebookAddOnTotal;
+    }, [prebookAddOnTotal, prebookFlight]);
+
+    const prebookPaidSeatAddOns = useMemo(() => {
+        const fallbackCurrency = prebookFlight?.currency || "MYR";
+
+        return prebookSelectedSeats
+            .map((seat) => {
+                const amount = typeof seat.seatPrice === "number" && Number.isFinite(seat.seatPrice) ? seat.seatPrice : 0;
+                const currency = (seat.currency || fallbackCurrency).trim() || fallbackCurrency;
+                return {
+                    segmentLabel: seat.segmentLabel,
+                    seatCode: seat.seatCode,
+                    amount,
+                    currency,
+                };
+            })
+            .filter((seat) => seat.amount > 0);
+    }, [prebookFlight?.currency, prebookSelectedSeats]);
 
     const choosePrebookPaidBaggage = (option: PrebookPaidAncillarySelection | null) => {
         if (!prebookFlight) {
@@ -3601,9 +3655,9 @@ export default function FlightSearch() {
                             </div>
                             <div className="flex items-center gap-3">
                                 <div className="rounded-[1.2rem] bg-white/12 px-4 py-3 text-right">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-white/60">Live fare</div>
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-white/60">Checkout total</div>
                                     <div className="mt-1 text-xl font-semibold">
-                                        {formatMoney(prebookFlight.currency, prebookFlight.price)}
+                                        {formatMoney(prebookFlight.currency, prebookCheckoutTotal)}
                                     </div>
                                 </div>
                                 <button
@@ -3947,7 +4001,14 @@ export default function FlightSearch() {
                                                                                     key={`${row.number}-${seat.code}-left`}
                                                                                     type="button"
                                                                                     disabled={!isPreviewSeatSelectable(seat)}
-                                                                                    onClick={() => choosePrebookSeat(seat.code, seat.productCode ?? undefined)}
+                                                                                    onClick={() =>
+                                                                                        choosePrebookSeat(
+                                                                                            seat.code,
+                                                                                            seat.productCode ?? undefined,
+                                                                                            seat.seatPrice ?? null,
+                                                                                            seat.currency || prebookFlight.currency
+                                                                                        )
+                                                                                    }
                                                                                     className={`min-h-[72px] rounded-[1rem] border px-2 py-2 text-left text-xs transition ${
                                                                                         selected
                                                                                             ? "border-[rgba(30,134,82,0.3)] bg-[#1fb76b] text-white shadow-[0_12px_22px_rgba(31,183,107,0.2)]"
@@ -3982,7 +4043,14 @@ export default function FlightSearch() {
                                                                                     key={`${row.number}-${seat.code}-right`}
                                                                                     type="button"
                                                                                     disabled={!isPreviewSeatSelectable(seat)}
-                                                                                    onClick={() => choosePrebookSeat(seat.code, seat.productCode ?? undefined)}
+                                                                                    onClick={() =>
+                                                                                        choosePrebookSeat(
+                                                                                            seat.code,
+                                                                                            seat.productCode ?? undefined,
+                                                                                            seat.seatPrice ?? null,
+                                                                                            seat.currency || prebookFlight.currency
+                                                                                        )
+                                                                                    }
                                                                                     className={`min-h-[72px] rounded-[1rem] border px-2 py-2 text-left text-xs transition ${
                                                                                         selected
                                                                                             ? "border-[rgba(30,134,82,0.3)] bg-[#1fb76b] text-white shadow-[0_12px_22px_rgba(31,183,107,0.2)]"
@@ -4075,25 +4143,36 @@ export default function FlightSearch() {
                                     <div className="mt-4 rounded-[1.2rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">
                                         <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Paid add-ons</div>
                                         <div className="mt-2 space-y-2 text-sm text-slate-600">
-                                            {prebookPaidAncillaries.filter((item) => item.type === "BAGGAGE").length ? (
-                                                prebookPaidAncillaries
-                                                    .filter((item) => item.type === "BAGGAGE")
-                                                    .map((item) => (
-                                                        <div key={`${item.segmentLabel}-${item.code}`} className="flex items-center justify-between gap-3">
-                                                            <span className="min-w-0 truncate">{item.title}</span>
+                                            {prebookPaidAncillaries.filter((item) => item.type === "BAGGAGE").length ||
+                                            prebookPaidSeatAddOns.length ? (
+                                                <>
+                                                    {prebookPaidAncillaries
+                                                        .filter((item) => item.type === "BAGGAGE")
+                                                        .map((item) => (
+                                                            <div key={`${item.segmentLabel}-${item.code}`} className="flex items-center justify-between gap-3">
+                                                                <span className="min-w-0 truncate">{item.title}</span>
+                                                                <span className="font-semibold text-[var(--ink)]">
+                                                                    {formatMoney(item.currency || prebookFlight.currency, item.amount)}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    {prebookPaidSeatAddOns.map((seat) => (
+                                                        <div key={`${seat.segmentLabel}-${seat.seatCode}`} className="flex items-center justify-between gap-3">
+                                                            <span className="min-w-0 truncate">Seat {seat.seatCode}</span>
                                                             <span className="font-semibold text-[var(--ink)]">
-                                                                {formatMoney(item.currency || prebookFlight.currency, item.amount)}
+                                                                {formatMoney(seat.currency, seat.amount)}
                                                             </span>
                                                         </div>
-                                                    ))
+                                                    ))}
+                                                </>
                                             ) : (
                                                 <div>No paid add-ons selected.</div>
                                             )}
-                                            {prebookPaidAddOnTotal > 0 ? (
+                                            {prebookAddOnTotal > 0 ? (
                                                 <div className="flex items-center justify-between gap-3 border-t border-[rgba(32,63,92,0.08)] pt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                                                     <span>Total</span>
                                                     <span className="text-[var(--ink)]">
-                                                        {formatMoney(prebookFlight.currency, prebookPaidAddOnTotal)}
+                                                        {formatMoney(prebookFlight.currency, prebookAddOnTotal)}
                                                     </span>
                                                 </div>
                                             ) : null}
@@ -4111,7 +4190,14 @@ export default function FlightSearch() {
                                             {prebookSelectedSeats.length ? prebookSelectedSeats.map((seat) => (
                                                 <div key={`${seat.segmentLabel}-${seat.seatCode}`} className="flex items-center justify-between gap-3">
                                                     <span className="min-w-0 truncate">{seat.segmentLabel}</span>
-                                                    <span className="font-semibold text-[var(--ink)]">{seat.seatCode}</span>
+                                                    <div className="text-right">
+                                                        <div className="font-semibold text-[var(--ink)]">{seat.seatCode}</div>
+                                                        {typeof seat.seatPrice === "number" && Number.isFinite(seat.seatPrice) && seat.seatPrice > 0 ? (
+                                                            <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                                                {formatMoney(seat.currency || prebookFlight.currency, seat.seatPrice)}
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
                                                 </div>
                                             )) : (
                                                 <div>No seats chosen yet.</div>
