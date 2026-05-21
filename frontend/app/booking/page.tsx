@@ -116,6 +116,31 @@ function buildSegmentLabel(segment: {
     return `${segment.from} -> ${segment.to}${flightLabel ? ` (${flightLabel})` : ""}`;
 }
 
+function extractKgBadges(value: unknown) {
+    if (typeof value !== "string") return [];
+    const matches = Array.from(value.matchAll(/(\d{1,3})\s*kg\b/gi));
+    return matches
+        .map((match) => match[1])
+        .filter(Boolean)
+        .map((amount) => `${amount}kg`);
+}
+
+function formatDateTimeLabel(value: string) {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    });
+}
+
 function deriveJourneyEndpoints(
     segments: Array<{ from: string; to: string }>,
     fallbackFrom: string,
@@ -427,7 +452,8 @@ export default function BookingPage() {
             ...(selectedFlight.baggageOfferTexts ?? []).map((item) => item.trim()),
         ].filter(Boolean) as string[];
 
-        return Array.from(new Set(items));
+        const badges = items.flatMap(extractKgBadges).filter(Boolean);
+        return Array.from(new Set(badges));
     }, [selectedFlight]);
 
     const itineraryLegs = useMemo(() => {
@@ -860,9 +886,9 @@ export default function BookingPage() {
                 />
             ) : null}
             {fareCategoryModalOpen ? (
-                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[rgba(16,24,40,0.55)] px-4 py-10 backdrop-blur-sm">
-                    <div className="w-full max-w-5xl rounded-[2rem] border border-[rgba(255,255,255,0.4)] bg-white/95 shadow-[0_30px_80px_rgba(0,0,0,0.25)]">
-                        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[rgba(89,64,46,0.1)] px-6 py-5">
+                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[rgba(16,24,40,0.55)] px-4 py-10 backdrop-blur-sm sm:items-center">
+                    <div className="w-full max-w-5xl overflow-hidden rounded-[2rem] border border-[rgba(255,255,255,0.4)] bg-white/95 shadow-[0_30px_80px_rgba(0,0,0,0.25)]">
+                        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[rgba(89,64,46,0.1)] bg-gradient-to-r from-[rgba(241,248,255,0.95)] to-[rgba(255,247,236,0.92)] px-6 py-5">
                             <div className="min-w-0">
                                 <div className="subtle-kicker">Fare category</div>
                                 <div className="mt-2 text-2xl font-semibold text-[var(--ink)]">
@@ -896,9 +922,9 @@ export default function BookingPage() {
                                                         {itineraryLegs.outboundSegments[0].from} → {itineraryLegs.outboundSegments[itineraryLegs.outboundSegments.length - 1].to}
                                                     </div>
                                                     <div className="mt-2 text-sm text-slate-500">
-                                                        {new Date(itineraryLegs.outboundSegments[0].departure).toLocaleString()}{" "}
+                                                        {formatDateTimeLabel(itineraryLegs.outboundSegments[0].departure)}{" "}
                                                         —{" "}
-                                                        {new Date(itineraryLegs.outboundSegments[itineraryLegs.outboundSegments.length - 1].arrival).toLocaleString()}
+                                                        {formatDateTimeLabel(itineraryLegs.outboundSegments[itineraryLegs.outboundSegments.length - 1].arrival)}
                                                     </div>
                                                     <div className="mt-3">
                                                         <AirlineBrand
@@ -920,9 +946,9 @@ export default function BookingPage() {
                                                     {itineraryLegs.returnSegments[0].from} → {itineraryLegs.returnSegments[itineraryLegs.returnSegments.length - 1].to}
                                                 </div>
                                                 <div className="mt-2 text-sm text-slate-500">
-                                                    {new Date(itineraryLegs.returnSegments[0].departure).toLocaleString()}{" "}
+                                                    {formatDateTimeLabel(itineraryLegs.returnSegments[0].departure)}{" "}
                                                     —{" "}
-                                                    {new Date(itineraryLegs.returnSegments[itineraryLegs.returnSegments.length - 1].arrival).toLocaleString()}
+                                                    {formatDateTimeLabel(itineraryLegs.returnSegments[itineraryLegs.returnSegments.length - 1].arrival)}
                                                 </div>
                                                 <div className="mt-3">
                                                     <AirlineBrand
@@ -1736,8 +1762,8 @@ export default function BookingPage() {
                                                 </div>
                                             </div>
                                             <div className="mt-3 rounded-[1rem] bg-white/72 px-3.5 py-2.5 text-xs leading-6 text-slate-500">
-                                                {new Date(segment.departure).toLocaleString()} to{" "}
-                                                {new Date(segment.arrival).toLocaleString()}
+                                                {formatDateTimeLabel(segment.departure)} to{" "}
+                                                {formatDateTimeLabel(segment.arrival)}
                                             </div>
                                         </div>
                                     </div>

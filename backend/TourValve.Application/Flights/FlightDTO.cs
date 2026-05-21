@@ -14,6 +14,7 @@ public class FlightSegmentDto
     public string To { get; set; } = string.Empty;
     public string Departure { get; set; } = string.Empty;
     public string Arrival { get; set; } = string.Empty;
+    public int? DurationMinutes { get; set; }
 }
 
 public class FlightDto
@@ -25,6 +26,7 @@ public class FlightDto
     public string To { get; set; } = string.Empty;
     public string Departure { get; set; } = string.Empty;
     public string Arrival { get; set; } = string.Empty;
+    public int? ItineraryDurationMinutes { get; set; }
     public decimal Price { get; set; }
     public decimal BasePrice { get; set; }
     public decimal MarkupAmount { get; set; }

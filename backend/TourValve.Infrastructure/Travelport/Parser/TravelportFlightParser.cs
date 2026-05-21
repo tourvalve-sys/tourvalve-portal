@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Xml.Linq;
 using TourValve.Application.Flights.DTO;
 using TourValve.Infrastructure.Travelport.Air;
@@ -61,6 +62,7 @@ public static class TravelportFlightParser
 
             var (currency, price) = ParsePrice(totalPrice);
             var baggageContext = BuildBaggageContext(solution);
+            var itineraryDurationMinutes = ComputeItineraryDurationMinutes(enrichedSegments);
 
             results.Add(new FlightDto
             {
@@ -71,6 +73,7 @@ public static class TravelportFlightParser
                 To = lastSegment.Attribute("Destination")?.Value ?? "",
                 Departure = firstSegment.Attribute("DepartureTime")?.Value ?? "",
                 Arrival = lastSegment.Attribute("ArrivalTime")?.Value ?? "",
+                ItineraryDurationMinutes = itineraryDurationMinutes,
                 Price = price,
                 BasePrice = price,
                 MarkupAmount = 0m,
@@ -92,7 +95,8 @@ public static class TravelportFlightParser
                     From = segment.Attribute("Origin")?.Value ?? string.Empty,
                     To = segment.Attribute("Destination")?.Value ?? string.Empty,
                     Departure = segment.Attribute("DepartureTime")?.Value ?? string.Empty,
-                    Arrival = segment.Attribute("ArrivalTime")?.Value ?? string.Empty
+                    Arrival = segment.Attribute("ArrivalTime")?.Value ?? string.Empty,
+                    DurationMinutes = ParseSegmentDurationMinutes(segment)
                 }).ToList()
             });
         }
@@ -130,6 +134,7 @@ public static class TravelportFlightParser
                     To = enrichedSegment.Attribute("Destination")?.Value ?? string.Empty,
                     Departure = enrichedSegment.Attribute("DepartureTime")?.Value ?? string.Empty,
                     Arrival = enrichedSegment.Attribute("ArrivalTime")?.Value ?? string.Empty,
+                    ItineraryDurationMinutes = ParseSegmentDurationMinutes(enrichedSegment),
                     Price = 0m,
                     BasePrice = 0m,
                     MarkupAmount = 0m,
@@ -151,7 +156,8 @@ public static class TravelportFlightParser
                             From = enrichedSegment.Attribute("Origin")?.Value ?? string.Empty,
                             To = enrichedSegment.Attribute("Destination")?.Value ?? string.Empty,
                             Departure = enrichedSegment.Attribute("DepartureTime")?.Value ?? string.Empty,
-                            Arrival = enrichedSegment.Attribute("ArrivalTime")?.Value ?? string.Empty
+                            Arrival = enrichedSegment.Attribute("ArrivalTime")?.Value ?? string.Empty,
+                            DurationMinutes = ParseSegmentDurationMinutes(enrichedSegment)
                         }
                     }
                 });
@@ -192,7 +198,8 @@ public static class TravelportFlightParser
                                 From = detail.Attribute("Origin")?.Value ?? string.Empty,
                                 To = detail.Attribute("Destination")?.Value ?? string.Empty,
                                 Departure = detail.Attribute("DepartureTime")?.Value ?? string.Empty,
-                                Arrival = detail.Attribute("ArrivalTime")?.Value ?? string.Empty
+                                Arrival = detail.Attribute("ArrivalTime")?.Value ?? string.Empty,
+                                DurationMinutes = ParseSegmentDurationMinutes(detail)
                             }
                         }
                     });
@@ -273,6 +280,7 @@ public static class TravelportFlightParser
 
             var (currency, price) = ParsePrice(totalPrice);
             var baggageContext = BuildBaggageContext(point);
+            var itineraryDurationMinutes = ComputeItineraryDurationMinutes(segments);
 
             results.Add(new FlightDto
             {
@@ -283,6 +291,7 @@ public static class TravelportFlightParser
                 To = lastSegment.Attribute("Destination")?.Value ?? string.Empty,
                 Departure = firstSegment.Attribute("DepartureTime")?.Value ?? string.Empty,
                 Arrival = lastSegment.Attribute("ArrivalTime")?.Value ?? string.Empty,
+                ItineraryDurationMinutes = itineraryDurationMinutes,
                 Price = price,
                 BasePrice = price,
                 MarkupAmount = 0m,
@@ -302,7 +311,8 @@ public static class TravelportFlightParser
                     From = segment.Attribute("Origin")?.Value ?? string.Empty,
                     To = segment.Attribute("Destination")?.Value ?? string.Empty,
                     Departure = segment.Attribute("DepartureTime")?.Value ?? string.Empty,
-                    Arrival = segment.Attribute("ArrivalTime")?.Value ?? string.Empty
+                    Arrival = segment.Attribute("ArrivalTime")?.Value ?? string.Empty,
+                    DurationMinutes = ParseSegmentDurationMinutes(segment)
                 }).ToList()
             });
         }
@@ -416,6 +426,7 @@ public static class TravelportFlightParser
             .Select(ResolveStandaloneClassOfService)
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
             ?? "Economy";
+        var itineraryDurationMinutes = ComputeItineraryDurationMinutes(segments);
 
         return new FlightDto
         {
@@ -426,6 +437,7 @@ public static class TravelportFlightParser
             To = lastSegment.Attribute("Destination")?.Value ?? string.Empty,
             Departure = firstSegment.Attribute("DepartureTime")?.Value ?? string.Empty,
             Arrival = lastSegment.Attribute("ArrivalTime")?.Value ?? string.Empty,
+            ItineraryDurationMinutes = itineraryDurationMinutes,
             Price = 0m,
             BasePrice = 0m,
             MarkupAmount = 0m,
@@ -444,7 +456,8 @@ public static class TravelportFlightParser
                 From = segment.Attribute("Origin")?.Value ?? string.Empty,
                 To = segment.Attribute("Destination")?.Value ?? string.Empty,
                 Departure = segment.Attribute("DepartureTime")?.Value ?? string.Empty,
-                Arrival = segment.Attribute("ArrivalTime")?.Value ?? string.Empty
+                Arrival = segment.Attribute("ArrivalTime")?.Value ?? string.Empty,
+                DurationMinutes = ParseSegmentDurationMinutes(segment)
             }).ToList()
         };
     }
@@ -458,6 +471,102 @@ public static class TravelportFlightParser
             string.IsNullOrWhiteSpace(currency) ? "USD" : currency,
             decimal.TryParse(numeric, out var price) ? price : 0m
         );
+    }
+
+    private static int? ParseSegmentDurationMinutes(XElement segment)
+    {
+        var flightTimeRaw = segment.Attribute("FlightTime")?.Value;
+        if (int.TryParse(flightTimeRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var flightTimeMinutes) &&
+            flightTimeMinutes > 0)
+        {
+            return flightTimeMinutes;
+        }
+
+        var travelTimeRaw = segment.Attribute("TravelTime")?.Value;
+        if (int.TryParse(travelTimeRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var travelTimeMinutes) &&
+            travelTimeMinutes > 0)
+        {
+            return travelTimeMinutes;
+        }
+
+        var departureRaw = segment.Attribute("DepartureTime")?.Value;
+        var arrivalRaw = segment.Attribute("ArrivalTime")?.Value;
+        if (TryParseTravelportTimestamp(departureRaw, out var departure) && TryParseTravelportTimestamp(arrivalRaw, out var arrival))
+        {
+            var diff = (int)Math.Round((arrival - departure).TotalMinutes);
+            if (diff > 0)
+            {
+                return diff;
+            }
+        }
+
+        return null;
+    }
+
+    private static int? ComputeItineraryDurationMinutes(IReadOnlyList<XElement> segments)
+    {
+        if (segments.Count == 0)
+        {
+            return null;
+        }
+
+        var totalMinutes = 0;
+
+        for (var index = 0; index < segments.Count; index++)
+        {
+            var segmentMinutes = ParseSegmentDurationMinutes(segments[index]);
+            if (segmentMinutes.HasValue && segmentMinutes.Value > 0)
+            {
+                totalMinutes += segmentMinutes.Value;
+            }
+
+            if (index >= segments.Count - 1)
+            {
+                continue;
+            }
+
+            var current = segments[index];
+            var next = segments[index + 1];
+            if (!TryParseTravelportTimestamp(current.Attribute("ArrivalTime")?.Value, out var arrival) ||
+                !TryParseTravelportTimestamp(next.Attribute("DepartureTime")?.Value, out var nextDeparture))
+            {
+                continue;
+            }
+
+            var layoverMinutes = (int)Math.Round((nextDeparture - arrival).TotalMinutes);
+            if (layoverMinutes > 0)
+            {
+                totalMinutes += layoverMinutes;
+            }
+        }
+
+        if (totalMinutes > 0)
+        {
+            return totalMinutes;
+        }
+
+        if (TryParseTravelportTimestamp(segments[0].Attribute("DepartureTime")?.Value, out var itineraryDeparture) &&
+            TryParseTravelportTimestamp(segments[^1].Attribute("ArrivalTime")?.Value, out var itineraryArrival))
+        {
+            var diff = (int)Math.Round((itineraryArrival - itineraryDeparture).TotalMinutes);
+            if (diff > 0)
+            {
+                return diff;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryParseTravelportTimestamp(string? value, out DateTimeOffset parsed)
+    {
+        parsed = default;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return DateTimeOffset.TryParse(value.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out parsed);
     }
 
     private static XElement EnrichSegment(XDocument doc, XElement solution, XElement originalSegment)

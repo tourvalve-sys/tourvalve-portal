@@ -299,12 +299,16 @@ public sealed class AtlasFlightsController : ControllerBase
             From = segment.DepAirport,
             To = segment.ArrAirport,
             Departure = FormatAtlasTime(segment.DepTime),
-            Arrival = FormatAtlasTime(segment.ArrTime)
+            Arrival = FormatAtlasTime(segment.ArrTime),
+            DurationMinutes = segment.Duration > 0 ? segment.Duration : null
         }).ToList();
 
         var totalBase = ComputeAtlasTotalBaseAmount(routing, adults, child, infant);
         var baggageContext = BuildAtlasBaggageContext(routing.Rule);
         var policyContext = BuildAtlasPolicyContext(routing.Rule);
+        var itineraryDurationMinutes = routing.RetSegments is not null && routing.RetSegments.Count > 0
+            ? null
+            : ComputeAtlasItineraryDurationMinutes(segments);
 
         return new FlightDto
         {
@@ -315,6 +319,7 @@ public sealed class AtlasFlightsController : ControllerBase
             To = last.ArrAirport,
             Departure = FormatAtlasTime(first.DepTime),
             Arrival = FormatAtlasTime(last.ArrTime),
+            ItineraryDurationMinutes = itineraryDurationMinutes,
             Currency = string.IsNullOrWhiteSpace(routing.Currency) ? "MYR" : routing.Currency,
             CabinClass = "Economy",
             ProviderCode = "ATLAS",
@@ -342,6 +347,60 @@ public sealed class AtlasFlightsController : ControllerBase
             TransactionFee = routing.TransactionFee,
             TransactionFeePerPax = routing.TransactionFeePerPax,
         };
+    }
+
+    private static int? ComputeAtlasItineraryDurationMinutes(IReadOnlyList<AtlasSegment> segments)
+    {
+        if (segments.Count == 0)
+        {
+            return null;
+        }
+
+        var totalMinutes = 0;
+
+        for (var index = 0; index < segments.Count; index++)
+        {
+            var segmentMinutes = segments[index].Duration;
+            if (segmentMinutes > 0)
+            {
+                totalMinutes += segmentMinutes;
+            }
+
+            if (index >= segments.Count - 1)
+            {
+                continue;
+            }
+
+            if (!TryParseAtlasLocalTimestamp(segments[index].ArrTime, out var arrival) ||
+                !TryParseAtlasLocalTimestamp(segments[index + 1].DepTime, out var nextDeparture))
+            {
+                continue;
+            }
+
+            var layoverMinutes = (int)Math.Round((nextDeparture - arrival).TotalMinutes);
+            if (layoverMinutes > 0)
+            {
+                totalMinutes += layoverMinutes;
+            }
+        }
+
+        return totalMinutes > 0 ? totalMinutes : null;
+    }
+
+    private static bool TryParseAtlasLocalTimestamp(string value, out DateTime parsed)
+    {
+        parsed = default;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return DateTime.TryParseExact(
+            value.Trim(),
+            "yyyyMMddHHmm",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out parsed);
     }
 
     private static decimal ComputeAtlasTotalBaseAmount(AtlasRouting routing, int adults, int child, int infant)

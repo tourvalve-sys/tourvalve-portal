@@ -544,21 +544,6 @@ function formatFlightDate(value: string) {
     return `${day} ${month}, ${weekday}, ${year}`;
 }
 
-function formatFlightDuration(start: string, end: string) {
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    const startMs = startDate.getTime();
-    const endMs = endDate.getTime();
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
-        return "";
-    }
-
-    const minutes = Math.round((endMs - startMs) / 60000);
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return `${hours}h ${remainingMinutes.toString().padStart(2, "0")}m`;
-}
-
 function extractAircraftLabel(segments: FlightResult["airSegmentXmls"], fallbackXml: string) {
     const samples = segments?.length ? segments : fallbackXml ? [fallbackXml] : [];
     for (const xml of samples) {
@@ -604,6 +589,55 @@ function computeMinutesBetween(start: string, end: string) {
     }
 
     return Math.round((endMs - startMs) / 60000);
+}
+
+type DurationAwareSegment = {
+    departure: string;
+    arrival: string;
+    durationMinutes?: number | null;
+};
+
+function computeItineraryDurationMinutes(segments: DurationAwareSegment[], fallbackMinutes?: number | null) {
+    if (!Array.isArray(segments) || segments.length === 0) {
+        return fallbackMinutes ?? null;
+    }
+
+    let totalMinutes = 0;
+
+    for (let index = 0; index < segments.length; index++) {
+        const segment = segments[index];
+        const segmentMinutes =
+            typeof segment.durationMinutes === "number" && Number.isFinite(segment.durationMinutes) && segment.durationMinutes > 0
+                ? segment.durationMinutes
+                : computeMinutesBetween(segment.departure, segment.arrival);
+
+        if (segmentMinutes != null && segmentMinutes > 0) {
+            totalMinutes += segmentMinutes;
+        }
+
+        if (index >= segments.length - 1) continue;
+
+        const nextSegment = segments[index + 1];
+        const layoverMinutes = computeMinutesBetween(segment.arrival, nextSegment.departure);
+        if (layoverMinutes != null && layoverMinutes > 0) {
+            totalMinutes += layoverMinutes;
+        }
+    }
+
+    if (totalMinutes > 0) {
+        return totalMinutes;
+    }
+
+    return fallbackMinutes ?? null;
+}
+
+function extractKgBadges(value: string) {
+    if (typeof value !== "string") return [];
+    const matches = Array.from(value.matchAll(/(\d{1,3})\s*kg\b/gi));
+    return matches
+        .map((match) => match[1])
+        .filter(Boolean)
+        .map((amount) => `${amount}kg`);
 }
 
 function formatMinutesDuration(minutes: number | null) {
@@ -661,7 +695,8 @@ function getBaggageHighlights(flight: FlightResult) {
             .map((item) => item.trim()),
     ].filter(Boolean) as string[];
 
-    return Array.from(new Set(highlights));
+    const badges = highlights.flatMap(extractKgBadges).filter(Boolean);
+    return Array.from(new Set(badges));
 }
 
 function sanitizeFlightResult(flight: FlightResult): FlightResult {
@@ -1179,17 +1214,15 @@ export default function FlightSearch() {
                     const aux = item.auxBaggageElement ?? null;
                     const weightLabel = aux?.weight ? `${aux.weight}kg` : "";
                     const pieceLabel = aux?.piece ? `${aux.piece}pc` : "";
-                    const title =
-                        weightLabel || pieceLabel
-                            ? `Checked baggage ${[pieceLabel, weightLabel].filter(Boolean).join(" ")}`
-                            : item.productName || "Checked baggage";
+                    const title = weightLabel || "";
+                    const fallbackTitle = pieceLabel || item.productName || "Baggage";
 
                     return {
                         type: "BAGGAGE",
                         segmentLabel,
                         segmentIndex: item.segmentIndex,
                         code: item.productCode,
-                        title,
+                        title: title || fallbackTitle,
                         amount: typeof item.price === "number" ? item.price : Number(item.price ?? 0),
                         currency: item.currency || prebookFlight.currency,
                     };
@@ -1210,14 +1243,22 @@ export default function FlightSearch() {
                     .filter(Boolean)
                     .includes(segmentLabel);
             })
-            .map((offer) => ({
-            type: "BAGGAGE",
-            segmentLabel: (offer.segmentLabel ?? "").trim() || segmentLabel,
-            code: offer.code,
-            title: offer.title || "Baggage option",
-            amount: offer.baseAmount,
-            currency: offer.currency || prebookFlight.currency,
-        }));
+            .map((offer) => {
+                const candidateValue =
+                    offer.comparison?.find((item) => item.label?.toLowerCase().includes("checked baggage"))?.value ??
+                    offer.title ??
+                    "";
+                const kgLabel = extractKgBadges(candidateValue)[0] ?? "";
+
+                return {
+                    type: "BAGGAGE" as const,
+                    segmentLabel: (offer.segmentLabel ?? "").trim() || segmentLabel,
+                    code: offer.code,
+                    title: kgLabel || offer.title || "Baggage option",
+                    amount: offer.baseAmount,
+                    currency: offer.currency || prebookFlight.currency,
+                };
+            });
     }, [
         prebookActiveSegment?.label,
         prebookActiveSegmentIndex,
@@ -2275,9 +2316,11 @@ export default function FlightSearch() {
                 }
 
                 pendingResultsScrollRef.current = false;
-                target.scrollIntoView({
+                const headerOffset = 120;
+                const targetTop = target.getBoundingClientRect().top + window.scrollY;
+                window.scrollTo({
+                    top: Math.max(targetTop - headerOffset, 0),
                     behavior: "smooth",
-                    block: "start",
                 });
             });
         }, 140);
@@ -2912,7 +2955,13 @@ export default function FlightSearch() {
                                 const arrivalClock = formatFlightClock(lastSegment.arrival);
                                 const departureDateLabel = formatFlightDate(firstSegment.departure);
                                 const arrivalDateLabel = formatFlightDate(lastSegment.arrival);
-                                const durationLabel = formatFlightDuration(firstSegment.departure, lastSegment.arrival);
+                                const durationMinutes = computeItineraryDurationMinutes(
+                                    segmentsForTimeline,
+                                    typeof flight.itineraryDurationMinutes === "number" && Number.isFinite(flight.itineraryDurationMinutes)
+                                        ? flight.itineraryDurationMinutes
+                                        : null
+                                );
+                                const durationLabel = formatMinutesDuration(durationMinutes);
                                 const returnFirstSegment = returnSegments[0] ?? null;
                                 const returnLastSegment = returnSegments.length
                                     ? returnSegments[returnSegments.length - 1]
@@ -2921,9 +2970,8 @@ export default function FlightSearch() {
                                 const returnArrivalClock = returnLastSegment ? formatFlightClock(returnLastSegment.arrival) : "";
                                 const returnDepartureDateLabel = returnFirstSegment ? formatFlightDate(returnFirstSegment.departure) : "";
                                 const returnArrivalDateLabel = returnLastSegment ? formatFlightDate(returnLastSegment.arrival) : "";
-                                const returnDurationLabel = returnFirstSegment && returnLastSegment
-                                    ? formatFlightDuration(returnFirstSegment.departure, returnLastSegment.arrival)
-                                    : "";
+                                const returnDurationMinutes = computeItineraryDurationMinutes(returnSegments);
+                                const returnDurationLabel = formatMinutesDuration(returnDurationMinutes);
                                 const returnStopCount = Math.max(returnSegments.length - 1, 0);
                                 const stopoverChips = segmentsForTimeline.slice(0, -1).map((segment, segmentIndex) => {
                                     const nextSegment = segmentsForTimeline[segmentIndex + 1];
@@ -2951,7 +2999,6 @@ export default function FlightSearch() {
                                     <div
                                         key={bundle ? `bundle-${bundle.key}` : flight.id}
                                         ref={index === 0 ? firstResultCardRef : null}
-                                        style={index === 0 ? { scrollMarginTop: "7rem" } : undefined}
                                         className={`premium-panel rounded-[1.55rem] p-4 sm:rounded-[1.9rem] sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
                                     >
                                         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] xl:items-start">
@@ -3431,7 +3478,12 @@ export default function FlightSearch() {
                                                                                 );
                                                                                 const fromAirport = getAirportByCode(segment.from);
                                                                                 const toAirport = getAirportByCode(segment.to);
-                                                                                const segmentMinutes = computeMinutesBetween(segment.departure, segment.arrival);
+                                                                                const segmentMinutes =
+                                                                                    typeof segment.durationMinutes === "number" &&
+                                                                                    Number.isFinite(segment.durationMinutes) &&
+                                                                                    segment.durationMinutes > 0
+                                                                                        ? segment.durationMinutes
+                                                                                        : computeMinutesBetween(segment.departure, segment.arrival);
                                                                                 const segmentDuration = formatMinutesDuration(segmentMinutes);
                                                                                 const nextSegment = outboundSegments[segmentIndex + 1];
                                                                                 const layoverMinutes = nextSegment ? computeMinutesBetween(segment.arrival, nextSegment.departure) : null;
@@ -3513,7 +3565,12 @@ export default function FlightSearch() {
                                                                                 );
                                                                                 const fromAirport = getAirportByCode(segment.from);
                                                                                 const toAirport = getAirportByCode(segment.to);
-                                                                                const segmentMinutes = computeMinutesBetween(segment.departure, segment.arrival);
+                                                                                const segmentMinutes =
+                                                                                    typeof segment.durationMinutes === "number" &&
+                                                                                    Number.isFinite(segment.durationMinutes) &&
+                                                                                    segment.durationMinutes > 0
+                                                                                        ? segment.durationMinutes
+                                                                                        : computeMinutesBetween(segment.departure, segment.arrival);
                                                                                 const segmentDuration = formatMinutesDuration(segmentMinutes);
                                                                                 const nextSegment = returnSegments[segmentIndex + 1];
                                                                                 const layoverMinutes = nextSegment ? computeMinutesBetween(segment.arrival, nextSegment.departure) : null;

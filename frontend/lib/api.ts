@@ -25,6 +25,7 @@ export type FlightResult = {
     to: string;
     departure: string;
     arrival: string;
+    itineraryDurationMinutes?: number | null;
     price: number;
     basePrice: number;
     markupAmount: number;
@@ -53,6 +54,7 @@ export type FlightResult = {
         to: string;
         departure: string;
         arrival: string;
+        durationMinutes?: number | null;
     }>;
     prebookSelections?: {
         baggagePreference: string;
