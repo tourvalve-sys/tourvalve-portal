@@ -115,6 +115,8 @@ def main() -> int:
     parser.add_argument("--request-source", default=os.getenv("ATLAS_REQUEST_SOURCE", "TourValve").strip())
     parser.add_argument("--timeout", type=int, default=30)
     parser.add_argument("--sleep-ms", type=int, default=300, help="Delay between Atlas calls")
+    parser.add_argument("--poll-attempts", type=int, default=0, help="Extra queryOrderDetails retries until ticketed")
+    parser.add_argument("--poll-delay-s", type=float, default=5.0, help="Delay between poll attempts")
     args = parser.parse_args()
 
     if not args.base_url:
@@ -141,18 +143,38 @@ def main() -> int:
         if not order_no:
             continue
 
-        try:
-            details = _atlas_post(
-                args.base_url,
-                "/queryOrderDetails.do",
-                args.client_id,
-                args.client_secret,
-                {"orderNo": order_no, "requestSource": args.request_source},
-                timeout_s=args.timeout,
-            )
-        except (urllib.error.URLError, urllib.error.HTTPError, RuntimeError, ValueError) as ex:
-            # Keep template intact; just skip problematic rows.
-            print(f"[WARN] {order_no}: {ex}")
+        details: dict[str, Any] | None = None
+        for poll_attempt in range(max(args.poll_attempts, 0) + 1):
+            try:
+                details = _atlas_post(
+                    args.base_url,
+                    "/queryOrderDetails.do",
+                    args.client_id,
+                    args.client_secret,
+                    {"orderNo": order_no, "requestSource": args.request_source},
+                    timeout_s=args.timeout,
+                )
+            except (urllib.error.URLError, urllib.error.HTTPError, RuntimeError, ValueError) as ex:
+                # Keep template intact; just skip problematic rows.
+                print(f"[WARN] {order_no}: {ex}")
+                details = None
+                break
+
+            # Stop polling once ticketed.
+            raw_status = details.get("orderStatus")
+            try:
+                status_int = int(raw_status) if raw_status is not None else None
+            except Exception:
+                status_int = None
+
+            airline_pnrs_now = _extract_airline_pnrs(details)
+            if status_int == 2 or airline_pnrs_now:
+                break
+
+            if poll_attempt < args.poll_attempts:
+                time.sleep(max(args.poll_delay_s, 0.1))
+
+        if details is None:
             continue
 
         currency = details.get("currency") or (details.get("routing") or {}).get("currency")
@@ -175,4 +197,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
