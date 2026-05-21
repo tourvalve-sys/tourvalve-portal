@@ -36,39 +36,112 @@ public sealed class AtlasTicketingService
             RequestSource = _options.RequestSource
         }, cancellationToken);
 
-        // Query order details for ticket evidence (ticketNos / airPnr). Some suppliers may take a short time.
-        AtlasQueryOrderDetailsResponse details;
-        try
+        // Query order details for ticket evidence (ticketNos / airlinePNRs). Ticketing can be asynchronous.
+        AtlasQueryOrderDetailsResponse details = await QueryUntilTicketedAsync(orderNo, cancellationToken);
+
+        var ticketNos = ExtractTicketNumbers(details);
+        var airlinePnrs = ExtractAirlinePnrs(details);
+
+        return new AtlasTicketingResult(
+            ticketNos,
+            airlinePnrs.Count == 0 ? null : string.Join(", ", airlinePnrs),
+            details.TotalTransactionFee,
+            JsonSerializer.Serialize(payResponse),
+            JsonSerializer.Serialize(details));
+    }
+
+    private async Task<AtlasQueryOrderDetailsResponse> QueryUntilTicketedAsync(string orderNo, CancellationToken cancellationToken)
+    {
+        const int maxAttempts = 12;
+
+        AtlasQueryOrderDetailsResponse? last = null;
+        var delay = TimeSpan.FromSeconds(5);
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            details = await _atlas.QueryOrderDetailsAsync(new AtlasQueryOrderDetailsRequest
+            try
             {
-                OrderNo = orderNo,
-                RequestSource = _options.RequestSource
-            }, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Atlas queryOrderDetails failed after pay for {OrderNo}", orderNo);
-            throw;
+                last = await _atlas.QueryOrderDetailsAsync(new AtlasQueryOrderDetailsRequest
+                {
+                    OrderNo = orderNo,
+                    RequestSource = _options.RequestSource
+                }, cancellationToken);
+            }
+            catch (Exception ex) when (attempt < maxAttempts)
+            {
+                _logger.LogWarning(ex, "Atlas queryOrderDetails failed (attempt {Attempt}/{MaxAttempts}) for {OrderNo}", attempt, maxAttempts, orderNo);
+                await Task.Delay(delay, cancellationToken);
+                delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 1.5, 20));
+                continue;
+            }
+
+            if (last is null)
+            {
+                continue;
+            }
+
+            var hasTickets = ExtractTicketNumbers(last).Count > 0;
+            var hasAirlinePnrs = ExtractAirlinePnrs(last).Count > 0;
+            var looksTicketed = last.OrderStatus == 2 || hasTickets || hasAirlinePnrs;
+
+            if (looksTicketed && hasTickets)
+            {
+                return last;
+            }
+
+            if (attempt < maxAttempts)
+            {
+                await Task.Delay(delay, cancellationToken);
+                delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 1.5, 20));
+            }
         }
 
-        var ticketNos = (details.TicketNos ?? new List<string>())
+        if (last is null)
+        {
+            throw new InvalidOperationException($"Atlas queryOrderDetails returned no usable response for {orderNo}.");
+        }
+
+        return last;
+    }
+
+    private static IReadOnlyList<string> ExtractTicketNumbers(AtlasQueryOrderDetailsResponse details)
+    {
+        var fromTopLevel = details.TicketNos ?? new List<string>();
+        var fromPax = details.PaxTicketInfos?
+            .SelectMany(info => info.TicketNos ?? new List<string>())
+            .ToList() ?? new List<string>();
+
+        return fromTopLevel
+            .Concat(fromPax)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim())
             .Distinct(StringComparer.Ordinal)
             .ToList();
+    }
 
-        return new AtlasTicketingResult(
-            ticketNos,
-            string.IsNullOrWhiteSpace(details.AirPnr) ? null : details.AirPnr.Trim(),
-            JsonSerializer.Serialize(payResponse),
-            JsonSerializer.Serialize(details));
+    private static IReadOnlyList<string> ExtractAirlinePnrs(AtlasQueryOrderDetailsResponse details)
+    {
+        var fromPax = details.PaxTicketInfos?
+            .SelectMany(info => info.AirlinePNRs ?? new List<string>())
+            .ToList() ?? new List<string>();
+
+        var fromLegacy = string.IsNullOrWhiteSpace(details.AirPnr)
+            ? Array.Empty<string>()
+            : details.AirPnr
+                .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return fromPax
+            .Concat(fromLegacy)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
     }
 }
 
 public sealed record AtlasTicketingResult(
     IReadOnlyList<string> TicketNumbers,
     string? AirlinePnr,
+    decimal? TotalTransactionFee,
     string PayResponseJson,
     string OrderDetailsJson);
-

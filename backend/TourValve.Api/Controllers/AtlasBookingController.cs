@@ -167,7 +167,8 @@ public sealed class AtlasBookingController : ControllerBase
         var refs = (
             UniversalRecordLocator: (string?)order.PnrCode,
             ProviderLocator: (string?)order.OrderNo,
-            AirlineLocator: (string?)order.PnrCode
+            // Atlas `pnrCode` is an Atlas-side locator; airline PNR is available after ticketing via queryOrderDetails.
+            AirlineLocator: (string?)null
         );
 
         var normalizedRequestId = string.IsNullOrWhiteSpace(request.ClientRequestId)

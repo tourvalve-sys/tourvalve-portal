@@ -34,6 +34,9 @@ public sealed class AtlasRouting
     [JsonPropertyName("transactionFee")]
     public decimal TransactionFee { get; set; }
 
+    [JsonPropertyName("transactionFeeMode")]
+    public string? TransactionFeeMode { get; set; }
+
     [JsonPropertyName("fromSegments")]
     public List<AtlasSegment> FromSegments { get; set; } = new();
 
@@ -43,4 +46,3 @@ public sealed class AtlasRouting
     [JsonPropertyName("rule")]
     public AtlasRule? Rule { get; set; }
 }
-

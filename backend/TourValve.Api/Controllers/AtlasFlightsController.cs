@@ -303,7 +303,9 @@ public sealed class AtlasFlightsController : ControllerBase
             DurationMinutes = segment.Duration > 0 ? segment.Duration : null
         }).ToList();
 
-        var totalBase = ComputeAtlasTotalBaseAmount(routing, adults, child, infant);
+        var paxCount = Math.Max(adults, 0) + Math.Max(child, 0) + Math.Max(infant, 0);
+        var transactionFee = ComputeAtlasTransactionFeeContext(routing, paxCount);
+        var totalBase = ComputeAtlasTotalBaseAmount(routing, adults, child, infant, transactionFee.Total);
         var baggageContext = BuildAtlasBaggageContext(routing.Rule);
         var policyContext = BuildAtlasPolicyContext(routing.Rule);
         var itineraryDurationMinutes = routing.RetSegments is not null && routing.RetSegments.Count > 0
@@ -344,8 +346,8 @@ public sealed class AtlasFlightsController : ControllerBase
             ChangePolicy = policyContext.ChangePolicy,
             CancellationMaxFee = policyContext.CancellationMaxFee,
             ChangeMaxFee = policyContext.ChangeMaxFee,
-            TransactionFee = routing.TransactionFee,
-            TransactionFeePerPax = routing.TransactionFeePerPax,
+            TransactionFee = transactionFee.Total,
+            TransactionFeePerPax = transactionFee.PerPax,
         };
     }
 
@@ -403,13 +405,46 @@ public sealed class AtlasFlightsController : ControllerBase
             out parsed);
     }
 
-    private static decimal ComputeAtlasTotalBaseAmount(AtlasRouting routing, int adults, int child, int infant)
+    private static decimal ComputeAtlasTotalBaseAmount(AtlasRouting routing, int adults, int child, int infant, decimal totalTransactionFee)
     {
-        var adultTotal = adults * (routing.AdultPrice + routing.AdultTax + routing.TransactionFeePerPax);
-        var childTotal = Math.Max(child, 0) * (routing.ChildPrice + routing.ChildTax + routing.TransactionFeePerPax);
-        var infantTotal = Math.Max(infant, 0) * (routing.InfantPrice + routing.InfantTax + routing.TransactionFeePerPax);
+        var adultTotal = adults * (routing.AdultPrice + routing.AdultTax);
+        var childTotal = Math.Max(child, 0) * (routing.ChildPrice + routing.ChildTax);
+        var infantTotal = Math.Max(infant, 0) * (routing.InfantPrice + routing.InfantTax);
 
-        return decimal.Round(adultTotal + childTotal + infantTotal, 2, MidpointRounding.AwayFromZero);
+        return decimal.Round(adultTotal + childTotal + infantTotal + totalTransactionFee, 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static (decimal Total, decimal PerPax) ComputeAtlasTransactionFeeContext(AtlasRouting routing, int paxCount)
+    {
+        if (paxCount <= 0)
+        {
+            return (0m, 0m);
+        }
+
+        var mode = routing.TransactionFeeMode?.Trim();
+
+        decimal totalFee;
+        if (string.Equals(mode, "PER_BOOKING", StringComparison.OrdinalIgnoreCase))
+        {
+            totalFee = routing.TransactionFee;
+        }
+        else if (string.Equals(mode, "PER_PAX", StringComparison.OrdinalIgnoreCase))
+        {
+            totalFee = routing.TransactionFee * paxCount;
+        }
+        else if (routing.TransactionFeePerPax > 0m)
+        {
+            // Older Atlas responses still provide transactionFeePerPax; treat it as authoritative when present.
+            totalFee = routing.TransactionFeePerPax * paxCount;
+        }
+        else
+        {
+            // Fallback: treat transactionFee as a per-booking fee when mode is missing.
+            totalFee = routing.TransactionFee;
+        }
+
+        var perPax = decimal.Round(totalFee / paxCount, 2, MidpointRounding.AwayFromZero);
+        return (decimal.Round(totalFee, 2, MidpointRounding.AwayFromZero), perPax);
     }
 
     private static (string CarryOnAllowance, string CheckedBaggageAllowance, List<string> OfferTexts) BuildAtlasBaggageContext(AtlasRule? rule)
