@@ -76,6 +76,31 @@ function seatGroupCols(count: number) {
     return "grid-cols-6";
 }
 
+function extractSeatLetter(code: string) {
+    if (typeof code !== "string") return "";
+    return code.match(/[A-Za-z]+$/)?.[0]?.toUpperCase() ?? "";
+}
+
+function rowSortKey(value: string) {
+    const raw = typeof value === "string" ? value.trim() : "";
+    const numericPrefix = raw.match(/^\d+/)?.[0];
+
+    if (numericPrefix) {
+        return { rank: 0, num: Number.parseInt(numericPrefix, 10), raw };
+    }
+
+    return { rank: 1, num: Number.POSITIVE_INFINITY, raw };
+}
+
+function compareRowNumbers(left: string, right: string) {
+    const a = rowSortKey(left);
+    const b = rowSortKey(right);
+
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    if (a.num !== b.num) return a.num - b.num;
+    return a.raw.localeCompare(b.raw, undefined, { numeric: true });
+}
+
 export type SeatMapStudioSeat = NonNullable<FlightSeatMapResponse["rows"][number]["seats"][number]>;
 
 type SeatMapStudioProps = {
@@ -111,6 +136,75 @@ export default function SeatMapStudio({
                 .find((seat) => seat.code === selectedSeatCode) ?? null,
         [seatMap, selectedSeatCode]
     );
+
+    const cabinPlan = useMemo(() => {
+        if (!seatMap?.rows?.length) {
+            return null;
+        }
+
+        const rows = seatMap.rows
+            .filter((row) => row && typeof row === "object" && Array.isArray(row.seats) && row.seats.length > 0)
+            .map((row) => {
+                const orderedSeats = [...row.seats].sort((a, b) =>
+                    a.code.localeCompare(b.code, undefined, { numeric: true })
+                );
+                const aisleIndex = Math.ceil(orderedSeats.length / 2);
+
+                return {
+                    number: row.number,
+                    leftSeats: orderedSeats.slice(0, aisleIndex),
+                    rightSeats: orderedSeats.slice(aisleIndex),
+                };
+            })
+            .sort((a, b) => compareRowNumbers(a.number, b.number));
+
+        const maxSeatsAcross = rows.reduce((max, row) => Math.max(max, row.leftSeats.length + row.rightSeats.length), 0);
+        const leftSlots = rows.reduce((max, row) => Math.max(max, row.leftSeats.length), 0);
+        const rightSlots = rows.reduce((max, row) => Math.max(max, row.rightSeats.length), 0);
+
+        const pickSlotLabel = (slotIndex: number, side: "left" | "right") => {
+            const counts = new Map<string, number>();
+
+            rows.forEach((row) => {
+                const seat = side === "left" ? row.leftSeats[slotIndex] : row.rightSeats[slotIndex];
+                if (!seat) return;
+
+                const letter = extractSeatLetter(seat.code);
+                if (!letter) return;
+
+                counts.set(letter, (counts.get(letter) ?? 0) + 1);
+            });
+
+            let best = "";
+            let bestCount = 0;
+            for (const [letter, count] of counts.entries()) {
+                if (count > bestCount) {
+                    best = letter;
+                    bestCount = count;
+                    continue;
+                }
+
+                if (count === bestCount && best && letter.localeCompare(best, undefined, { numeric: true }) < 0) {
+                    best = letter;
+                }
+            }
+
+            return best;
+        };
+
+        const leftLabels = Array.from({ length: leftSlots }, (_, index) => pickSlotLabel(index, "left"));
+        const rightLabels = Array.from({ length: rightSlots }, (_, index) => pickSlotLabel(index, "right"));
+
+        return {
+            rows,
+            maxSeatsAcross,
+            leftSlots,
+            rightSlots,
+            leftLabels,
+            rightLabels,
+            supportsPlanLayout: maxSeatsAcross > 0 && maxSeatsAcross <= 8,
+        };
+    }, [seatMap]);
 
     return (
         <div className="soft-panel rounded-[1.8rem] p-5">
@@ -208,7 +302,7 @@ export default function SeatMapStudio({
                                 <div className="absolute right-10 top-1/2 h-12 w-12 -translate-y-1/2 rounded-[2.25rem] bg-white/75 shadow-[inset_0_0_0_1px_rgba(89,64,46,0.06)]" />
                             </div>
 
-                            <div className="relative z-10 overflow-hidden rounded-[1.9rem] border border-[rgba(89,64,46,0.08)] bg-gradient-to-b from-[rgba(248,251,255,0.78)] to-[rgba(255,247,236,0.55)] px-4 py-6 shadow-[0_28px_80px_rgba(31,42,68,0.08)] backdrop-blur-sm lg:mx-16 xl:mx-20">
+                            <div className="relative z-10 overflow-hidden rounded-[1.9rem] border border-[rgba(89,64,46,0.08)] bg-gradient-to-b from-[rgba(248,251,255,0.78)] to-[rgba(255,247,236,0.55)] px-4 py-6 shadow-[0_28px_80px_rgba(31,42,68,0.08)] backdrop-blur-sm lg:px-6">
                                 <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
                                     <div className="h-10 w-56 rounded-b-[2.5rem] bg-white/90 shadow-[0_14px_34px_rgba(31,42,68,0.08)]" />
                                 </div>
@@ -219,8 +313,151 @@ export default function SeatMapStudio({
                                 <div className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-[120%] -translate-x-1/2 -translate-y-1/2 rounded-[2.5rem] bg-[rgba(255,247,236,0.75)]" />
                                 <div className="pointer-events-none absolute left-1/2 top-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[rgba(30,125,240,0.12)] blur-3xl" />
 
-                                <div className="relative space-y-3 pt-8 pb-10">
-                                    {seatMap.rows.map((row) => {
+                                <div className="relative pt-8 pb-10">
+                                    {!detailed && cabinPlan && cabinPlan.supportsPlanLayout ? (
+                                        <div className="overflow-x-auto px-2 pb-1">
+                                            <div className="min-w-max rounded-[2.5rem] border border-[rgba(89,64,46,0.08)] bg-white/90 px-4 py-4 shadow-[0_22px_60px_rgba(31,42,68,0.08)] backdrop-blur-sm sm:px-6">
+                                                <div className="flex items-start gap-4">
+                                                    <div className="mt-5 flex w-7 shrink-0 flex-col items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                                        {cabinPlan.leftLabels.map((label, index) => (
+                                                            <div
+                                                                key={`left-${index}`}
+                                                                className="flex h-7 w-7 items-center justify-center sm:h-8 sm:w-8"
+                                                            >
+                                                                {label}
+                                                            </div>
+                                                        ))}
+                                                        <div className="h-4" />
+                                                        {cabinPlan.rightLabels.map((label, index) => (
+                                                            <div
+                                                                key={`right-${index}`}
+                                                                className="flex h-7 w-7 items-center justify-center sm:h-8 sm:w-8"
+                                                            >
+                                                                {label}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
+                                                    <div className="flex items-start gap-2">
+                                                        {cabinPlan.rows.map((planRow) => (
+                                                            <div key={planRow.number} className="flex flex-col items-center">
+                                                                <div className="text-[10px] font-semibold text-slate-400">
+                                                                    {planRow.number}
+                                                                </div>
+                                                                <div className="mt-2 flex flex-col items-center gap-1">
+                                                                    {Array.from({ length: cabinPlan.leftSlots }, (_, slotIndex) => {
+                                                                        const seat = planRow.leftSeats[slotIndex] ?? null;
+                                                                        if (!seat) {
+                                                                            return (
+                                                                                <div
+                                                                                    key={`left-${planRow.number}-${slotIndex}`}
+                                                                                    className="h-7 w-7 sm:h-8 sm:w-8"
+                                                                                />
+                                                                            );
+                                                                        }
+
+                                                                        const selected = selectedSeatCode === seat.code;
+                                                                        const status = seatLegendStatus(seat);
+                                                                        const matchesFilter =
+                                                                            legendFilter === "SELECTED"
+                                                                                ? selected
+                                                                                : legendFilter === "ALL" || status === legendFilter;
+                                                                        const disabled = !isSeatSelectable(seat) || !matchesFilter;
+                                                                        const seatLetter = extractSeatLetter(seat.code);
+                                                                        const tone = selected
+                                                                            ? "border-[rgba(45,120,92,0.36)] bg-[rgba(225,246,236,0.96)] text-[var(--success)]"
+                                                                            : status === "PAID"
+                                                                                ? "border-[rgba(176,122,67,0.22)] bg-[rgba(255,245,229,0.92)] text-[var(--accent-strong)]"
+                                                                                : status === "BLOCKED"
+                                                                                    ? "border-[rgba(89,64,46,0.10)] bg-[rgba(239,236,231,0.92)] text-slate-400"
+                                                                                    : "border-[rgba(23,68,152,0.18)] bg-[rgba(223,235,255,0.92)] text-[#174498]";
+
+                                                                        const seatTitleParts = [
+                                                                            seat.code,
+                                                                            seat.seatPrice != null && seat.seatPrice > 0
+                                                                                ? `${seat.currency || ""} ${seat.seatPrice.toFixed(2)}`
+                                                                                : "",
+                                                                            seat.availability?.trim() ? `(${seat.availability})` : "",
+                                                                        ].filter(Boolean);
+
+                                                                        return (
+                                                                            <button
+                                                                                key={`left-${planRow.number}-${seat.code}`}
+                                                                                type="button"
+                                                                                disabled={disabled}
+                                                                                onClick={() => onSelectSeat(seat)}
+                                                                                title={seatTitleParts.join(" ")}
+                                                                                className={`flex h-7 w-7 items-center justify-center rounded-md border text-[11px] font-semibold shadow-sm transition sm:h-8 sm:w-8 ${tone} ${
+                                                                                    matchesFilter ? "" : "opacity-25"
+                                                                                } disabled:cursor-not-allowed disabled:opacity-40`}
+                                                                            >
+                                                                                {status === "BLOCKED" ? "×" : seatLetter}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+
+                                                                    <div className="h-4" />
+
+                                                                    {Array.from({ length: cabinPlan.rightSlots }, (_, slotIndex) => {
+                                                                        const seat = planRow.rightSeats[slotIndex] ?? null;
+                                                                        if (!seat) {
+                                                                            return (
+                                                                                <div
+                                                                                    key={`right-${planRow.number}-${slotIndex}`}
+                                                                                    className="h-7 w-7 sm:h-8 sm:w-8"
+                                                                                />
+                                                                            );
+                                                                        }
+
+                                                                        const selected = selectedSeatCode === seat.code;
+                                                                        const status = seatLegendStatus(seat);
+                                                                        const matchesFilter =
+                                                                            legendFilter === "SELECTED"
+                                                                                ? selected
+                                                                                : legendFilter === "ALL" || status === legendFilter;
+                                                                        const disabled = !isSeatSelectable(seat) || !matchesFilter;
+                                                                        const seatLetter = extractSeatLetter(seat.code);
+                                                                        const tone = selected
+                                                                            ? "border-[rgba(45,120,92,0.36)] bg-[rgba(225,246,236,0.96)] text-[var(--success)]"
+                                                                            : status === "PAID"
+                                                                                ? "border-[rgba(176,122,67,0.22)] bg-[rgba(255,245,229,0.92)] text-[var(--accent-strong)]"
+                                                                                : status === "BLOCKED"
+                                                                                    ? "border-[rgba(89,64,46,0.10)] bg-[rgba(239,236,231,0.92)] text-slate-400"
+                                                                                    : "border-[rgba(23,68,152,0.18)] bg-[rgba(223,235,255,0.92)] text-[#174498]";
+
+                                                                        const seatTitleParts = [
+                                                                            seat.code,
+                                                                            seat.seatPrice != null && seat.seatPrice > 0
+                                                                                ? `${seat.currency || ""} ${seat.seatPrice.toFixed(2)}`
+                                                                                : "",
+                                                                            seat.availability?.trim() ? `(${seat.availability})` : "",
+                                                                        ].filter(Boolean);
+
+                                                                        return (
+                                                                            <button
+                                                                                key={`right-${planRow.number}-${seat.code}`}
+                                                                                type="button"
+                                                                                disabled={disabled}
+                                                                                onClick={() => onSelectSeat(seat)}
+                                                                                title={seatTitleParts.join(" ")}
+                                                                                className={`flex h-7 w-7 items-center justify-center rounded-md border text-[11px] font-semibold shadow-sm transition sm:h-8 sm:w-8 ${tone} ${
+                                                                                    matchesFilter ? "" : "opacity-25"
+                                                                                } disabled:cursor-not-allowed disabled:opacity-40`}
+                                                                            >
+                                                                                {status === "BLOCKED" ? "×" : seatLetter}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {seatMap.rows.map((row) => {
                                         const orderedSeats = [...row.seats].sort((a, b) =>
                                             a.code.localeCompare(b.code, undefined, { numeric: true })
                                         );
@@ -368,7 +605,9 @@ export default function SeatMapStudio({
                                                 </div>
                                             </div>
                                         );
-                                    })}
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
