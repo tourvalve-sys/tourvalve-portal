@@ -690,8 +690,8 @@ function normalizeSeatRows(seatMap: FlightSeatMapResponse | null) {
 
 function getBaggageHighlights(flight: FlightResult) {
     const highlights = [
-        flight.carryOnAllowance?.trim(),
         flight.checkedBaggageAllowance?.trim(),
+        flight.carryOnAllowance?.trim(),
         ...(flight.baggageOfferTexts ?? [])
             .filter((item): item is string => typeof item === "string")
             .map((item) => item.trim()),
