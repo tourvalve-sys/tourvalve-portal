@@ -435,6 +435,7 @@ public sealed class AirBookingController : ControllerBase
                     AirlineLocator = refs.AirlineLocator ?? string.Empty,
                     ProviderCode = providerCode,
                     Status = "CONFIRMED",
+                    ServicePreferencesJson = JsonSerializer.Serialize(request.ServicePreferences ?? new AirBookingServicePreferencesRequest()),
                     ItinerarySegments = itinerarySegments.Select(segment => new BookingItinerarySegment
                     {
                         Carrier = segment.Carrier,
@@ -1510,6 +1511,7 @@ public sealed class AirBookingController : ControllerBase
                 ContactPhone: request.ContactPhone,
                 ItinerarySegments: segments,
                 TicketNumbers: Array.Empty<string>(),
+                PrebookSelections: BookingItineraryPdfBuilder.BuildPrebookSelectionLines(JsonSerializer.Serialize(request.ServicePreferences)),
                 Ancillaries: Array.Empty<BookingAncillaryOrder>());
 
             var pdfBytes = new BookingItineraryPdfBuilder().Build(booking, model);

@@ -57,6 +57,7 @@ namespace TourValve.Application.Bookings.Commands
                             !string.IsNullOrWhiteSpace(segment.Departure) &&
                             !string.IsNullOrWhiteSpace(segment.Arrival))
                         .ToList() ?? new List<BookingItinerarySegment>()),
+                ServicePreferencesJson = string.IsNullOrWhiteSpace(request.ServicePreferencesJson) ? "{}" : request.ServicePreferencesJson,
                 Status = string.IsNullOrWhiteSpace(request.Status) ? "CONFIRMED" : request.Status
             };
 

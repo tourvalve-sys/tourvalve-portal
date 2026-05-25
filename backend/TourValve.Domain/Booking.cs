@@ -31,6 +31,7 @@ namespace TourValve.Domain
         public decimal MarkupAmount { get; set; }
         public string ItinerarySegmentsJson { get; set; } = "[]";
         public string TicketNumbersJson { get; set; } = "[]";
+        public string ServicePreferencesJson { get; set; } = "{}";
         public DateTime? TicketedAt { get; set; }
         public string TicketingResponseXml { get; set; } = string.Empty;
         public string AirTicketingStatus { get; set; } = "NOT_STARTED";

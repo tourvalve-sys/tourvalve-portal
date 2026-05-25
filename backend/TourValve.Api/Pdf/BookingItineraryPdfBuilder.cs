@@ -77,6 +77,7 @@ public sealed class BookingItineraryPdfBuilder
         var passengers = ExtractPassengerNames(universalRecordRetrieveXml);
         var (email, phone) = ExtractContact(universalRecordRetrieveXml);
         var ticketNumbers = DeserializeStringList(booking.TicketNumbersJson);
+        var prebookSelections = BuildPrebookSelectionLines(booking.ServicePreferencesJson);
 
         var itinerarySegments = DeserializeSegments(booking.ItinerarySegmentsJson);
         if (itinerarySegments.Count == 0)
@@ -107,6 +108,7 @@ public sealed class BookingItineraryPdfBuilder
             ContactPhone: phone,
             ItinerarySegments: itinerarySegments,
             TicketNumbers: ticketNumbers,
+            PrebookSelections: prebookSelections,
             Ancillaries: ancillaries);
     }
 
@@ -303,18 +305,25 @@ public sealed class BookingItineraryPdfBuilder
         gfx.DrawString("Add-ons & ancillary services", h2Font, BrushTextDark, new XRect(x, y, width, 18), XStringFormats.TopLeft);
         y += 22;
 
-        if (model.Ancillaries.Count == 0)
+        var rows = new List<string>();
+
+        if (model.PrebookSelections.Count > 0)
+            rows.AddRange(model.PrebookSelections.Take(10));
+
+        if (model.Ancillaries.Count > 0)
+        {
+            rows.AddRange(model.Ancillaries
+                .OrderByDescending(x => x.RequestedAt)
+                .Take(6)
+                .Select(a => $"{a.Type}: {a.Description} ({a.Currency} {a.TotalAmount:0.00})"));
+        }
+
+        if (rows.Count == 0)
         {
             DrawCard(gfx, x, y, width, 44);
             gfx.DrawString("No add-ons recorded for this booking.", bodyFont, BrushTextMuted, new XRect(x + 14, y + 14, width - 28, 16), XStringFormats.TopLeft);
             return y + 44;
         }
-
-        var rows = model.Ancillaries
-            .OrderByDescending(x => x.RequestedAt)
-            .Take(6)
-            .Select(a => $"{a.Type}: {a.Description} ({a.Currency} {a.TotalAmount:0.00})")
-            .ToList();
 
         const double padding = 14;
         var contentWidth = width - padding * 2;
@@ -537,6 +546,94 @@ public sealed class BookingItineraryPdfBuilder
         }
     }
 
+    private sealed class ServicePreferencesSnapshot
+    {
+        public string BaggagePreference { get; set; } = string.Empty;
+        public string SeatPreference { get; set; } = string.Empty;
+        public string MealPreference { get; set; } = string.Empty;
+        public string FrequentFlyerProgram { get; set; } = string.Empty;
+        public string FrequentFlyerNumber { get; set; } = string.Empty;
+        public List<ServiceSeatSelectionSnapshot> SelectedSeats { get; set; } = new();
+        public List<ServicePaidAncillarySnapshot> SelectedAncillaries { get; set; } = new();
+    }
+
+    private sealed class ServiceSeatSelectionSnapshot
+    {
+        public string SegmentLabel { get; set; } = string.Empty;
+        public int? SegmentIndex { get; set; }
+        public string SeatCode { get; set; } = string.Empty;
+        public string? ProductCode { get; set; }
+    }
+
+    private sealed class ServicePaidAncillarySnapshot
+    {
+        public string Type { get; set; } = string.Empty;
+        public string SegmentLabel { get; set; } = string.Empty;
+        public int? SegmentIndex { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public string Currency { get; set; } = "MYR";
+    }
+
+    public static IReadOnlyList<string> BuildPrebookSelectionLines(string? servicePreferencesJson)
+    {
+        if (string.IsNullOrWhiteSpace(servicePreferencesJson))
+            return Array.Empty<string>();
+
+        ServicePreferencesSnapshot? snapshot;
+        try
+        {
+            snapshot = JsonSerializer.Deserialize<ServicePreferencesSnapshot>(servicePreferencesJson);
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+
+        if (snapshot is null)
+            return Array.Empty<string>();
+
+        var lines = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(snapshot.BaggagePreference))
+            lines.Add($"Pre-book baggage: {snapshot.BaggagePreference.Trim()}");
+
+        if (!string.IsNullOrWhiteSpace(snapshot.MealPreference))
+            lines.Add($"Pre-book meal: {snapshot.MealPreference.Trim()}");
+
+        if (!string.IsNullOrWhiteSpace(snapshot.SeatPreference))
+            lines.Add($"Pre-book seat preference: {snapshot.SeatPreference.Trim()}");
+
+        foreach (var seat in snapshot.SelectedSeats
+                     .Where(x => !string.IsNullOrWhiteSpace(x.SeatCode))
+                     .Take(6))
+        {
+            var segment = string.IsNullOrWhiteSpace(seat.SegmentLabel) ? string.Empty : $"{seat.SegmentLabel.Trim()} - ";
+            lines.Add($"Pre-book seat: {segment}{seat.SeatCode.Trim()}");
+        }
+
+        var addOns = snapshot.SelectedAncillaries
+            .Where(x => !string.IsNullOrWhiteSpace(x.Type) && !string.IsNullOrWhiteSpace(x.Code))
+            .Take(6)
+            .ToList();
+        foreach (var item in addOns)
+        {
+            var segment = string.IsNullOrWhiteSpace(item.SegmentLabel) ? string.Empty : $" ({item.SegmentLabel.Trim()})";
+            var title = string.IsNullOrWhiteSpace(item.Title) ? item.Code.Trim() : item.Title.Trim();
+            var currency = string.IsNullOrWhiteSpace(item.Currency) ? "MYR" : item.Currency.Trim();
+            lines.Add($"Pre-book add-on: {item.Type.Trim().ToUpperInvariant()} {title}{segment} ({currency} {item.Amount:0.00})");
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.FrequentFlyerProgram))
+            lines.Add($"Frequent flyer: {snapshot.FrequentFlyerProgram.Trim()}");
+
+        if (!string.IsNullOrWhiteSpace(snapshot.FrequentFlyerNumber))
+            lines.Add($"Frequent flyer no: {snapshot.FrequentFlyerNumber.Trim()}");
+
+        return lines;
+    }
+
     private static List<string> DeserializeStringList(string json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -583,4 +680,5 @@ public sealed record BookingItineraryPdfModel(
     string? ContactPhone,
     IReadOnlyList<BookingItinerarySegment> ItinerarySegments,
     IReadOnlyList<string> TicketNumbers,
+    IReadOnlyList<string> PrebookSelections,
     IReadOnlyList<BookingAncillaryOrder> Ancillaries);

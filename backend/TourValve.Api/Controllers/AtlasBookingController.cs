@@ -211,6 +211,7 @@ public sealed class AtlasBookingController : ControllerBase
                 AirlineLocator = refs.AirlineLocator ?? string.Empty,
                 ProviderCode = "ATLAS",
                 Status = "CONFIRMED",
+                ServicePreferencesJson = JsonSerializer.Serialize(request.ServicePreferences ?? new AirBookingServicePreferencesRequest()),
                 ItinerarySegments = itinerarySegments.Select(segment => new BookingItinerarySegment
                 {
                     Carrier = segment.Carrier,
