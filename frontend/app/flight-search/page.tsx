@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { priceFlight, searchFlights, type FlightResult } from "@/lib/api";
 import { findAirportMatches, type AirportOption } from "@/lib/airports";
 import AirlineBrand from "@/components/AirlineBrand";
+import PrebookStudioModal from "@/components/PrebookStudioModal";
 import { useBooking } from "../context/BookingContext";
 
 type FilterState = {
@@ -45,6 +46,7 @@ export default function FlightSearch() {
     const [activeField, setActiveField] = useState<ActiveAirportField>(null);
     const [pricingFlightId, setPricingFlightId] = useState<string | null>(null);
     const [showFilters, setShowFilters] = useState(false);
+    const [prebookFlight, setPrebookFlight] = useState<FlightResult | null>(null);
     const [filters, setFilters] = useState<FilterState>({
         maxPrice: 50000,
         nonstopOnly: false,
@@ -213,6 +215,16 @@ export default function FlightSearch() {
         } finally {
             setPricingFlightId(null);
         }
+    };
+
+    const openPrebookStudio = (flight: FlightResult) => {
+        const isBookable = Boolean(flight.airPricingSolutionXml && flight.price > 0);
+        if (!isBookable) {
+            setError("Price this itinerary first before selecting Seat & Baggage.");
+            return;
+        }
+
+        setPrebookFlight(flight);
     };
 
     const selectAirport = (field: ActiveAirportField, airport: AirportOption) => {
@@ -889,13 +901,24 @@ export default function FlightSearch() {
                                                     )}
                                                 </div>
 
-                                                <button
-                                                    onClick={() => handleSelect(flight)}
-                                                    disabled={isPricing}
-                                                    className={`min-h-11 rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${isPricing ? "cursor-wait opacity-70" : ""}`}
-                                                >
-                                                    {isPricing ? "Pricing..." : isBookable ? "Select" : "Price Flight"}
-                                                </button>
+                                                <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                                                    {isBookable ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openPrebookStudio(flight)}
+                                                            className="ghost-button rounded-2xl px-4 py-3 text-sm font-semibold"
+                                                        >
+                                                            Seat & Baggage
+                                                        </button>
+                                                    ) : null}
+                                                    <button
+                                                        onClick={() => handleSelect(flight)}
+                                                        disabled={isPricing}
+                                                        className={`min-h-11 rounded-2xl px-5 py-3 font-semibold transition ${isBookable ? "gold-button" : "ghost-button"} ${isPricing ? "cursor-wait opacity-70" : ""}`}
+                                                    >
+                                                        {isPricing ? "Pricing..." : isBookable ? "Select" : "Price Flight"}
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -906,6 +929,24 @@ export default function FlightSearch() {
                 </div>
                 </div>
             </div>
+
+            {prebookFlight ? (
+                <PrebookStudioModal
+                    flight={prebookFlight}
+                    travelerCounts={{ adults: form.adults, child: form.child, infant: form.infant }}
+                    onClose={() => setPrebookFlight(null)}
+                    onContinue={(flightWithSelections) => {
+                        setTravelerCounts({
+                            adults: form.adults,
+                            child: form.child,
+                            infant: form.infant,
+                        });
+                        setSelectedFlight(flightWithSelections);
+                        setPrebookFlight(null);
+                        router.push("/booking");
+                    }}
+                />
+            ) : null}
         </div>
     );
 }

@@ -39,6 +39,20 @@ type PassengerForm = {
 type SeatSelection = {
     segmentLabel: string;
     seatCode: string;
+    segmentIndex?: number;
+    productCode?: string;
+    seatPrice?: number | null;
+    currency?: string;
+};
+
+type PaidAncillarySelection = {
+    type: "BAGGAGE" | "MEAL" | "SEAT";
+    segmentLabel: string;
+    segmentIndex?: number;
+    code: string;
+    title: string;
+    amount: number;
+    currency: string;
 };
 
 type ServicePreferences = {
@@ -48,6 +62,7 @@ type ServicePreferences = {
     frequentFlyerProgram: string;
     frequentFlyerNumber: string;
     selectedSeats: SeatSelection[];
+    selectedAncillaries: PaidAncillarySelection[];
 };
 
 const frequentFlyerPrograms: Record<string, string[]> = {
@@ -150,6 +165,7 @@ export default function BookingPage() {
         frequentFlyerProgram: "",
         frequentFlyerNumber: "",
         selectedSeats: [],
+        selectedAncillaries: [],
     });
     const [activeSeatSegmentIndex, setActiveSeatSegmentIndex] = useState(0);
     const [seatMapLoading, setSeatMapLoading] = useState(false);
@@ -216,6 +232,30 @@ export default function BookingPage() {
     }, [availablePrograms]);
 
     useEffect(() => {
+        if (!selectedFlight) {
+            return;
+        }
+
+        setServicePreferences((current) => ({
+            ...current,
+            baggagePreference:
+                selectedFlight.prebookSelections?.baggagePreference?.trim() ||
+                current.baggagePreference,
+            mealPreference:
+                selectedFlight.prebookSelections?.mealPreference?.trim() ||
+                current.mealPreference,
+            selectedSeats:
+                selectedFlight.prebookSelections?.selectedSeats?.length
+                    ? selectedFlight.prebookSelections.selectedSeats
+                    : current.selectedSeats,
+            selectedAncillaries:
+                selectedFlight.prebookSelections?.paidAncillaries?.length
+                    ? selectedFlight.prebookSelections.paidAncillaries
+                    : current.selectedAncillaries,
+        }));
+    }, [selectedFlight]);
+
+    useEffect(() => {
         if (activeSeatSegmentIndex >= seatMapSegments.length) {
             setActiveSeatSegmentIndex(0);
         }
@@ -252,6 +292,26 @@ export default function BookingPage() {
     const selectedSeatSummary = servicePreferences.selectedSeats
         .map((seat) => `${seat.segmentLabel}: ${seat.seatCode}`)
         .join(" | ");
+
+    const selectedPaidBaggageAddOns = useMemo(
+        () => servicePreferences.selectedAncillaries.filter((item) => item.type === "BAGGAGE"),
+        [servicePreferences.selectedAncillaries]
+    );
+
+    const selectedPaidMealAddOns = useMemo(
+        () => servicePreferences.selectedAncillaries.filter((item) => item.type === "MEAL"),
+        [servicePreferences.selectedAncillaries]
+    );
+
+    const estimatedBaggageAddOnTotal = useMemo(
+        () => selectedPaidBaggageAddOns.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0),
+        [selectedPaidBaggageAddOns]
+    );
+
+    const estimatedMealAddOnTotal = useMemo(
+        () => selectedPaidMealAddOns.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0),
+        [selectedPaidMealAddOns]
+    );
 
     const loadSeatMap = async () => {
         if (!activeSeatSegment?.airSegmentXml) {
@@ -548,6 +608,33 @@ export default function BookingPage() {
                                     <option>2 checked bags</option>
                                     <option>Sports / oversized baggage</option>
                                 </select>
+                                {selectedPaidBaggageAddOns.length ? (
+                                    <div className="mt-3 rounded-[1.1rem] bg-[rgba(247,244,239,0.78)] px-3 py-3 text-sm text-slate-600">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                            Add-on baggage selected
+                                        </div>
+                                        <div className="mt-2 space-y-2">
+                                            {selectedPaidBaggageAddOns.map((item) => (
+                                                <div key={`${item.segmentLabel}-${item.code}`} className="flex items-center justify-between gap-3">
+                                                    <span className="min-w-0 truncate">
+                                                        {(item.segmentLabel || "").trim()
+                                                            ? `${item.segmentLabel}: ${item.title}`
+                                                            : item.title}
+                                                    </span>
+                                                    <span className="font-semibold text-[var(--ink)]">
+                                                        {item.currency} {item.amount.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                            <div className="flex items-center justify-between gap-3 border-t border-[rgba(89,64,46,0.12)] pt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                                <span>Total</span>
+                                                <span className="text-[var(--ink)]">
+                                                    {selectedFlight.currency} {estimatedBaggageAddOnTotal.toFixed(2)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
 
                             <div className="soft-panel rounded-[1.5rem] p-4">
@@ -585,6 +672,33 @@ export default function BookingPage() {
                                     <option>Child meal</option>
                                     <option>Infant meal</option>
                                 </select>
+                                {selectedPaidMealAddOns.length ? (
+                                    <div className="mt-3 rounded-[1.1rem] bg-[rgba(247,244,239,0.78)] px-3 py-3 text-sm text-slate-600">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                            Add-on meals selected
+                                        </div>
+                                        <div className="mt-2 space-y-2">
+                                            {selectedPaidMealAddOns.map((item) => (
+                                                <div key={`${item.segmentLabel}-${item.code}`} className="flex items-center justify-between gap-3">
+                                                    <span className="min-w-0 truncate">
+                                                        {(item.segmentLabel || "").trim()
+                                                            ? `${item.segmentLabel}: ${item.title}`
+                                                            : item.title}
+                                                    </span>
+                                                    <span className="font-semibold text-[var(--ink)]">
+                                                        {item.currency} {item.amount.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                            <div className="flex items-center justify-between gap-3 border-t border-[rgba(89,64,46,0.12)] pt-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                                <span>Total</span>
+                                                <span className="text-[var(--ink)]">
+                                                    {selectedFlight.currency} {estimatedMealAddOnTotal.toFixed(2)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
 
                             <div className="soft-panel rounded-[1.5rem] p-4">

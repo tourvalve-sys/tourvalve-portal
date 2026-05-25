@@ -44,6 +44,27 @@ export type FlightResult = {
         departure: string;
         arrival: string;
     }>;
+    prebookSelections?: {
+        baggagePreference: string;
+        mealPreference: string;
+        selectedSeats: Array<{
+            segmentLabel: string;
+            segmentIndex?: number;
+            seatCode: string;
+            productCode?: string;
+            seatPrice?: number | null;
+            currency?: string;
+        }>;
+        paidAncillaries?: Array<{
+            type: "BAGGAGE" | "MEAL" | "SEAT";
+            segmentLabel: string;
+            segmentIndex?: number;
+            code: string;
+            title: string;
+            amount: number;
+            currency: string;
+        }>;
+    };
 };
 
 export type FlightSearchPayload = {
@@ -98,7 +119,20 @@ export type AirBookingServicePreferencesPayload = {
     frequentFlyerNumber: string;
     selectedSeats: Array<{
         segmentLabel: string;
+        segmentIndex?: number;
         seatCode: string;
+        productCode?: string;
+        seatPrice?: number | null;
+        currency?: string;
+    }>;
+    selectedAncillaries?: Array<{
+        type: "BAGGAGE" | "MEAL" | "SEAT";
+        segmentLabel: string;
+        segmentIndex?: number;
+        code: string;
+        title: string;
+        amount: number;
+        currency: string;
     }>;
 };
 
@@ -122,9 +156,56 @@ export type FlightSeatMapResponse = {
             availability: string;
             paid: boolean;
             characteristics: string[];
+            seatPrice?: number | null;
+            currency?: string;
+            taxes?: number | null;
+            optionalServiceRef?: string;
+            serviceSubCode?: string;
+            source?: string;
         }>;
     }>;
     rawResponse: string;
+};
+
+export type BookingAncillaryOfferComparisonItem = {
+    label: string;
+    value: string;
+    included: boolean;
+};
+
+export type BookingAncillaryOfferDto = {
+    id: string;
+    type: "BAGGAGE" | "MEAL" | "SEAT" | string;
+    code: string;
+    title: string;
+    subtitle: string;
+    description: string;
+    baseAmount: number;
+    currency: string;
+    isLive: boolean;
+    source: string;
+    segmentLabel: string;
+    supplierText: string;
+    highlight: string;
+    bullets: string[];
+    comparison: BookingAncillaryOfferComparisonItem[];
+    rules: string[];
+    rawReference: string;
+};
+
+export type BookingAncillaryOfferCatalog = {
+    retrievedAt: string;
+    hasLivePricedOffers: boolean;
+    fallbackAvailable: boolean;
+    source: string;
+    message: string;
+    diagnostics: {
+        totalLiveOffers: number;
+        baggageOffers: number;
+        mealOffers: number;
+        seatOffers: number;
+    };
+    categories: Record<string, BookingAncillaryOfferDto[]>;
 };
 
 export type AirBookingPayload = {
@@ -616,6 +697,21 @@ export async function getFlightSeatMap(
     });
 
     return readJson<FlightSeatMapResponse>(res);
+}
+
+export async function getPrebookAncillaryOffers(payload: {
+    airSegmentXml: string;
+    airSegmentXmls?: string[];
+    adults: number;
+    child: number;
+    infant: number;
+}): Promise<BookingAncillaryOfferCatalog> {
+    const res = await authFetch(`${API_BASE}/api/flights/prebook-ancillary-offers`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+
+    return readJson<BookingAncillaryOfferCatalog>(res);
 }
 
 export async function priceFlight(

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using System.Security.Claims;
 using System.Text;
+using System.Xml.Linq;
 using TourValve.Application.Bookings.Commands;
 using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Services;
@@ -583,7 +584,22 @@ public class BookingsController : ControllerBase
         if (booking == null)
             return NotFound(new { error = "Booking not found." });
 
-        var pdfBytes = BuildSimpleBookingPdf(booking);
+        var prebookLines = Array.Empty<string>();
+
+        if (!string.IsNullOrWhiteSpace(booking.UniversalRecordLocator))
+        {
+            try
+            {
+                var xml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
+                prebookLines = ExtractPrebookSelectionLines(xml).ToArray();
+            }
+            catch
+            {
+                prebookLines = Array.Empty<string>();
+            }
+        }
+
+        var pdfBytes = BuildSimpleBookingPdf(booking, prebookLines);
         var fileName = $"booking-{booking.BookingReference}.pdf";
         return File(pdfBytes, "application/pdf", fileName);
     }
@@ -742,9 +758,44 @@ public class BookingsController : ControllerBase
         return message;
     }
 
-    private static byte[] BuildSimpleBookingPdf(TourValve.Domain.Booking booking)
+    private static List<string> ExtractPrebookSelectionLines(string xml)
     {
-        var lines = new[]
+        if (string.IsNullOrWhiteSpace(xml))
+            return new List<string>();
+
+        try
+        {
+            var doc = XDocument.Parse(xml);
+            var remarks = doc.Descendants()
+                .Where(x => x.Name.LocalName is "RemarkData" or "Remark")
+                .Select(x => x.Value?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Cast<string>()
+                .ToList();
+
+            var prebook = remarks
+                .Where(x => x.StartsWith("Pre-book selections", StringComparison.OrdinalIgnoreCase))
+                .LastOrDefault();
+
+            if (string.IsNullOrWhiteSpace(prebook))
+                return new List<string>();
+
+            return prebook
+                .Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Skip(1)
+                .ToList();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
+
+    private static byte[] BuildSimpleBookingPdf(TourValve.Domain.Booking booking, IEnumerable<string> prebookSelectionLines)
+    {
+        var lines = new List<string>
         {
             "TourValve Booking Document",
             "",
@@ -759,18 +810,34 @@ public class BookingsController : ControllerBase
             $"Departure: {booking.DepartureTime:yyyy-MM-dd HH:mm}",
             $"Arrival: {booking.ArrivalTime:yyyy-MM-dd HH:mm}",
             $"Amount: MYR {booking.Amount:0.00}",
+        };
+
+        var selections = (prebookSelectionLines ?? Array.Empty<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .ToList();
+
+        if (selections.Count > 0)
+        {
+            lines.Add("");
+            lines.Add("Pre-book selections:");
+            lines.AddRange(selections.Select(x => $"- {x}"));
+        }
+
+        lines.AddRange(new[]
+        {
             "",
             $"Created: {booking.CreatedAt:yyyy-MM-dd HH:mm}",
             "",
             "This document is generated from the live booking record stored in TourValve."
-        };
+        });
 
         var content = new StringBuilder();
         content.AppendLine("BT");
         content.AppendLine("/F1 22 Tf");
         content.AppendLine("50 780 Td");
 
-        for (var index = 0; index < lines.Length; index++)
+        for (var index = 0; index < lines.Count; index++)
         {
             var line = EscapePdfText(lines[index]);
             if (index == 0)

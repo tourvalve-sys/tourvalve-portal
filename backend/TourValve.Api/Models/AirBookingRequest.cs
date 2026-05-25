@@ -26,12 +26,28 @@ public sealed class AirBookingServicePreferencesRequest
     public string FrequentFlyerProgram { get; set; } = string.Empty;
     public string FrequentFlyerNumber { get; set; } = string.Empty;
     public List<AirBookingSeatSelectionRequest> SelectedSeats { get; set; } = new();
+    public List<AirBookingSelectedAncillaryRequest> SelectedAncillaries { get; set; } = new();
 }
 
 public sealed class AirBookingSeatSelectionRequest
 {
     public string SegmentLabel { get; set; } = string.Empty;
+    public int? SegmentIndex { get; set; }
     public string SeatCode { get; set; } = string.Empty;
+    public string ProductCode { get; set; } = string.Empty;
+    public decimal? SeatPrice { get; set; }
+    public string Currency { get; set; } = string.Empty;
+}
+
+public sealed class AirBookingSelectedAncillaryRequest
+{
+    public string Type { get; set; } = string.Empty;
+    public string SegmentLabel { get; set; } = string.Empty;
+    public int? SegmentIndex { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string Currency { get; set; } = "MYR";
 }
 
 public sealed class AirBookingPassengerRequest

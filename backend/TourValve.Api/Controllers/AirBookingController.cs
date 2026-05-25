@@ -21,6 +21,7 @@ public sealed class AirBookingController : ControllerBase
 
     private readonly TravelportAirClient _airClient;
     private readonly TravelportConfig _config;
+    private readonly UniversalRecordService _records;
     private readonly IAuditTrailService _audit;
     private readonly INotificationService _notifications;
     private readonly IEmailService _emailService;
@@ -29,6 +30,7 @@ public sealed class AirBookingController : ControllerBase
     public AirBookingController(
         TravelportAirClient airClient,
         TravelportConfig config,
+        UniversalRecordService records,
         IAuditTrailService audit,
         INotificationService notifications,
         IEmailService emailService,
@@ -36,6 +38,7 @@ public sealed class AirBookingController : ControllerBase
     {
         _airClient = airClient;
         _config = config;
+        _records = records;
         _audit = audit;
         _notifications = notifications;
         _emailService = emailService;
@@ -85,6 +88,7 @@ public sealed class AirBookingController : ControllerBase
 
             await TrySendBookingConfirmationAsync(request, refs);
             await TrySendAdminBookingNoticeAsync(request, refs);
+            await TryAddPrebookSelectionsRemarkAsync(request, refs);
 
             return Ok(new AirBookingResponse
             {
@@ -116,6 +120,28 @@ public sealed class AirBookingController : ControllerBase
                 error = "The live booking could not be completed right now.",
                 detail
             });
+        }
+    }
+
+    private async Task TryAddPrebookSelectionsRemarkAsync(
+        AirBookingRequest request,
+        (string? UniversalRecordLocator, string? ProviderLocator, string? AirlineLocator) refs)
+    {
+        var locator = refs.UniversalRecordLocator ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(locator))
+            return;
+
+        var summary = BuildPreferenceSummary(request.ServicePreferences);
+        if (string.IsNullOrWhiteSpace(summary))
+            return;
+
+        try
+        {
+            await _records.AddRemarkAsync(locator, $"Pre-book selections | {summary}");
+        }
+        catch
+        {
+            // Keep booking success as primary outcome even if remark delivery fails.
         }
     }
 
@@ -421,21 +447,59 @@ public sealed class AirBookingController : ControllerBase
     {
         var parts = new List<string>();
 
-        if (!string.IsNullOrWhiteSpace(preferences.BaggagePreference))
-            parts.Add($"Baggage: {preferences.BaggagePreference.Trim()}");
+        var baggagePref = (preferences.BaggagePreference ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(baggagePref) &&
+            !baggagePref.Equals("Standard cabin only", StringComparison.OrdinalIgnoreCase))
+        {
+            parts.Add($"Baggage pref: {baggagePref}");
+        }
 
-        if (!string.IsNullOrWhiteSpace(preferences.SeatPreference))
-            parts.Add($"Seat: {preferences.SeatPreference.Trim()}");
+        var seatPref = (preferences.SeatPreference ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(seatPref) &&
+            !seatPref.Equals("No preference", StringComparison.OrdinalIgnoreCase))
+        {
+            parts.Add($"Seat pref: {seatPref}");
+        }
 
         foreach (var seat in preferences.SelectedSeats
                      .Where(x => !string.IsNullOrWhiteSpace(x.SeatCode))
-                     .Select(x => $"{x.SegmentLabel.Trim()}: {x.SeatCode.Trim()}"))
+                     .Select(x =>
+                     {
+                         var segment = (x.SegmentLabel ?? string.Empty).Trim();
+                         var seatCode = (x.SeatCode ?? string.Empty).Trim();
+                         var price = x.SeatPrice.HasValue && x.SeatPrice.Value > 0m
+                             ? $" ({(string.IsNullOrWhiteSpace(x.Currency) ? "MYR" : x.Currency.Trim().ToUpperInvariant())} {x.SeatPrice.Value.ToString("0.00", CultureInfo.InvariantCulture)})"
+                             : string.Empty;
+
+                         return $"{segment}: {seatCode}{price}";
+                     }))
         {
             parts.Add($"Seat Map: {seat}");
         }
 
-        if (!string.IsNullOrWhiteSpace(preferences.MealPreference))
-            parts.Add($"Meal: {preferences.MealPreference.Trim()}");
+        var mealPref = (preferences.MealPreference ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(mealPref) &&
+            !mealPref.Equals("Standard", StringComparison.OrdinalIgnoreCase))
+        {
+            parts.Add($"Meal: {mealPref}");
+        }
+
+        foreach (var item in preferences.SelectedAncillaries
+                     .Where(x => !string.IsNullOrWhiteSpace(x.Type) && x.Amount > 0m))
+        {
+            var type = item.Type.Trim().ToUpperInvariant();
+            var segment = (item.SegmentLabel ?? string.Empty).Trim();
+            var title = (item.Title ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(title))
+                title = (item.Code ?? string.Empty).Trim();
+
+            var currency = string.IsNullOrWhiteSpace(item.Currency)
+                ? "MYR"
+                : item.Currency.Trim().ToUpperInvariant();
+
+            var segmentPrefix = string.IsNullOrWhiteSpace(segment) ? string.Empty : $"{segment}: ";
+            parts.Add($"Add-on {type}: {segmentPrefix}{title} ({currency} {item.Amount.ToString("0.00", CultureInfo.InvariantCulture)})");
+        }
 
         if (!string.IsNullOrWhiteSpace(preferences.FrequentFlyerProgram))
             parts.Add($"FFP: {preferences.FrequentFlyerProgram.Trim()}");

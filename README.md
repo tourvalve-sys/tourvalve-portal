@@ -46,6 +46,10 @@ cd travelport-proxy
 npm run dev
 ```
 
+## Deployment
+
+See `DEPLOYMENT.md`.
+
 ## Notes
 
 - The frontend reads the API base URL from `NEXT_PUBLIC_API_BASE`.
