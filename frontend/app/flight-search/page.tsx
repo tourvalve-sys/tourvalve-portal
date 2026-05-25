@@ -2316,11 +2316,9 @@ export default function FlightSearch() {
                 }
 
                 pendingResultsScrollRef.current = false;
-                const headerOffset = 120;
-                const targetTop = target.getBoundingClientRect().top + window.scrollY;
-                window.scrollTo({
-                    top: Math.max(targetTop - headerOffset, 0),
+                target.scrollIntoView({
                     behavior: "smooth",
+                    block: "start",
                 });
             });
         }, 140);
@@ -2776,7 +2774,7 @@ export default function FlightSearch() {
                         <FlightFiltersPanel airlineOptions={airlineOptions} filters={filters} setFilters={setFilters} />
                     </div>
 
-                    <div ref={resultsSectionRef} className="space-y-4">
+                    <div ref={resultsSectionRef} className="space-y-4" style={{ scrollMarginTop: "7rem" }}>
                         {!loading && !isSearchDraftDirty && filteredResults.length > 0 ? (
                             <div className="sticky top-24 z-30 rounded-[1.6rem] border border-[rgba(89,64,46,0.1)] bg-white/70 p-4 shadow-[0_18px_40px_rgba(31,42,68,0.08)] backdrop-blur-sm">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2999,6 +2997,7 @@ export default function FlightSearch() {
                                     <div
                                         key={bundle ? `bundle-${bundle.key}` : flight.id}
                                         ref={index === 0 ? firstResultCardRef : null}
+                                        style={index === 0 ? { scrollMarginTop: "7rem" } : undefined}
                                         className={`premium-panel rounded-[1.55rem] p-4 sm:rounded-[1.9rem] sm:p-6 md:p-7 transition hover:-translate-y-0.5 ${index % 2 === 0 ? "fade-in" : "fade-in-delay"}`}
                                     >
                                         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] xl:items-start">
