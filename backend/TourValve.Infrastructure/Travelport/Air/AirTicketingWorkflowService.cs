@@ -73,6 +73,12 @@ public class AirTicketingWorkflowService
         Guid? walletHoldId = null;
         if (normalizedFormOfPayment == FormOfPaymentWallet)
         {
+            if (string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase))
+            {
+                walletHoldId = null;
+            }
+            else
+            {
             var walletAccount = await _db.WalletAccounts
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.AgentId == booking.AgentId && x.IsActive, cancellationToken);
@@ -87,9 +93,15 @@ public class AirTicketingWorkflowService
                 actorEmail,
                 isAdmin,
                 cancellationToken);
+            }
         }
         else
         {
+            if (string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("This booking is already settled via TourValve Wallet. Keep the workflow form of payment as TOURVALVE WALLET.");
+            }
+
             await ReleaseActiveHoldIfAnyAsync(booking, $"{booking.BookingReference}-AT-CASH", cancellationToken);
         }
 
@@ -99,7 +111,9 @@ public class AirTicketingWorkflowService
         booking.AirTicketingScheduledByAgentId = actorId;
         booking.AirTicketingStatus = WorkflowScheduled;
         booking.AirTicketingPaymentStatus = normalizedFormOfPayment == FormOfPaymentWallet
-            ? PaymentHoldActive
+            ? string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase)
+                ? PaymentPaid
+                : PaymentHoldActive
             : PaymentUnpaid;
         booking.AirTicketingWalletHoldId = walletHoldId;
         booking.AirTicketingLastError = string.Empty;
@@ -166,7 +180,9 @@ public class AirTicketingWorkflowService
         {
             await RefreshProviderDetailsIfNeededAsync(booking, cancellationToken);
 
-            if (booking.AirTicketingFormOfPayment == FormOfPaymentWallet)
+            var requiresWalletHold = booking.AirTicketingFormOfPayment == FormOfPaymentWallet &&
+                !string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase);
+            if (requiresWalletHold)
             {
                 var holdId = await ResolveActiveHoldIdAsync(booking, cancellationToken);
                 if (!holdId.HasValue)
@@ -186,7 +202,9 @@ public class AirTicketingWorkflowService
                     throw new InvalidOperationException("Atlas did not return any valid e-ticket numbers yet. Refresh order details and try again.");
 
                 var atlasPaymentWarning = string.Empty;
-                if (booking.AirTicketingFormOfPayment == FormOfPaymentWallet && booking.AirTicketingWalletHoldId.HasValue)
+                if (booking.AirTicketingFormOfPayment == FormOfPaymentWallet &&
+                    booking.AirTicketingWalletHoldId.HasValue &&
+                    !string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {
@@ -301,7 +319,9 @@ public class AirTicketingWorkflowService
             var issuedAt = DateTime.UtcNow;
 
             var paymentWarning = string.Empty;
-            if (booking.AirTicketingFormOfPayment == FormOfPaymentWallet && booking.AirTicketingWalletHoldId.HasValue)
+            if (booking.AirTicketingFormOfPayment == FormOfPaymentWallet &&
+                booking.AirTicketingWalletHoldId.HasValue &&
+                !string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase))
             {
                 try
                 {

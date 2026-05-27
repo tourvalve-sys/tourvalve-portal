@@ -4,15 +4,21 @@ import { Suspense, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, Mail, Receipt, ShieldCheck, Ticket } from "lucide-react";
 import AirlineBrand from "@/components/AirlineBrand";
+import { notifyBookingTicketing } from "@/lib/api";
 import {
     LATEST_BOOKING_CONFIRMATION_KEY,
     type BookingConfirmationState,
 } from "@/lib/bookingConfirmation";
+import { getUserFromToken } from "@/lib/auth";
 import { scrubProviderMentions } from "@/lib/scrubProviderMentions";
 
 function BookingConfirmationPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const currentUser = getUserFromToken();
+    const isReservedAdmin =
+        currentUser?.role?.toUpperCase() === "ADMIN" &&
+        (currentUser?.email ?? "").trim().toLowerCase() === "admin@tourvalve.com";
     const isHydrated = useSyncExternalStore(
         () => () => {},
         () => true,
@@ -38,7 +44,10 @@ function BookingConfirmationPageContent() {
         }
     }, [isHydrated, searchParams]);
 
-    const [ticketingPromptDismissedBookingId, setTicketingPromptDismissedBookingId] = useState("");
+    const [promptDismissedBookingId, setPromptDismissedBookingId] = useState("");
+    const [notifyStatus, setNotifyStatus] = useState<"idle" | "sending" | "sent">("idle");
+    const [notifyError, setNotifyError] = useState("");
+    const [notifyMessage, setNotifyMessage] = useState("");
 
     const ticketNumbers = Array.isArray(confirmation?.ticketNumbers)
         ? confirmation.ticketNumbers.filter((ticketNumber) => typeof ticketNumber === "string" && ticketNumber.trim().length > 0)
@@ -51,6 +60,7 @@ function BookingConfirmationPageContent() {
 
     const bookingId = confirmation?.bookingId ?? "";
     const ticketingPromptKey = bookingId ? `tv_ticketing_prompt_dismissed:${bookingId}` : "";
+    const notifyPromptKey = bookingId ? `tv_ticket_notify_prompt_dismissed:${bookingId}` : "";
 
     if (!confirmation) {
         return (
@@ -88,7 +98,11 @@ function BookingConfirmationPageContent() {
             return false;
         }
 
-        if (ticketingPromptDismissedBookingId === bookingId) {
+        if (promptDismissedBookingId === bookingId) {
+            return false;
+        }
+
+        if (!isReservedAdmin) {
             return false;
         }
 
@@ -108,17 +122,73 @@ function BookingConfirmationPageContent() {
             // Ignore session storage failures; modal may reappear on refresh.
         }
 
-        setTicketingPromptDismissedBookingId(bookingId);
+        setPromptDismissedBookingId(bookingId);
     };
 
     const proceedToTicketing = () => {
         dismissTicketingPrompt();
         router.push(`/air-ticketing/${encodeURIComponent(confirmation.bookingId)}`);
     };
-    const headline = ticketIssued ? "Your ticket is issued." : "Your booking is confirmed.";
+
+    const showNotifyPrompt = (() => {
+        if (!bookingId) {
+            return false;
+        }
+
+        if (ticketIssued) {
+            return false;
+        }
+
+        if (promptDismissedBookingId === bookingId) {
+            return false;
+        }
+
+        if (isReservedAdmin) {
+            return false;
+        }
+
+        try {
+            return !sessionStorage.getItem(notifyPromptKey);
+        } catch {
+            return true;
+        }
+    })();
+
+    const dismissNotifyPrompt = () => {
+        try {
+            if (notifyPromptKey) {
+                sessionStorage.setItem(notifyPromptKey, "1");
+            }
+        } catch {
+            // Ignore session storage failures; modal may reappear on refresh.
+        }
+
+        setPromptDismissedBookingId(bookingId);
+    };
+
+    const handleNotifyAdmin = async () => {
+        if (!bookingId) return;
+
+        setNotifyStatus("sending");
+        setNotifyError("");
+        setNotifyMessage("");
+
+        try {
+            const result = await notifyBookingTicketing(bookingId);
+            setNotifyMessage(result.message || "Admin has been notified successfully.");
+            setNotifyStatus("sent");
+        } catch (value: unknown) {
+            setNotifyError(value instanceof Error ? value.message : "Failed to notify admin");
+            setNotifyStatus("idle");
+        }
+    };
+
+    const headline = ticketIssued ? "Your ticket is issued." : "Your reservation is confirmed.";
     const intro = ticketIssued
         ? "The reservation has been stored inside TourValve and ticket evidence is present. The airline-facing record is ready for post-booking servicing."
-        : "The reservation has been stored inside TourValve. Proceed to the AirTicketing workspace when you are ready to schedule and issue the ticket.";
+        : isReservedAdmin
+            ? "The reservation has been stored inside TourValve. Proceed to the AirTicketing workspace when you are ready to schedule and issue the ticket."
+            : "Reservation is made successfully. Contact admin for ticket issuance.";
 
     return (
         <div className="min-h-screen px-3 py-4 sm:px-4 md:p-6 fade-in">
@@ -134,7 +204,7 @@ function BookingConfirmationPageContent() {
                         <div className="subtle-kicker mb-3">Next step</div>
                         <h2 className="hero-title mb-3 text-2xl">Proceed for ticketing?</h2>
                         <p className="text-sm leading-7 text-slate-600">
-                            Your reservation is confirmed. No wallet charge is made during reservation creation.
+                            Your reservation is confirmed. Agent wallet settlement is captured during reservation creation.
                             Continue to the AirTicketing workspace when you&apos;re ready to schedule and issue the ticket.
                         </p>
                         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -151,6 +221,57 @@ function BookingConfirmationPageContent() {
                                 className="gold-button rounded-2xl px-5 py-3 font-semibold"
                             >
                                 Proceed for Ticketing
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {showNotifyPrompt ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+                    <button
+                        type="button"
+                        aria-label="Dismiss notification prompt"
+                        onClick={dismissNotifyPrompt}
+                        className="absolute inset-0 bg-[rgba(15,23,42,0.35)]"
+                    />
+                    <div className="premium-panel relative w-full max-w-xl rounded-[2rem] p-7 shadow-xl md:p-9">
+                        <div className="subtle-kicker mb-3">Reservation</div>
+                        <h2 className="font-display text-2xl text-[var(--ink)] md:text-3xl">
+                            Reservation is made successfully.
+                        </h2>
+                        <p className="mt-3 text-sm leading-7 text-slate-600 md:text-base">
+                            Contact admin for ticket issuance. Click below to notify admin for <span className="font-semibold text-[var(--ink)]">Pending Ticket Issuance (Urgent)</span>.
+                        </p>
+
+                        {notifyError ? (
+                            <div className="mt-5 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                                {notifyError}
+                            </div>
+                        ) : null}
+
+                        {notifyMessage ? (
+                            <div className="mt-5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                                {notifyMessage}
+                            </div>
+                        ) : null}
+
+                        <div className="mt-7 flex flex-wrap justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={dismissNotifyPrompt}
+                                className="ghost-button rounded-2xl px-5 py-3 font-semibold"
+                            >
+                                Close
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleNotifyAdmin}
+                                disabled={notifyStatus === "sending"}
+                                className="gold-button inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 font-semibold disabled:opacity-60"
+                            >
+                                <Mail size={18} />
+                                {notifyStatus === "sending" ? "Notifying..." : notifyStatus === "sent" ? "Admin notified" : "Notify admin"}
                             </button>
                         </div>
                     </div>
@@ -311,18 +432,41 @@ function BookingConfirmationPageContent() {
                             Next Actions
                         </div>
                         <div className="space-y-3">
-                            <button
-                                onClick={() => router.push(
-                                    ticketIssued && confirmation.bookingId
-                                        ? `/ancillaries?bookingId=${encodeURIComponent(confirmation.bookingId)}`
-                                        : confirmation.bookingId
-                                            ? `/air-ticketing/${encodeURIComponent(confirmation.bookingId)}`
-                                            : "/bookings"
-                                )}
-                                className="ghost-button w-full rounded-2xl px-5 py-3 font-semibold"
-                            >
-                                {ticketIssued ? "Add Baggage, Meals & Seats" : "Open AirTicketing Workspace"}
-                            </button>
+                            {ticketIssued && confirmation.bookingId ? (
+                                <button
+                                    onClick={() => router.push(`/ancillaries?bookingId=${encodeURIComponent(confirmation.bookingId)}`)}
+                                    className="ghost-button w-full rounded-2xl px-5 py-3 font-semibold"
+                                >
+                                    Add Baggage, Meals & Seats
+                                </button>
+                            ) : isReservedAdmin && confirmation.bookingId ? (
+                                <button
+                                    onClick={() => router.push(`/air-ticketing/${encodeURIComponent(confirmation.bookingId)}`)}
+                                    className="ghost-button w-full rounded-2xl px-5 py-3 font-semibold"
+                                >
+                                    Open AirTicketing Workspace
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleNotifyAdmin}
+                                    disabled={notifyStatus === "sending"}
+                                    className="ghost-button w-full rounded-2xl px-5 py-3 font-semibold disabled:opacity-60"
+                                >
+                                    {notifyStatus === "sending" ? "Notifying admin..." : notifyStatus === "sent" ? "Admin notified" : "Notify admin for ticket issuance"}
+                                </button>
+                            )}
+
+                            {notifyError ? (
+                                <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                                    {notifyError}
+                                </div>
+                            ) : null}
+
+                            {notifyMessage ? (
+                                <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                                    {notifyMessage}
+                                </div>
+                            ) : null}
                             <button
                                 onClick={() => router.push(`/bookings?created=${encodeURIComponent(confirmation.bookingReference)}`)}
                                 className="gold-button w-full rounded-2xl px-5 py-3 font-semibold"

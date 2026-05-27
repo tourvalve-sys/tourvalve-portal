@@ -47,6 +47,9 @@ export default function AirTicketingWorkspacePage() {
     const params = useParams<{ bookingId: string }>();
     const bookingId = Array.isArray(params.bookingId) ? params.bookingId[0] : (params.bookingId ?? "");
     const currentUser = getUserFromToken();
+    const isReservedAdmin =
+        currentUser?.role?.toUpperCase() === "ADMIN" &&
+        (currentUser?.email ?? "").trim().toLowerCase() === "admin@tourvalve.com";
 
     const [loading, setLoading] = useState(true);
     const [booking, setBooking] = useState<BookingDetail | null>(null);
@@ -60,7 +63,7 @@ export default function AirTicketingWorkspacePage() {
     const minDate = getTodayString();
     const maxDate = addDays(minDate, 5);
     const showWalletSummary = !!booking && currentUser?.id === booking.agentId;
-    const isAdmin = currentUser?.role?.toUpperCase() === "ADMIN";
+    const isAdmin = isReservedAdmin;
     const hasSavedWorkflow = !!booking?.airTicketingFormOfPayment && !!booking?.airTicketingDate;
     const isTicketed = booking?.status === "TICKETED";
     const isVoided = booking?.status === "VOIDED" || booking?.airTicketingStatus === "VOIDED";
@@ -137,6 +140,28 @@ export default function AirTicketingWorkspacePage() {
                 <section className="premium-panel rounded-[2rem] p-8">
                     <div className="subtle-kicker">AirTicketing Workspace</div>
                     <h1 className="mt-3 font-display text-4xl text-[var(--ink)]">Loading ticketing controls...</h1>
+                </section>
+            </div>
+        );
+    }
+
+    if (!isReservedAdmin) {
+        return (
+            <div className="space-y-6 fade-in">
+                <section className="premium-panel rounded-[2rem] p-6 md:p-8">
+                    <div className="subtle-kicker">AirTicketing Workspace</div>
+                    <h1 className="mt-3 font-display text-2xl text-[var(--ink)] md:text-3xl">Ticket issuance is restricted.</h1>
+                    <p className="mt-3 max-w-2xl text-sm text-slate-600 md:text-base">
+                        Reservations can be made by agents, but ticketing actions are limited to the TourValve admin. Contact admin@tourvalve.com for ticket issuance.
+                    </p>
+                    <div className="mt-6 flex flex-wrap gap-3">
+                        <a
+                            href="/bookings"
+                            className="gold-button inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold"
+                        >
+                            Back to bookings
+                        </a>
+                    </div>
                 </section>
             </div>
         );

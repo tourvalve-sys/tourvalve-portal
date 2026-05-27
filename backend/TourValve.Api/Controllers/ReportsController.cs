@@ -13,6 +13,7 @@ namespace TourValve.Api.Controllers;
 [Authorize]
 public class ReportsController : ControllerBase
 {
+    private const string ReservedAdminEmail = "admin@tourvalve.com";
     private readonly TourValveDbContext _db;
     private sealed record AgentPerformanceRow(Guid AgentId, string Email, int Bookings, decimal Revenue);
     private sealed record WeeklySeriesRow(string Day, int Bookings, decimal Revenue);
@@ -68,6 +69,9 @@ public class ReportsController : ControllerBase
     [HttpGet("overview")]
     public async Task<IActionResult> Overview()
     {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Reports access is restricted to the TourValve admin." });
+
         try
         {
             var payload = await BuildOverviewPayloadAsync();
@@ -123,6 +127,9 @@ public class ReportsController : ControllerBase
     [HttpGet("export/bookings")]
     public async Task<IActionResult> ExportBookings([FromQuery] string format = "csv")
     {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Reports access is restricted to the TourValve admin." });
+
         var bookingRows = await GetAuthorizedBookingRowsAsync();
         return BuildExportFile(
             format,
@@ -147,6 +154,9 @@ public class ReportsController : ControllerBase
     [HttpGet("export/agent-performance")]
     public async Task<IActionResult> ExportAgentPerformance([FromQuery] string format = "csv")
     {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Reports access is restricted to the TourValve admin." });
+
         var overview = await BuildOverviewPayloadAsync();
         return BuildExportFile(
             format,
@@ -165,6 +175,9 @@ public class ReportsController : ControllerBase
     [HttpGet("export/overview")]
     public async Task<IActionResult> ExportOverview([FromQuery] string format = "csv")
     {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Reports access is restricted to the TourValve admin." });
+
         var overview = await BuildOverviewPayloadAsync();
         var rows = new[]
         {
@@ -196,6 +209,9 @@ public class ReportsController : ControllerBase
     [HttpGet("export/ancillaries")]
     public async Task<IActionResult> ExportAncillaries([FromQuery] string format = "csv")
     {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Reports access is restricted to the TourValve admin." });
+
         var ancillaryRows = await GetAuthorizedAncillaryRowsAsync();
         return BuildExportFile(
             format,
@@ -526,6 +542,15 @@ public class ReportsController : ControllerBase
 
     private static string EscapePdfText(string value) =>
         value.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
+
+    private bool IsReservedAdminUser()
+    {
+        if (!User.IsInRole("ADMIN"))
+            return false;
+
+        var email = User.FindFirst(ClaimTypes.Email)?.Value ?? string.Empty;
+        return string.Equals(email.Trim(), ReservedAdminEmail, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool IsSchemaNotReady(Exception ex)
     {

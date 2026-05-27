@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security;
+using System.Security.Claims;
 using System.Xml.Linq;
 using Microsoft.AspNetCore.Mvc;
 using TourValve.Application.Bookings.Ancillaries;
@@ -14,21 +15,28 @@ using TourValve.Infrastructure.Services;
 [Route("api/flights")]
 public class FlightsController : ControllerBase
 {
+    private const string ReservedAdminEmail = "admin@tourvalve.com";
     private readonly TravelportAirClient _air;
     private readonly TravelportConfig _travelportConfig;
     private readonly TicketMarkupService _markup;
+    private readonly AncillaryMarkupService _ancillaryMarkup;
 
-    public FlightsController(TravelportAirClient air, TravelportConfig travelportConfig, TicketMarkupService markup)
+    public FlightsController(
+        TravelportAirClient air,
+        TravelportConfig travelportConfig,
+        TicketMarkupService markup,
+        AncillaryMarkupService ancillaryMarkup)
     {
         _air = air;
         _travelportConfig = travelportConfig;
         _markup = markup;
+        _ancillaryMarkup = ancillaryMarkup;
     }
 
     [HttpPost("search")]
     public async Task<IActionResult> Search([FromBody] FlightSearchRequest req, [FromQuery] bool debugRaw = false)
     {
-        var includeMarkup = !User.IsInRole("ADMIN");
+        var includeMarkup = !IsReservedAdminUser();
         var isMultiCity = req.Segments.Count >= 2;
         var searchMode = NormalizeSearchMode(req.SearchMode);
         var validation = ValidateSearch(req);
@@ -169,7 +177,7 @@ public class FlightsController : ControllerBase
     [HttpPost("price")]
     public async Task<IActionResult> Price([FromBody] FlightPriceRequest req, [FromQuery] bool debugRaw = false)
     {
-        var includeMarkup = !User.IsInRole("ADMIN");
+        var includeMarkup = !IsReservedAdminUser();
         if (string.IsNullOrWhiteSpace(req.AirSegmentXml) && req.AirSegmentXmls.Count == 0)
             return BadRequest(new { error = "Air segment data is required for pricing." });
 
@@ -228,6 +236,7 @@ public class FlightsController : ControllerBase
     [HttpPost("seat-map")]
     public async Task<IActionResult> SeatMap([FromBody] FlightSeatMapRequest req, [FromQuery] bool debugRaw = false)
     {
+        var includeMarkup = !IsReservedAdminUser();
         if (string.IsNullOrWhiteSpace(req.AirSegmentXml))
             return BadRequest(new { error = "Air segment data is required for seat map." });
 
@@ -254,7 +263,7 @@ public class FlightsController : ControllerBase
         if (debugRaw)
             return Content(response, "application/xml");
 
-        return Ok(ParseSeatMapResponse(response));
+        return Ok(ParseSeatMapResponse(response, includeMarkup));
     }
 
     [HttpPost("prebook-ancillary-offers")]
@@ -297,7 +306,14 @@ public class FlightsController : ControllerBase
             return Content(response, "application/xml");
 
         var segmentLabels = BuildPrebookSegmentLabels(segments);
-        return Ok(ParsePrebookOfferAvailabilityResponse(response, segmentLabels));
+        var includeMarkup = !IsReservedAdminUser();
+        var catalog = ParsePrebookOfferAvailabilityResponse(response, segmentLabels);
+        if (includeMarkup)
+        {
+            ApplyAgentAncillaryMarkup(catalog);
+        }
+
+        return Ok(catalog);
     }
 
     private static Dictionary<string, string> BuildPrebookSegmentLabels(IReadOnlyList<string> airSegmentXmls)
@@ -1338,7 +1354,7 @@ public class FlightsController : ControllerBase
         string ServiceSubCode,
         string Source);
 
-    private static object ParseSeatMapResponse(string xml)
+    private object ParseSeatMapResponse(string xml, bool includeMarkup)
     {
         var doc = XDocument.Parse(xml);
 
@@ -1421,7 +1437,7 @@ public class FlightsController : ControllerBase
                                 !string.Equals(facility.Attribute("Type")?.Value, "Aisle", StringComparison.OrdinalIgnoreCase)
                             )
                         ))
-                    .Select(facility => MapSeatFacility(facility, optionalServices, row.Attribute("Number")?.Value ?? string.Empty))
+                    .Select(facility => MapSeatFacility(facility, optionalServices, row.Attribute("Number")?.Value ?? string.Empty, includeMarkup))
                     .Where(seat => !string.IsNullOrWhiteSpace(seat.Code))
                     .ToList()
             })
@@ -1434,7 +1450,7 @@ public class FlightsController : ControllerBase
                 .Select(facility => new
                 {
                     rowNumber = ExtractSeatRowNumber(facility),
-                    seat = MapSeatFacility(facility, optionalServices, ExtractSeatRowNumber(facility))
+                    seat = MapSeatFacility(facility, optionalServices, ExtractSeatRowNumber(facility), includeMarkup)
                 })
                 .Where(x => !string.IsNullOrWhiteSpace(x.rowNumber))
                 .GroupBy(x => x.rowNumber, StringComparer.OrdinalIgnoreCase)
@@ -1494,10 +1510,11 @@ public class FlightsController : ControllerBase
         };
     }
 
-    private static SeatMapSeatDto MapSeatFacility(
+    private SeatMapSeatDto MapSeatFacility(
         XElement facility,
         IReadOnlyDictionary<string, XElement> optionalServices,
-        string rowNumberHint)
+        string rowNumberHint,
+        bool includeMarkup)
     {
         var seatCode = ResolveSeatCode(facility, rowNumberHint);
         var optionalServiceRef = facility.Attribute("OptionalServiceRef")?.Value?.Trim()
@@ -1537,6 +1554,11 @@ public class FlightsController : ControllerBase
 
         var isPaid = bool.TryParse(facility.Attribute("Paid")?.Value, out var paid) && paid;
         isPaid = isPaid || !string.IsNullOrWhiteSpace(optionalServiceRef) || seatPrice.HasValue;
+
+        if (includeMarkup && seatPrice.HasValue && seatPrice.Value > 0m)
+        {
+            seatPrice = _ancillaryMarkup.CalculateTotalAmount("SEAT", seatPrice.Value);
+        }
 
         return new SeatMapSeatDto(
             seatCode,
@@ -1931,6 +1953,26 @@ public class FlightsController : ControllerBase
     }
 
     private static string Escape(string value) => SecurityElement.Escape(value) ?? string.Empty;
+
+    private bool IsReservedAdminUser()
+    {
+        if (!User.IsInRole("ADMIN"))
+            return false;
+
+        var email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+        return string.Equals(email.Trim(), ReservedAdminEmail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ApplyAgentAncillaryMarkup(BookingAncillaryOfferCatalog catalog)
+    {
+        foreach (var category in catalog.Categories.Values)
+        {
+            foreach (var offer in category)
+            {
+                offer.BaseAmount = _ancillaryMarkup.CalculateTotalAmount(offer.Type, offer.BaseAmount);
+            }
+        }
+    }
 }
 
 public sealed class FlightSeatMapRequest

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Briefcase, LayoutGrid, LogOut, PlaneTakeoff, ScrollText, Users, Wallet } from "lucide-react";
+import { BarChart3, Briefcase, LayoutGrid, LogOut, PlaneTakeoff, ScrollText, Ticket, Users, Wallet } from "lucide-react";
 import { getCurrentUser } from "@/lib/api";
 import { getUserFromToken, removeToken } from "@/lib/auth";
 
@@ -12,18 +12,21 @@ const menu = [
     { name: "Flight Search", path: "/flight-search", icon: PlaneTakeoff },
     { name: "Bookings", path: "/bookings", icon: Briefcase },
     { name: "Wallet", path: "/wallet", icon: Wallet },
+    { name: "Ticket Queue", path: "/ticket-queue", icon: Ticket },
     { name: "Agents", path: "/agents", icon: Users },
     { name: "Audit Trail", path: "/audit-trail", icon: ScrollText },
     { name: "Reports", path: "/reports", icon: BarChart3 },
 ];
 
-const adminOnlyPaths = new Set(["/audit-trail", "/reports"]);
+const adminOnlyPaths = new Set(["/audit-trail"]);
+const reservedAdminOnlyPaths = new Set(["/ticket-queue", "/reports"]);
 
 const mobileLabels: Record<string, string> = {
     Dashboard: "Home",
     "Flight Search": "Search",
     Bookings: "Trips",
     Wallet: "Wallet",
+    "Ticket Queue": "Queue",
     Agents: "Agents",
     "Audit Trail": "Audit",
     Reports: "Reports",
@@ -33,6 +36,7 @@ export default function Sidebar() {
     const pathname = usePathname();
     const currentUser = getUserFromToken();
     const tokenRole = currentUser?.role?.toUpperCase() ?? "";
+    const tokenEmail = (currentUser?.email ?? "").trim().toLowerCase();
     const [resolvedRole, setResolvedRole] = useState(tokenRole);
 
     useEffect(() => {
@@ -47,7 +51,16 @@ export default function Sidebar() {
     }, [tokenRole]);
 
     const isAdmin = resolvedRole === "ADMIN";
-    const visibleMenu = menu.filter((item) => !adminOnlyPaths.has(item.path) || isAdmin);
+    const isReservedAdmin = isAdmin && tokenEmail === "admin@tourvalve.com";
+    const visibleMenu = menu.filter((item) => {
+        if (reservedAdminOnlyPaths.has(item.path)) {
+            return isReservedAdmin;
+        }
+        if (adminOnlyPaths.has(item.path)) {
+            return isAdmin;
+        }
+        return true;
+    });
 
     const handleLogout = () => {
         removeToken();

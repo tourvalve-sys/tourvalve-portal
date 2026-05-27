@@ -1201,7 +1201,7 @@ export default function FlightSearch() {
         const segmentLabel = prebookActiveSegment?.label ?? `${prebookFlight.from} -> ${prebookFlight.to}`;
         const segmentIndex = prebookActiveSegmentIndex + 1;
 
-        if (provider === "ATLAS") {
+        if (provider === "ATLAS" || provider === "LCC") {
             return prebookAtlasLuggage
                 .filter((item) => item.segmentIndex === segmentIndex)
                 .filter((item) => {
@@ -1671,7 +1671,7 @@ export default function FlightSearch() {
             rows: candidate.rows,
             rawResponse: "",
             segmentLabel: prebookActiveSegment?.label,
-            source: "ATLAS_SEAT_AVAILABILITY",
+            source: "SEAT_AVAILABILITY",
             isPostBooking: false,
         });
         setPrebookSeatMapError("");

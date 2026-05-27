@@ -7,6 +7,7 @@
 *.suo
 
 # Node / Next.js
+**/node_modules/
 frontend/node_modules/
 frontend/.next/
 frontend/out/
@@ -28,3 +29,10 @@ Thumbs.db
 # Local outputs / temp
 **/build-output.txt
 frontend/lib/airports.dat
+_pdf_work/
+repo-clean/
+availability-debug.xml
+last-booking-raw*.json
+last-booking-*.xml
+seatmap-*-raw.xml
+mom-birthday.html

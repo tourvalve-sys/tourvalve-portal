@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using TourValve.Application.Flights;
@@ -13,15 +14,22 @@ namespace TourValve.Api.Controllers;
 [Route("api/atlas/flights")]
 public sealed class AtlasFlightsController : ControllerBase
 {
+    private const string ReservedAdminEmail = "admin@tourvalve.com";
     private readonly AtlasApiClient _atlas;
     private readonly AtlasOptions _options;
     private readonly TicketMarkupService _markup;
+    private readonly AncillaryMarkupService _ancillaryMarkup;
 
-    public AtlasFlightsController(AtlasApiClient atlas, IOptions<AtlasOptions> options, TicketMarkupService markup)
+    public AtlasFlightsController(
+        AtlasApiClient atlas,
+        IOptions<AtlasOptions> options,
+        TicketMarkupService markup,
+        AncillaryMarkupService ancillaryMarkup)
     {
         _atlas = atlas;
         _options = options.Value;
         _markup = markup;
+        _ancillaryMarkup = ancillaryMarkup;
     }
 
     [HttpPost("prebook-ancillaries")]
@@ -97,14 +105,32 @@ public sealed class AtlasFlightsController : ControllerBase
             seatError = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
         }
 
+        var includeMarkup = !IsReservedAdminUser();
+        var luggageItems = luggage?.Data?.AncillaryProductElements ?? new List<AtlasAncillaryProductElement>();
+        if (includeMarkup)
+        {
+            foreach (var item in luggageItems)
+            {
+                if (item.Price > 0m)
+                    item.Price = _ancillaryMarkup.CalculateTotalAmount("BAGGAGE", item.Price);
+
+                if (item.DisplayPrice.HasValue && item.DisplayPrice.Value > 0m)
+                    item.DisplayPrice = _ancillaryMarkup.CalculateTotalAmount("BAGGAGE", item.DisplayPrice.Value);
+
+                // Hide supplier/vendor pricing from agents.
+                item.VendorPrice = null;
+                item.VendorCurrency = null;
+            }
+        }
+
         var seatMaps = seatAvailability is null
             ? null
-            : MapSeatAvailabilityToSeatMaps(seatAvailability, routing);
+            : MapSeatAvailabilityToSeatMaps(seatAvailability, routing, includeMarkup);
 
         return Ok(new
         {
             sessionId = verify.SessionId,
-            luggage = luggage?.Data?.AncillaryProductElements ?? new List<AtlasAncillaryProductElement>(),
+            luggage = luggageItems,
             luggageError = string.IsNullOrWhiteSpace(luggageError) ? null : luggageError,
             seatMaps,
             seatError = string.IsNullOrWhiteSpace(seatError) ? null : seatError
@@ -173,7 +199,7 @@ public sealed class AtlasFlightsController : ControllerBase
         }
 
         var routings = searchResponse.Routings ?? new List<AtlasRouting>();
-        var includeMarkup = !User.IsInRole("ADMIN");
+        var includeMarkup = !IsReservedAdminUser();
         var flights = routings
             .Where(routing => routing.FromSegments.Count > 0)
             .Select(routing => MapRoutingToFlightDto(routing, req.Adults, req.Child, req.Infant))
@@ -211,7 +237,7 @@ public sealed class AtlasFlightsController : ControllerBase
         };
     }
 
-    private static object MapSeatAvailabilityToSeatMaps(AtlasSeatAvailabilityResponse response, AtlasRouting routing)
+    private object MapSeatAvailabilityToSeatMaps(AtlasSeatAvailabilityResponse response, AtlasRouting routing, bool includeMarkup)
     {
         var segments = new List<AtlasSegment>();
         segments.AddRange(routing.FromSegments);
@@ -237,6 +263,10 @@ public sealed class AtlasFlightsController : ControllerBase
                             {
                                 var seatCode = $"{row.Number}{(seat.Column ?? string.Empty).Trim()}".Trim();
                                 var amount = seat.Price ?? 0m;
+                                if (includeMarkup && amount > 0m)
+                                {
+                                    amount = _ancillaryMarkup.CalculateTotalAmount("SEAT", amount);
+                                }
                                 return new
                                 {
                                     code = seatCode,
@@ -248,7 +278,7 @@ public sealed class AtlasFlightsController : ControllerBase
                                     taxes = (decimal?)null,
                                     optionalServiceRef = (string?)null,
                                     serviceSubCode = (string?)null,
-                                    source = "ATLAS_SEAT_AVAILABILITY",
+                                    source = "SEAT_AVAILABILITY",
                                     productCode = seat.ProductCode
                                 };
                             })
@@ -324,8 +354,8 @@ public sealed class AtlasFlightsController : ControllerBase
             ItineraryDurationMinutes = itineraryDurationMinutes,
             Currency = string.IsNullOrWhiteSpace(routing.Currency) ? "MYR" : routing.Currency,
             CabinClass = "Economy",
-            ProviderCode = "ATLAS",
-            BookingWorkflow = "ATLAS_LCC_RESERVATION",
+            ProviderCode = "LCC",
+            BookingWorkflow = "LCC_RESERVATION",
             SupportsPortalCheckout = true,
             SupportsPortalAutoIssue = false,
             BookingNotice = "Reservation is supported for this fare. Ticketing happens later from the AirTicketing workspace.",
@@ -572,5 +602,14 @@ public sealed class AtlasFlightsController : ControllerBase
             return parsed.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
 
         return value.Trim();
+    }
+
+    private bool IsReservedAdminUser()
+    {
+        if (!User.IsInRole("ADMIN"))
+            return false;
+
+        var email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+        return string.Equals(email.Trim(), ReservedAdminEmail, StringComparison.OrdinalIgnoreCase);
     }
 }

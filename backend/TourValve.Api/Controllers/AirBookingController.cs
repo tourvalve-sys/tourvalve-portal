@@ -28,6 +28,7 @@ namespace TourValve.Api.Controllers;
 public sealed class AirBookingController : ControllerBase
 {
     internal static readonly string LastBookingDebugPath = Path.Combine(AppContext.BaseDirectory, "travelport-last-booking-debug.json");
+    private const string ReservedAdminEmail = "admin@tourvalve.com";
 
     private readonly TravelportAirClient _airClient;
     private readonly TravelportConfig _config;
@@ -39,6 +40,7 @@ public sealed class AirBookingController : ControllerBase
     private readonly TourValveDbContext _db;
     private readonly IWalletService _wallet;
     private readonly AirTicketingWorkflowService _airTicketingWorkflow;
+    private readonly TicketMarkupService _ticketMarkup;
 
     public AirBookingController(
         TravelportAirClient airClient,
@@ -46,6 +48,7 @@ public sealed class AirBookingController : ControllerBase
         IAuditTrailService audit,
         INotificationService notifications,
         IEmailService emailService,
+        TicketMarkupService ticketMarkup,
         IMediator mediator,
         TourValveDbContext db,
         IWalletService wallet,
@@ -57,6 +60,7 @@ public sealed class AirBookingController : ControllerBase
         _audit = audit;
         _notifications = notifications;
         _emailService = emailService;
+        _ticketMarkup = ticketMarkup;
         _mediator = mediator;
         _db = db;
         _wallet = wallet;
@@ -103,10 +107,34 @@ public sealed class AirBookingController : ControllerBase
             return Unauthorized();
 
         var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? request.ContactEmail ?? string.Empty;
-        var isAdmin = User.IsInRole("ADMIN");
+        var isReservedAdmin = IsReservedAdminUser();
         var normalizedRequestId = string.IsNullOrWhiteSpace(request.ClientRequestId)
             ? $"BOOK-{DateTime.UtcNow:yyyyMMddHHmmssfff}"
             : request.ClientRequestId.Trim();
+
+        var walletHoldId = (Guid?)null;
+        var walletChargeAmount = decimal.Round(Math.Max(request.Price, 0m), 2, MidpointRounding.AwayFromZero);
+        if (!isReservedAdmin)
+        {
+            if (walletChargeAmount <= 0m)
+                return BadRequest(new { error = "Invalid fare amount for wallet settlement. Reprice the itinerary and try again." });
+
+            try
+            {
+                walletHoldId = await CreatePreAuthorizedWalletHoldAsync(
+                    actorId,
+                    actorEmail,
+                    isReservedAdmin,
+                    walletChargeAmount,
+                    normalizedRequestId,
+                    cancellationToken);
+            }
+            catch (InvalidOperationException ex)
+            {
+                await _notifications.CreateAsync(actorId, "AGENT", "WALLET", "Wallet balance required", ex.Message, "WARN", "/wallet");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
 
         var bookingSupport = TravelportBookingSupportInspector.Analyze(
             request.AirPricingSolutionXml,
@@ -179,12 +207,21 @@ public sealed class AirBookingController : ControllerBase
                 refreshedSupport.ProviderCode,
                 cancellationToken);
 
+            if (walletHoldId.HasValue && portalBooking.Booking is not null)
+            {
+                await TryCaptureReservationWalletChargeAsync(
+                    portalBooking.Booking,
+                    walletHoldId.Value,
+                    actorId,
+                    cancellationToken);
+            }
+
             await TrySendBookingConfirmationAsync(request, refs, portalBooking.Booking, portalBooking.BookingReference);
             await TrySendAdminBookingNoticeAsync(request, refs, portalBooking.Booking, portalBooking.BookingReference);
 
             var ticketingMessage = portalBooking.PortalSyncPending
-                ? "Reservation created, but the portal record is still syncing. Open the booking ledger once it appears, then proceed to ticketing."
-                : "Reservation created. Proceed to ticketing to issue.";
+                ? "Reservation created, but the portal record is still syncing. Open the booking ledger once it appears, then contact admin for ticket issuance."
+                : "Reservation created successfully. Contact admin for ticket issuance.";
 
             var booking = portalBooking.Booking;
             var ticketNumbers = booking is null
@@ -217,7 +254,7 @@ public sealed class AirBookingController : ControllerBase
                 Status = booking?.Status ?? "CONFIRMED",
                 Message = portalBooking.PortalSyncPending
                     ? "Air booking created, but the portal record is still syncing."
-                    : "Air booking created. Proceed to AirTicketing to issue.",
+                    : "Air booking created successfully. Contact admin for ticket issuance.",
                 NextActionUrl = nextActionUrl,
                 RawResponse = rawResponse,
                 IsMock = false
@@ -225,6 +262,11 @@ public sealed class AirBookingController : ControllerBase
         }
         catch (Exception ex)
         {
+            if (walletHoldId.HasValue)
+            {
+                await TryReleaseWalletHoldAsync(walletHoldId.Value, $"{normalizedRequestId}-RESERVE-RELEASE");
+            }
+
             WriteBookingDebugSnapshot("BOOKING_FAILED", reservationRequestXml, null, ex.ToString());
             var detail = ExtractTravelportMessage(ex);
 
@@ -416,6 +458,11 @@ public sealed class AirBookingController : ControllerBase
                     }
                 };
 
+            var sellAmount = decimal.Round(Math.Max(request.Price, 0m), 2, MidpointRounding.AwayFromZero);
+            var (baseAmount, markupAmount, _) = IsReservedAdminUser()
+                ? (sellAmount, 0m, sellAmount)
+                : _ticketMarkup.SplitSellAmount(sellAmount);
+
             var createResult = await _mediator.Send(
                 new CreateBookingCommand
                 {
@@ -427,9 +474,9 @@ public sealed class AirBookingController : ControllerBase
                     To = request.To,
                     DepartureTime = DateTime.Parse(request.Departure, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
                     ArrivalTime = DateTime.Parse(request.Arrival, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
-                    Amount = request.Price,
-                    BaseAmount = request.BasePrice > 0m ? request.BasePrice : request.Price,
-                    MarkupAmount = request.MarkupAmount,
+                    Amount = sellAmount,
+                    BaseAmount = baseAmount,
+                    MarkupAmount = markupAmount,
                     UniversalRecordLocator = refs.UniversalRecordLocator ?? string.Empty,
                     ProviderLocator = refs.ProviderLocator ?? string.Empty,
                     AirlineLocator = refs.AirlineLocator ?? string.Empty,
@@ -474,6 +521,89 @@ public sealed class AirBookingController : ControllerBase
         }
     }
 
+    private async Task TryBindTicketingHoldAsync(
+        Booking booking,
+        Guid walletHoldId,
+        Guid actorId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            booking.AirTicketingFormOfPayment = AirTicketingWorkflowService.FormOfPaymentWallet;
+            booking.AirTicketingPaymentStatus = AirTicketingWorkflowService.PaymentHoldActive;
+            booking.AirTicketingWalletHoldId = walletHoldId;
+            booking.AirTicketingStatus = AirTicketingWorkflowService.WorkflowScheduled;
+            booking.AirTicketingDate = GetLocalToday();
+            booking.AirTicketingScheduledAt = DateTime.UtcNow;
+            booking.AirTicketingScheduledByAgentId = actorId;
+            booking.AirTicketingLastError = string.Empty;
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // Best-effort only. If persistence fails, keep provider reservation as the primary outcome.
+        }
+    }
+
+    private async Task TryCaptureReservationWalletChargeAsync(
+        Booking booking,
+        Guid walletHoldId,
+        Guid actorId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _wallet.CaptureHoldAsync(walletHoldId, $"{booking.BookingReference}-RESERVE-CAPTURE");
+
+            booking.AirTicketingFormOfPayment = AirTicketingWorkflowService.FormOfPaymentWallet;
+            booking.AirTicketingPaymentStatus = AirTicketingWorkflowService.PaymentPaid;
+            booking.AirTicketingWalletHoldId = null;
+            booking.AirTicketingStatus = AirTicketingWorkflowService.WorkflowScheduled;
+            booking.AirTicketingDate = GetLocalToday();
+            booking.AirTicketingScheduledAt = DateTime.UtcNow;
+            booking.AirTicketingScheduledByAgentId = actorId;
+            booking.AirTicketingLastError = string.Empty;
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // Best-effort only. If capture fails, leave the hold ACTIVE to keep funds reserved.
+            try
+            {
+                booking.AirTicketingFormOfPayment = AirTicketingWorkflowService.FormOfPaymentWallet;
+                booking.AirTicketingPaymentStatus = AirTicketingWorkflowService.PaymentHoldActive;
+                booking.AirTicketingWalletHoldId = walletHoldId;
+                booking.AirTicketingStatus = AirTicketingWorkflowService.WorkflowScheduled;
+                booking.AirTicketingDate = GetLocalToday();
+                booking.AirTicketingScheduledAt = DateTime.UtcNow;
+                booking.AirTicketingScheduledByAgentId = actorId;
+                booking.AirTicketingLastError = string.Empty;
+
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            catch
+            {
+                // Ignore persistence errors; provider reservation is the primary outcome.
+            }
+        }
+    }
+
+    private static DateOnly GetLocalToday()
+    {
+        var utcNow = DateTime.UtcNow;
+        try
+        {
+            var timezone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
+            return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timezone));
+        }
+        catch
+        {
+            return DateOnly.FromDateTime(utcNow);
+        }
+    }
+
     private static string NormalizeRequestedFormOfPayment(string formOfPayment) =>
         (formOfPayment ?? string.Empty).Trim().ToUpperInvariant() switch
         {
@@ -485,6 +615,15 @@ public sealed class AirBookingController : ControllerBase
         };
 
     private static string BuildWorkspacePath(Guid bookingId) => $"/air-ticketing/{bookingId}";
+
+    private bool IsReservedAdminUser()
+    {
+        if (!User.IsInRole("ADMIN"))
+            return false;
+
+        var email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+        return string.Equals(email.Trim(), ReservedAdminEmail, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static List<string> DeserializeTicketNumbers(Booking booking)
     {

@@ -41,6 +41,9 @@ export default function WalletPage() {
     const [updatingWithdrawalId, setUpdatingWithdrawalId] = useState("");
     const [creatingBillplzTopUp, setCreatingBillplzTopUp] = useState(false);
 
+    const isReservedAdmin =
+        user?.role === "ADMIN" && (user?.email ?? "").trim().toLowerCase() === "admin@tourvalve.com";
+
     const loadWallet = async (quiet = false) => {
         try {
             if (!quiet) {
@@ -49,7 +52,10 @@ export default function WalletPage() {
             const currentUser = await getCurrentUser();
             setUser(currentUser);
 
-            if (currentUser.role === "ADMIN") {
+            const reservedAdmin =
+                currentUser.role === "ADMIN" && (currentUser.email ?? "").trim().toLowerCase() === "admin@tourvalve.com";
+
+            if (reservedAdmin) {
                 setMyWallet(await getMyWallet());
                 const wallets = await getAgentWallets();
                 setWithdrawals(await getAdminWithdrawals());
@@ -248,16 +254,16 @@ export default function WalletPage() {
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                     <div className="max-w-3xl">
                         <h1 className="hero-title">
-                            {user?.role === "ADMIN" ? "Fund agent trading power with precision." : "A polished command view for wallet performance."}
+                            {isReservedAdmin ? "Fund agent trading power with precision." : "A polished command view for wallet performance."}
                         </h1>
                         <p className="mt-5 text-base leading-8 text-slate-600">
-                            {user?.role === "ADMIN"
+                            {isReservedAdmin
                                 ? "Move funds only into approved agent wallets, keep an auditable reference for every top-up, and maintain tighter control over issuing power."
                                 : "Track available balance, booked usage, and transaction movement from one refined treasury screen."}
                         </p>
                     </div>
                     <div className="status-pill status-success">
-                        {user?.role === "ADMIN" ? "Admin Treasury Access" : "Wallet Active"}
+                        {isReservedAdmin ? "Admin Treasury Access" : "Wallet Active"}
                     </div>
                 </div>
             </section>
@@ -270,7 +276,7 @@ export default function WalletPage() {
                 </div>
             )}
 
-            {user?.role === "ADMIN" ? (
+            {isReservedAdmin ? (
                 <>
                     <section className="grid grid-cols-1 gap-5 md:grid-cols-3">
                         <div className="premium-panel metric-card rounded-[2rem] p-6">

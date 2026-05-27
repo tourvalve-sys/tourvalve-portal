@@ -170,7 +170,7 @@ function normalizeFlightResult(value: unknown): FlightResult | null {
 function createPersistedFlightSnapshot(flight: FlightResult): FlightResult {
     const normalized = normalizeFlightResult(flight) ?? flight;
     const providerCode = normalized.providerCode.trim().toUpperCase();
-    const pricingXmlLimit = providerCode === "ATLAS" ? 250000 : 120000;
+    const pricingXmlLimit = providerCode === "ATLAS" || providerCode === "LCC" ? 250000 : 120000;
 
     return {
         ...normalized,

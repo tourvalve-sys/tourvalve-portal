@@ -29,6 +29,8 @@ public class BookingsController : ControllerBase
     private readonly UniversalRecordService _records;
     private readonly IAuditTrailService _audit;
     private readonly INotificationService _notifications;
+    private readonly IEmailService _emailService;
+    private readonly SmtpOptions _smtpOptions;
     private readonly WalletAlertOptions _walletAlertOptions;
     private readonly IWalletService _wallet;
     private readonly AncillaryMarkupService _ancillaryMarkup;
@@ -47,13 +49,15 @@ public class BookingsController : ControllerBase
         IWalletService wallet,
         IAuditTrailService audit,
         INotificationService notifications,
+        IEmailService emailService,
           AncillaryMarkupService ancillaryMarkup,
           AncillaryOfferService ancillaryOffers,
           AirAncillaryAvailabilityService liveAncillaryAvailability,
           BookingSeatMapService bookingSeatMaps,
           BookingTicketingService ticketing,
           AirTicketingWorkflowService airTicketingWorkflow,
-          IOptions<WalletAlertOptions> walletAlertOptions)
+          IOptions<WalletAlertOptions> walletAlertOptions,
+          IOptions<SmtpOptions> smtpOptions)
     {
         _mediator = mediator;
         _db = db;
@@ -61,6 +65,7 @@ public class BookingsController : ControllerBase
         _wallet = wallet;
         _audit = audit;
         _notifications = notifications;
+        _emailService = emailService;
         _ancillaryMarkup = ancillaryMarkup;
         _ancillaryOffers = ancillaryOffers;
         _liveAncillaryAvailability = liveAncillaryAvailability;
@@ -68,6 +73,7 @@ public class BookingsController : ControllerBase
         _ticketing = ticketing;
         _airTicketingWorkflow = airTicketingWorkflow;
         _walletAlertOptions = walletAlertOptions.Value;
+        _smtpOptions = smtpOptions.Value;
     }
 
     public record ModifyBookingRequest(string Remark);
@@ -96,7 +102,7 @@ public class BookingsController : ControllerBase
             if (requesterAgentId == null)
                 return Unauthorized();
 
-            var isAdmin = User.IsInRole("ADMIN");
+            var isAdmin = IsReservedAdminUser();
             var query = _db.Bookings.AsNoTracking();
 
             if (!isAdmin)
@@ -118,19 +124,66 @@ public class BookingsController : ControllerBase
                     x.To,
                     x.DepartureTime,
                     x.ArrivalTime,
-                    x.Amount,
-                    x.BaseAmount,
-                    x.MarkupAmount,
+                    amount = isAdmin ? x.BaseAmount : x.Amount,
+                    baseAmount = isAdmin ? x.BaseAmount : 0m,
+                    markupAmount = 0m,
                     itinerarySegments = DeserializeItinerarySegments(x.ItinerarySegmentsJson),
                     ticketNumbers = DeserializeStringList(x.TicketNumbersJson),
                     x.TicketedAt,
-                    x.ProviderCode,
+                    ProviderCode = isAdmin ? x.ProviderCode : string.Empty,
                     x.AirTicketingStatus,
                     x.AirTicketingFormOfPayment,
                     x.AirTicketingPaymentStatus,
                     x.AirTicketingDate,
                     x.AirTicketingScheduledAt,
                     x.TicketVoidedAt,
+                    x.Status,
+                    x.CreatedAt
+                })
+                .ToListAsync();
+
+            return Ok(items);
+        }
+        catch (Exception ex) when (IsSchemaNotReady(ex))
+        {
+            return Ok(Array.Empty<object>());
+        }
+    }
+
+    [HttpGet("pending-ticketing")]
+    public async Task<IActionResult> PendingTicketingQueue()
+    {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Ticketing queue access is restricted to the TourValve admin." });
+
+        try
+        {
+            var query = _db.Bookings.AsNoTracking()
+                .Where(x =>
+                    x.TicketedAt == null &&
+                    x.Status != "CANCELLED" &&
+                    x.Status != "VOIDED");
+
+            var items = await query
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.BookingReference,
+                    x.AgentId,
+                    agentEmail = _db.Agents.Where(a => a.Id == x.AgentId).Select(a => a.Email).FirstOrDefault() ?? string.Empty,
+                    x.UniversalRecordLocator,
+                    x.ProviderLocator,
+                    x.AirlineLocator,
+                    x.Carrier,
+                    x.FlightNumber,
+                    x.From,
+                    x.To,
+                    x.DepartureTime,
+                    x.ArrivalTime,
+                    amount = x.BaseAmount,
+                    x.AirTicketingStatus,
+                    x.AirTicketingPaymentStatus,
                     x.Status,
                     x.CreatedAt
                 })
@@ -158,6 +211,7 @@ public class BookingsController : ControllerBase
             .Select(x => x.Email)
             .FirstOrDefaultAsync() ?? string.Empty;
         var debugInfo = BuildTicketingDebugInfo(booking);
+        var isAdmin = IsReservedAdminUser();
 
         return Ok(new
         {
@@ -174,13 +228,13 @@ public class BookingsController : ControllerBase
             booking.To,
             booking.DepartureTime,
             booking.ArrivalTime,
-            booking.Amount,
-            booking.BaseAmount,
-            booking.MarkupAmount,
+            amount = isAdmin ? booking.BaseAmount : booking.Amount,
+            baseAmount = isAdmin ? booking.BaseAmount : 0m,
+            markupAmount = 0m,
             itinerarySegments = DeserializeItinerarySegments(booking.ItinerarySegmentsJson),
             ticketNumbers = DeserializeStringList(booking.TicketNumbersJson),
             booking.TicketedAt,
-            booking.ProviderCode,
+            ProviderCode = isAdmin ? booking.ProviderCode : string.Empty,
             booking.AirTicketingStatus,
             booking.AirTicketingFormOfPayment,
             booking.AirTicketingPaymentStatus,
@@ -192,7 +246,7 @@ public class BookingsController : ControllerBase
             booking.TicketVoidedAt,
             booking.Status,
             booking.CreatedAt,
-            debug = debugInfo,
+            debug = isAdmin ? debugInfo : null,
             ancillaries = await _db.BookingAncillaryOrders
                 .AsNoTracking()
                 .Where(x => x.BookingId == booking.Id)
@@ -204,8 +258,8 @@ public class BookingsController : ControllerBase
                     x.SegmentLabel,
                     x.OptionCode,
                     x.Description,
-                    x.BaseAmount,
-                    x.MarkupAmount,
+                    baseAmount = isAdmin ? x.BaseAmount : 0m,
+                    markupAmount = 0m,
                     x.TotalAmount,
                     x.Currency,
                     x.Status,
@@ -229,6 +283,7 @@ public class BookingsController : ControllerBase
         if (booking == null)
             return NotFound(new { error = "Booking not found." });
 
+        var isAdmin = IsReservedAdminUser();
         var items = await _db.BookingAncillaryOrders
             .AsNoTracking()
             .Where(x => x.BookingId == booking.Id)
@@ -240,8 +295,8 @@ public class BookingsController : ControllerBase
                 x.SegmentLabel,
                 x.OptionCode,
                 x.Description,
-                x.BaseAmount,
-                x.MarkupAmount,
+                baseAmount = isAdmin ? x.BaseAmount : 0m,
+                markupAmount = 0m,
                 x.TotalAmount,
                 x.Currency,
                 x.Status,
@@ -266,6 +321,7 @@ public class BookingsController : ControllerBase
         if (booking == null)
             return NotFound(new { error = "Booking not found." });
 
+        var includeMarkup = !IsReservedAdminUser();
         try
         {
             var xml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
@@ -300,6 +356,11 @@ public class BookingsController : ControllerBase
                 }
             }
 
+            if (includeMarkup)
+            {
+                ApplyAgentAncillaryMarkup(catalog!);
+            }
+
             return Ok(catalog);
         }
         catch (Exception ex)
@@ -330,6 +391,20 @@ public class BookingsController : ControllerBase
                 request.FrequentFlyerProgram ?? string.Empty,
                 request.FrequentFlyerNumber ?? string.Empty);
 
+            if (!IsReservedAdminUser())
+            {
+                foreach (var row in result.Rows)
+                {
+                    foreach (var seat in row.Seats)
+                    {
+                        if (seat.SeatPrice.HasValue && seat.SeatPrice.Value > 0m)
+                        {
+                            seat.SeatPrice = _ancillaryMarkup.CalculateTotalAmount("SEAT", seat.SeatPrice.Value);
+                        }
+                    }
+                }
+            }
+
             return Ok(result);
         }
         catch (Exception ex)
@@ -357,10 +432,13 @@ public class BookingsController : ControllerBase
         if (mealSsrCode == "SPML" && string.IsNullOrWhiteSpace(request.Notes))
             return BadRequest(new { error = "Special meal requests require a short servicing note." });
 
+        var isAdmin = IsReservedAdminUser();
         var selectionCount = GetRequestedAncillaryUnits(request.TravelerSelections);
-        var baseAmount = decimal.Round(Math.Max(request.BaseAmount, 0m) * selectionCount, 2, MidpointRounding.AwayFromZero);
-        var markupAmount = _ancillaryMarkup.CalculateMarkupAmount(normalizedType);
-        var totalAmount = decimal.Round(baseAmount + markupAmount, 2, MidpointRounding.AwayFromZero);
+        var unitAmount = decimal.Round(Math.Max(request.BaseAmount, 0m), 2, MidpointRounding.AwayFromZero);
+        var requestedTotal = decimal.Round(unitAmount * selectionCount, 2, MidpointRounding.AwayFromZero);
+        var (baseAmount, markupAmount, totalAmount) = isAdmin
+            ? (requestedTotal, 0m, requestedTotal)
+            : _ancillaryMarkup.SplitSellAmount(normalizedType, requestedTotal);
         var isLiveMealSsr = !string.IsNullOrWhiteSpace(mealSsrCode);
 
         return Ok(new
@@ -369,8 +447,8 @@ public class BookingsController : ControllerBase
             segmentLabel = request.SegmentLabel?.Trim() ?? string.Empty,
             optionCode = request.OptionCode?.Trim() ?? string.Empty,
             description = request.Description.Trim(),
-            baseAmount,
-            markupAmount,
+            baseAmount = isAdmin ? baseAmount : totalAmount,
+            markupAmount = 0m,
             totalAmount,
             currency = string.IsNullOrWhiteSpace(request.Currency) ? "MYR" : request.Currency.Trim().ToUpperInvariant(),
             fulfillmentMode = isLiveMealSsr ? "TRAVELPORT_SSR" : "TRAVELPORT_REMARK",
@@ -403,6 +481,7 @@ public class BookingsController : ControllerBase
         if (requesterAgentId == null)
             return Unauthorized();
 
+        var isAdmin = IsReservedAdminUser();
         var normalizedType = request.Type.Trim().ToUpperInvariant();
         var mealSsrCode = ResolveMealSsrCode(normalizedType, request.OptionCode);
         if (mealSsrCode == "SPML" && string.IsNullOrWhiteSpace(request.Notes))
@@ -410,9 +489,11 @@ public class BookingsController : ControllerBase
 
         var currency = string.IsNullOrWhiteSpace(request.Currency) ? "MYR" : request.Currency.Trim().ToUpperInvariant();
         var selectionCount = GetRequestedAncillaryUnits(request.TravelerSelections);
-        var baseAmount = decimal.Round(Math.Max(request.BaseAmount, 0m) * selectionCount, 2, MidpointRounding.AwayFromZero);
-        var markupAmount = _ancillaryMarkup.CalculateMarkupAmount(normalizedType);
-        var totalAmount = decimal.Round(baseAmount + markupAmount, 2, MidpointRounding.AwayFromZero);
+        var unitAmount = decimal.Round(Math.Max(request.BaseAmount, 0m), 2, MidpointRounding.AwayFromZero);
+        var requestedTotal = decimal.Round(unitAmount * selectionCount, 2, MidpointRounding.AwayFromZero);
+        var (baseAmount, markupAmount, totalAmount) = isAdmin
+            ? (requestedTotal, 0m, requestedTotal)
+            : _ancillaryMarkup.SplitSellAmount(normalizedType, requestedTotal);
         var isLiveMealSsr = !string.IsNullOrWhiteSpace(mealSsrCode);
         var order = new TourValve.Domain.BookingAncillaryOrder
         {
@@ -448,7 +529,7 @@ public class BookingsController : ControllerBase
                 holdId = await _wallet.CreateHoldForUserAsync(
                     agentWallet.Id,
                     requesterAgentId.Value,
-                    User.IsInRole("ADMIN"),
+                    isAdmin,
                     totalAmount,
                     $"ANCILLARY-{order.Id}");
                 order.WalletHoldId = holdId;
@@ -512,8 +593,8 @@ public class BookingsController : ControllerBase
                 order.SegmentLabel,
                 order.OptionCode,
                 order.Description,
-                order.BaseAmount,
-                order.MarkupAmount,
+                baseAmount = isAdmin ? order.BaseAmount : 0m,
+                markupAmount = 0m,
                 order.TotalAmount,
                 order.Currency,
                 order.Status,
@@ -650,6 +731,81 @@ public class BookingsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("{id:guid}/notify-ticketing")]
+    public async Task<IActionResult> NotifyTicketing(Guid id)
+    {
+        var booking = await GetAuthorizedBookingAsync(id);
+        if (booking == null)
+            return NotFound(new { error = "Booking not found." });
+
+        var requesterAgentId = GetRequesterAgentId();
+        if (requesterAgentId == null)
+            return Unauthorized();
+
+        var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+        var adminInbox = string.IsNullOrWhiteSpace(_smtpOptions.AdminInboxEmail)
+            ? "tourvalve@gmail.com"
+            : _smtpOptions.AdminInboxEmail.Trim();
+
+        var subject = "Pending Ticket Issuance (Urgent)";
+        var body = EmailTemplates.PendingTicketIssuance(
+            actorEmail,
+            booking.BookingReference,
+            booking.Carrier,
+            booking.FlightNumber,
+            booking.From,
+            booking.To,
+            booking.DepartureTime,
+            booking.ArrivalTime,
+            booking.AirlineLocator,
+            booking.BaseAmount,
+            "MYR",
+            $"https://tourvalve.com/air-ticketing/{Uri.EscapeDataString(booking.Id.ToString())}");
+
+        try
+        {
+            await _emailService.SendAsync(adminInbox, subject, body);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(502, new { error = "Failed to notify admin via email.", detail = ex.Message });
+        }
+
+        try
+        {
+            await _notifications.CreateAsync(
+                null,
+                "ADMIN",
+                "TICKETING",
+                "Pending ticket issuance",
+                $"Booking {booking.BookingReference} requires ticket issuance. Requested by {actorEmail}.",
+                "WARN",
+                $"/air-ticketing/{booking.Id}");
+        }
+        catch
+        {
+            // Best-effort only; email is the primary notification channel.
+        }
+
+        try
+        {
+            await _audit.WriteAsync(
+                requesterAgentId,
+                actorEmail,
+                "BOOKING",
+                "TICKETING_NOTIFY_ADMIN",
+                "Booking",
+                booking.Id.ToString(),
+                booking.BookingReference,
+                "Agent requested admin ticket issuance.");
+        }
+        catch
+        {
+        }
+
+        return Ok(new { message = "Admin has been notified successfully." });
+    }
+
     [HttpPost("{id:guid}/retrieve")]
     public async Task<IActionResult> Retrieve(Guid id)
     {
@@ -686,6 +842,23 @@ public class BookingsController : ControllerBase
             async () =>
             {
                 var xml = await _records.CancelAsync(booking.UniversalRecordLocator);
+
+                if (booking.AirTicketingWalletHoldId.HasValue)
+                {
+                    try
+                    {
+                        await _wallet.ReleaseHoldAsync(
+                            booking.AirTicketingWalletHoldId.Value,
+                            $"{booking.BookingReference}-CANCEL-RELEASE");
+                        booking.AirTicketingWalletHoldId = null;
+                        booking.AirTicketingPaymentStatus = AirTicketingWorkflowService.PaymentVoided;
+                    }
+                    catch
+                    {
+                        // Keep cancellation success as the primary outcome even if wallet hold release fails.
+                    }
+                }
+
                 booking.Status = "CANCELLED";
                 await _db.SaveChangesAsync();
 
@@ -780,6 +953,9 @@ public class BookingsController : ControllerBase
     [HttpPost("{id:guid}/issue-ticket")]
     public async Task<IActionResult> IssueTicket(Guid id, [FromBody] IssueTicketRequest request)
     {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Ticket issuance is restricted to the TourValve admin." });
+
         var booking = await GetAuthorizedBookingAsync(id);
         if (booking == null)
             return NotFound(new { error = "Booking not found." });
@@ -820,6 +996,9 @@ public class BookingsController : ControllerBase
     [HttpPost("{id:guid}/air-ticketing/schedule")]
     public async Task<IActionResult> ScheduleAirTicketing(Guid id, [FromBody] AirTicketingScheduleRequest request)
     {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Ticketing workflow controls are restricted to the TourValve admin." });
+
         var booking = await GetAuthorizedBookingAsync(id);
         if (booking == null)
             return NotFound(new { error = "Booking not found." });
@@ -855,6 +1034,9 @@ public class BookingsController : ControllerBase
     [HttpPost("{id:guid}/air-ticketing/cancel")]
     public async Task<IActionResult> CancelAirTicketing(Guid id, [FromBody] IssueTicketRequest request)
     {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Ticketing workflow controls are restricted to the TourValve admin." });
+
         var booking = await GetAuthorizedBookingAsync(id);
         if (booking == null)
             return NotFound(new { error = "Booking not found." });
@@ -885,6 +1067,9 @@ public class BookingsController : ControllerBase
     [HttpPost("{id:guid}/air-ticketing/mark-paid")]
     public async Task<IActionResult> MarkAirTicketingPaid(Guid id)
     {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Ticketing workflow controls are restricted to the TourValve admin." });
+
         var booking = await GetAuthorizedBookingAsync(id);
         if (booking == null)
             return NotFound(new { error = "Booking not found." });
@@ -911,6 +1096,9 @@ public class BookingsController : ControllerBase
     [HttpPost("{id:guid}/air-ticketing/void")]
     public async Task<IActionResult> VoidAirTicket(Guid id, [FromBody] IssueTicketRequest request)
     {
+        if (!IsReservedAdminUser())
+            return StatusCode(403, new { error = "Ticketing workflow controls are restricted to the TourValve admin." });
+
         var booking = await GetAuthorizedBookingAsync(id);
         if (booking == null)
             return NotFound(new { error = "Booking not found." });
@@ -1016,13 +1204,22 @@ public class BookingsController : ControllerBase
         return agentIdClaim == null ? null : Guid.Parse(agentIdClaim);
     }
 
+    private bool IsReservedAdminUser()
+    {
+        if (!User.IsInRole("ADMIN"))
+            return false;
+
+        var email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+        return string.Equals(email.Trim(), ReservedAdminEmail, StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task<TourValve.Domain.Booking?> GetAuthorizedBookingAsync(Guid id)
     {
         var requesterAgentId = GetRequesterAgentId();
         if (requesterAgentId == null)
             return null;
 
-        var isAdmin = User.IsInRole("ADMIN");
+        var isAdmin = IsReservedAdminUser();
         var booking = await _db.Bookings.FirstOrDefaultAsync(x => x.Id == id);
         if (booking == null)
             return null;
@@ -1195,6 +1392,17 @@ public class BookingsController : ControllerBase
         return message
             .Replace("Travelport", "Provider", StringComparison.OrdinalIgnoreCase)
             .Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ApplyAgentAncillaryMarkup(BookingAncillaryOfferCatalog catalog)
+    {
+        foreach (var category in catalog.Categories.Values)
+        {
+            foreach (var offer in category)
+            {
+                offer.BaseAmount = _ancillaryMarkup.CalculateTotalAmount(offer.Type, offer.BaseAmount);
+            }
+        }
     }
 
     private async Task CreateWalletAlertIfNeeded(Guid agentId)

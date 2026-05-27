@@ -86,7 +86,7 @@ public static class EmailTemplates
     {
         var preheader = ticketIssued
             ? "Your booking is ticketed. Your itinerary PDF is attached."
-            : "Your reservation is confirmed. Proceed to ticketing when you are ready to issue.";
+            : "Your reservation is confirmed. Contact TourValve admin for ticket issuance.";
 
         return Wrap(
             "Your TourValve booking confirmation",
@@ -108,6 +108,71 @@ public static class EmailTemplates
                 manageBookingUrl,
                 ticketIssued,
                 ticketingWorkspaceUrl));
+    }
+
+    public static string PendingTicketIssuance(
+        string agentEmail,
+        string bookingReference,
+        string carrier,
+        string flightNumber,
+        string from,
+        string to,
+        DateTime departureUtc,
+        DateTime arrivalUtc,
+        string airlineLocator,
+        decimal amount,
+        string currency,
+        string? ticketingWorkspaceUrl)
+    {
+        var preheader = "A reservation has been confirmed and is pending ticket issuance.";
+        var departure = departureUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'");
+        var arrival = arrivalUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'");
+
+        var body = $@"
+<p>A TourValve reservation is pending ticket issuance and requires admin follow-up.</p>
+<p style=""margin:0 0 18px;""><strong>Requested by:</strong> {Encode(agentEmail)}</p>
+
+{BuildCtas(ticketingWorkspaceUrl, "Open AirTicketing workspace", null, string.Empty)}
+
+<div style=""margin:22px 0 0;padding:18px;border:1px solid rgba(50,93,147,0.14);border-radius:18px;background:#ffffff;"">
+  <div style=""font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#7c8ba1;font-weight:700;margin-bottom:10px;"">Reservation details</div>
+  <table role=""presentation"" cellpadding=""0"" cellspacing=""0"" width=""100%"" style=""border-collapse:collapse;font-size:14px;color:#1f2a44;"">
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"" width=""38%"">Booking reference</td>
+      <td style=""padding:0 0 8px;"">{Encode(bookingReference)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"">Airline PNR</td>
+      <td style=""padding:0 0 8px;"">{Encode(string.IsNullOrWhiteSpace(airlineLocator) ? "-" : airlineLocator)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"">Flight</td>
+      <td style=""padding:0 0 8px;"">{Encode(carrier)} {Encode(flightNumber)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"">Route</td>
+      <td style=""padding:0 0 8px;"">{Encode(from)} &rarr; {Encode(to)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"">Departure</td>
+      <td style=""padding:0 0 8px;"">{Encode(departure)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0 0 8px;font-weight:700;"">Arrival</td>
+      <td style=""padding:0 0 8px;"">{Encode(arrival)}</td>
+    </tr>
+    <tr>
+      <td style=""padding:0;font-weight:700;"">Total amount</td>
+      <td style=""padding:0;"">{Encode(currency)} {Encode(amount.ToString("0.00"))}</td>
+    </tr>
+  </table>
+</div>
+
+<p style=""margin:18px 0 0;color:#64748b;font-size:13px;line-height:1.7;"">
+  Subject: Pending Ticket Issuance (Urgent). Please issue the ticket as soon as possible or respond to the requesting agent.
+</p>";
+
+        return Wrap("Pending Ticket Issuance (Urgent)", preheader, body);
     }
 
     private static string BuildBookingConfirmedBody(
@@ -135,13 +200,13 @@ public static class EmailTemplates
         var statusTitle = ticketIssued ? "Your flight booking is ticketed" : "Your flight reservation is confirmed";
         var statusSubtitle = ticketIssued
             ? "Ticket evidence is available for airline servicing."
-            : "Next step: proceed to ticketing when you are ready to issue.";
+            : "Ticket issuance is handled by the TourValve admin. Contact admin@tourvalve.com for ticket issuance.";
 
-        var primaryCtaUrl = ticketIssued ? manageBookingUrl : ticketingWorkspaceUrl ?? manageBookingUrl;
-        var primaryCtaLabel = ticketIssued ? "Manage booking" : "Proceed to ticketing";
+        var primaryCtaUrl = ticketIssued ? manageBookingUrl : manageBookingUrl;
+        var primaryCtaLabel = ticketIssued ? "Manage booking" : "View booking";
 
-        var secondaryCtaUrl = ticketIssued ? ticketingWorkspaceUrl : manageBookingUrl;
-        var secondaryCtaLabel = ticketIssued ? "Open ticketing workspace" : "View booking";
+        var secondaryCtaUrl = ticketIssued ? ticketingWorkspaceUrl : ticketingWorkspaceUrl;
+        var secondaryCtaLabel = ticketIssued ? "Open ticketing workspace" : "Ticketing workspace";
 
         return $@"
 <div style=""margin:0 0 18px;"">

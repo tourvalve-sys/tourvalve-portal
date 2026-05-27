@@ -476,6 +476,27 @@ export type BookingRecord = {
     createdAt: string;
 };
 
+export type PendingTicketingQueueItem = {
+    id: string;
+    bookingReference: string;
+    agentId: string;
+    agentEmail: string;
+    universalRecordLocator: string;
+    providerLocator: string;
+    airlineLocator: string;
+    carrier: string;
+    flightNumber: string;
+    from: string;
+    to: string;
+    departureTime: string;
+    arrivalTime: string;
+    amount: number;
+    airTicketingStatus?: string;
+    airTicketingPaymentStatus?: string;
+    status: string;
+    createdAt: string;
+};
+
 export type BookingDetail = BookingRecord & {
     agentEmail: string;
     ancillaries?: BookingAncillaryOrder[];
@@ -1255,6 +1276,11 @@ export async function getBookings(): Promise<BookingRecord[]> {
     return readJson<BookingRecord[]>(res);
 }
 
+export async function getPendingTicketingQueue(): Promise<PendingTicketingQueueItem[]> {
+    const res = await authFetch(`${API_BASE}/api/bookings/pending-ticketing`);
+    return readJson<PendingTicketingQueueItem[]>(res);
+}
+
 export async function getBookingDetail(bookingId: string): Promise<BookingDetail> {
     const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}`);
     return readJson<BookingDetail>(res);
@@ -1302,6 +1328,14 @@ export async function issueBookingTicket(bookingId: string): Promise<IssueBookin
     });
 
     return readJson<IssueBookingTicketResponse>(res);
+}
+
+export async function notifyBookingTicketing(bookingId: string): Promise<{ message: string }> {
+    const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/notify-ticketing`, {
+        method: "POST",
+    });
+
+    return readJson<{ message: string }>(res);
 }
 
 export async function scheduleBookingAirTicketing(

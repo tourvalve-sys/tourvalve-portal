@@ -198,7 +198,11 @@ builder.Services.AddScoped<AirTicketingWorkflowService>();
 builder.Services.AddScoped<TravelportTerminalService>();
 builder.Services.AddScoped<AncillaryOfferService>();
 builder.Services.AddScoped<UniversalRecordService>();
-builder.Services.AddHostedService<AirTicketingWorker>();
+var autoIssueEnabled = builder.Configuration.GetValue<bool>("AirTicketing:AutoIssueEnabled");
+if (autoIssueEnabled)
+{
+    builder.Services.AddHostedService<AirTicketingWorker>();
+}
 
 // ==============================
 // CRITICAL FIX — PORT BINDING

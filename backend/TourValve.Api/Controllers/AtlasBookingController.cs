@@ -4,11 +4,14 @@ using System.Text.Json;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using TourValve.Api.Models;
 using TourValve.Application.Bookings.Commands;
+using TourValve.Application.Wallet;
 using TourValve.Domain;
 using TourValve.Infrastructure.Atlas;
 using TourValve.Infrastructure.Atlas.Models;
+using TourValve.Infrastructure.Travelport.Air;
 using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Services;
 
@@ -19,12 +22,15 @@ namespace TourValve.Api.Controllers;
 [Authorize]
 public sealed class AtlasBookingController : ControllerBase
 {
+    private const string ReservedAdminEmail = "admin@tourvalve.com";
     private readonly AtlasApiClient _atlas;
     private readonly AtlasOptions _options;
     private readonly IMediator _mediator;
     private readonly TourValveDbContext _db;
     private readonly IAuditTrailService _audit;
     private readonly INotificationService _notifications;
+    private readonly IWalletService _wallet;
+    private readonly TicketMarkupService _ticketMarkup;
 
     public AtlasBookingController(
         AtlasApiClient atlas,
@@ -32,7 +38,9 @@ public sealed class AtlasBookingController : ControllerBase
         IMediator mediator,
         TourValveDbContext db,
         IAuditTrailService audit,
-        INotificationService notifications)
+        INotificationService notifications,
+        IWalletService wallet,
+        TicketMarkupService ticketMarkup)
     {
         _atlas = atlas;
         _options = options.Value;
@@ -40,6 +48,8 @@ public sealed class AtlasBookingController : ControllerBase
         _db = db;
         _audit = audit;
         _notifications = notifications;
+        _wallet = wallet;
+        _ticketMarkup = ticketMarkup;
     }
 
     [HttpPost]
@@ -83,6 +93,10 @@ public sealed class AtlasBookingController : ControllerBase
             return Unauthorized();
 
         var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? request.ContactEmail ?? string.Empty;
+        var isReservedAdmin = IsReservedAdminUser();
+        var normalizedRequestId = string.IsNullOrWhiteSpace(request.ClientRequestId)
+            ? $"ATLAS-{DateTime.UtcNow:yyyyMMddHHmmssfff}"
+            : request.ClientRequestId.Trim();
 
         if (string.IsNullOrWhiteSpace(request.AirPricingSolutionXml))
             return BadRequest(new { error = "Routing identifier is missing. Search again and re-select the fare before booking." });
@@ -120,6 +134,38 @@ public sealed class AtlasBookingController : ControllerBase
 
         orderSessionId = orderSessionId.Trim();
 
+        var walletHoldId = (Guid?)null;
+        var walletChargeAmount = decimal.Round(Math.Max(request.Price, 0m), 2, MidpointRounding.AwayFromZero);
+        if (!isReservedAdmin)
+        {
+            if (walletChargeAmount <= 0m)
+                return BadRequest(new { error = "Invalid fare amount for wallet settlement. Reprice the itinerary and try again." });
+
+            try
+            {
+                var walletAccountId = await _db.WalletAccounts
+                    .AsNoTracking()
+                    .Where(x => x.AgentId == actorId && x.IsActive)
+                    .Select(x => (Guid?)x.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (!walletAccountId.HasValue)
+                    throw new InvalidOperationException("No active TourValve wallet was found for this account.");
+
+                walletHoldId = await _wallet.CreateHoldForUserAsync(
+                    walletAccountId.Value,
+                    actorId,
+                    isReservedAdmin,
+                    walletChargeAmount,
+                    $"{normalizedRequestId}-RESERVE-HOLD");
+            }
+            catch (InvalidOperationException ex)
+            {
+                await _notifications.CreateAsync(actorId, "AGENT", "WALLET", "Wallet balance required", ex.Message, "WARN", "/wallet");
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
         AtlasOrderResponse order;
         try
         {
@@ -139,6 +185,17 @@ public sealed class AtlasBookingController : ControllerBase
                 }
                 catch
                 {
+                    if (walletHoldId.HasValue)
+                    {
+                        try
+                        {
+                            await _wallet.ReleaseHoldAsync(walletHoldId.Value, $"{normalizedRequestId}-RESERVE-RELEASE");
+                        }
+                        catch
+                        {
+                        }
+                    }
+
                     await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "ORDER_FAILED", "AtlasBooking", "LIVE", request.FlightNumber, ex.Message, "WARN");
                     var safeDetail = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
                     await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"Reservation request failed. {safeDetail}", "WARN", "/booking");
@@ -152,6 +209,17 @@ public sealed class AtlasBookingController : ControllerBase
             }
             else
             {
+                if (walletHoldId.HasValue)
+                {
+                    try
+                    {
+                        await _wallet.ReleaseHoldAsync(walletHoldId.Value, $"{normalizedRequestId}-RESERVE-RELEASE");
+                    }
+                    catch
+                    {
+                    }
+                }
+
                 await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "ORDER_FAILED", "AtlasBooking", "LIVE", request.FlightNumber, ex.Message, "WARN");
                 var safeDetail = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
                 await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"Reservation request failed. {safeDetail}", "WARN", "/booking");
@@ -171,10 +239,6 @@ public sealed class AtlasBookingController : ControllerBase
             AirlineLocator: (string?)null
         );
 
-        var normalizedRequestId = string.IsNullOrWhiteSpace(request.ClientRequestId)
-            ? $"ATLAS-{DateTime.UtcNow:yyyyMMddHHmmssfff}"
-            : request.ClientRequestId.Trim();
-
         var itinerarySegments = request.ItinerarySegments.Count > 0
             ? request.ItinerarySegments
             : new List<AirBookingItinerarySegmentRequest>
@@ -193,6 +257,11 @@ public sealed class AtlasBookingController : ControllerBase
         CreateBookingResponse createResult;
         try
         {
+            var sellAmount = decimal.Round(Math.Max(request.Price, 0m), 2, MidpointRounding.AwayFromZero);
+            var (baseAmount, markupAmount, _) = IsReservedAdminUser()
+                ? (sellAmount, 0m, sellAmount)
+                : _ticketMarkup.SplitSellAmount(sellAmount);
+
             createResult = await _mediator.Send(new CreateBookingCommand
             {
                 AgentId = actorId,
@@ -203,9 +272,9 @@ public sealed class AtlasBookingController : ControllerBase
                 To = request.To,
                 DepartureTime = DateTime.Parse(request.Departure, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal),
                 ArrivalTime = DateTime.Parse(request.Arrival, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal),
-                Amount = request.Price,
-                BaseAmount = request.BasePrice > 0m ? request.BasePrice : request.Price,
-                MarkupAmount = request.MarkupAmount,
+                Amount = sellAmount,
+                BaseAmount = baseAmount,
+                MarkupAmount = markupAmount,
                 UniversalRecordLocator = refs.UniversalRecordLocator ?? string.Empty,
                 ProviderLocator = refs.ProviderLocator ?? string.Empty,
                 AirlineLocator = refs.AirlineLocator ?? string.Empty,
@@ -246,7 +315,7 @@ public sealed class AtlasBookingController : ControllerBase
                 BookingWorkflow = "ATLAS_LCC_RESERVATION",
                 AirTicketingStatus = "NOT_STARTED",
                 AirTicketingPaymentStatus = "UNPAID",
-                TicketingMessage = "Reservation created. Proceed to ticketing to issue.",
+                TicketingMessage = "Reservation created successfully. Contact admin for ticket issuance.",
                 NextActionUrl = "/booking-confirmation",
                 RawResponse = JsonSerializer.Serialize(order),
                 IsMock = false
@@ -254,6 +323,14 @@ public sealed class AtlasBookingController : ControllerBase
         }
 
         var booking = await _db.Bookings.FindAsync(new object?[] { createResult.BookingId }, cancellationToken);
+        if (walletHoldId.HasValue && booking is not null)
+        {
+            await TryCaptureReservationWalletChargeAsync(
+                booking,
+                walletHoldId.Value,
+                actorId,
+                cancellationToken);
+        }
 
         await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "RESERVATION_CREATED", "AtlasBooking", "LIVE", request.FlightNumber, refs.UniversalRecordLocator ?? refs.ProviderLocator ?? string.Empty, "INFO");
 
@@ -276,11 +353,94 @@ public sealed class AtlasBookingController : ControllerBase
             BookingWorkflow = "ATLAS_LCC_RESERVATION",
             AirTicketingStatus = booking?.AirTicketingStatus ?? "NOT_STARTED",
             AirTicketingPaymentStatus = booking?.AirTicketingPaymentStatus ?? "UNPAID",
-            TicketingMessage = "Reservation created. Proceed to ticketing to issue.",
+            TicketingMessage = "Reservation created successfully. Contact admin for ticket issuance.",
             NextActionUrl = booking == null ? "/booking-confirmation" : $"/booking-confirmation?bookingId={booking.Id}",
             RawResponse = JsonSerializer.Serialize(order),
             IsMock = false
         });
+    }
+
+    private async Task TryBindTicketingHoldAsync(
+        Booking booking,
+        Guid walletHoldId,
+        Guid actorId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            booking.AirTicketingFormOfPayment = AirTicketingWorkflowService.FormOfPaymentWallet;
+            booking.AirTicketingPaymentStatus = AirTicketingWorkflowService.PaymentHoldActive;
+            booking.AirTicketingWalletHoldId = walletHoldId;
+            booking.AirTicketingStatus = AirTicketingWorkflowService.WorkflowScheduled;
+            booking.AirTicketingDate = GetLocalToday();
+            booking.AirTicketingScheduledAt = DateTime.UtcNow;
+            booking.AirTicketingScheduledByAgentId = actorId;
+            booking.AirTicketingLastError = string.Empty;
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // Best-effort only.
+        }
+    }
+
+    private async Task TryCaptureReservationWalletChargeAsync(
+        Booking booking,
+        Guid walletHoldId,
+        Guid actorId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _wallet.CaptureHoldAsync(walletHoldId, $"{booking.BookingReference}-RESERVE-CAPTURE");
+
+            booking.AirTicketingFormOfPayment = AirTicketingWorkflowService.FormOfPaymentWallet;
+            booking.AirTicketingPaymentStatus = AirTicketingWorkflowService.PaymentPaid;
+            booking.AirTicketingWalletHoldId = null;
+            booking.AirTicketingStatus = AirTicketingWorkflowService.WorkflowScheduled;
+            booking.AirTicketingDate = GetLocalToday();
+            booking.AirTicketingScheduledAt = DateTime.UtcNow;
+            booking.AirTicketingScheduledByAgentId = actorId;
+            booking.AirTicketingLastError = string.Empty;
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // Best-effort only. If capture fails, leave the hold ACTIVE to keep funds reserved.
+            try
+            {
+                booking.AirTicketingFormOfPayment = AirTicketingWorkflowService.FormOfPaymentWallet;
+                booking.AirTicketingPaymentStatus = AirTicketingWorkflowService.PaymentHoldActive;
+                booking.AirTicketingWalletHoldId = walletHoldId;
+                booking.AirTicketingStatus = AirTicketingWorkflowService.WorkflowScheduled;
+                booking.AirTicketingDate = GetLocalToday();
+                booking.AirTicketingScheduledAt = DateTime.UtcNow;
+                booking.AirTicketingScheduledByAgentId = actorId;
+                booking.AirTicketingLastError = string.Empty;
+
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            catch
+            {
+                // Ignore persistence errors; provider reservation is the primary outcome.
+            }
+        }
+    }
+
+    private static DateOnly GetLocalToday()
+    {
+        var utcNow = DateTime.UtcNow;
+        try
+        {
+            var timezone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
+            return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timezone));
+        }
+        catch
+        {
+            return DateOnly.FromDateTime(utcNow);
+        }
     }
 
     private AtlasOrderRequest BuildOrderRequest(string sessionId, AirBookingRequest request, AtlasRouting? routing, bool includeAncillaries)
@@ -403,6 +563,15 @@ public sealed class AtlasBookingController : ControllerBase
         }
 
         return expanded;
+    }
+
+    private bool IsReservedAdminUser()
+    {
+        if (!User.IsInRole("ADMIN"))
+            return false;
+
+        var email = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+        return string.Equals(email.Trim(), ReservedAdminEmail, StringComparison.OrdinalIgnoreCase);
     }
 
     private static int MapPassengerType(string travelerType)

@@ -699,7 +699,7 @@ export default function BookingPage() {
 
     const loadSeatMap = async () => {
         const provider = (selectedFlight?.providerCode || "").trim().toUpperCase();
-        if (provider === "ATLAS") {
+        if (provider === "LCC" || provider === "ATLAS") {
             setSeatMapError("Seat maps are not available in pre-book mode for this fare yet.");
             return;
         }
@@ -799,7 +799,7 @@ export default function BookingPage() {
             const primarySegment = itinerarySegments[0];
             const finalSegment = itinerarySegments[itinerarySegments.length - 1] ?? primarySegment;
             const bookingProvider = (selectedFlight.providerCode || "").trim().toUpperCase();
-            const submitBooking = bookingProvider === "ATLAS" ? bookAtlasFlight : bookFlight;
+            const submitBooking = bookingProvider === "LCC" || bookingProvider === "ATLAS" ? bookAtlasFlight : bookFlight;
             const reservation = await submitBooking({
                 clientRequestId: requestId,
                 carrier: primarySegment?.carrier || selectedFlight.carrier,

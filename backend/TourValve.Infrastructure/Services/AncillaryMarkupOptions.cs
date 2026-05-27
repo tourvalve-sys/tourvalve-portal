@@ -3,8 +3,8 @@ namespace TourValve.Infrastructure.Services;
 public class AncillaryMarkupOptions
 {
     public bool Enabled { get; set; } = true;
-    public decimal DefaultAmount { get; set; } = 3m;
-    public decimal BaggageAmount { get; set; } = 5m;
-    public decimal MealAmount { get; set; } = 2m;
-    public decimal SeatAmount { get; set; } = 8m;
+    public decimal DefaultPercent { get; set; } = 0.07m;
+    public decimal BaggagePercent { get; set; } = 0.07m;
+    public decimal MealPercent { get; set; } = 0.07m;
+    public decimal SeatPercent { get; set; } = 0.07m;
 }

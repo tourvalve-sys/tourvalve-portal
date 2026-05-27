@@ -351,12 +351,12 @@ function buildLiveSeatPreset(
         bullets: [
             `Seat code: ${seat.code}`,
             `Availability: ${seat.availability || "Available"}`,
-            seat.paid ? "Supplier returned a paid seat for this position." : "Supplier returned this seat without a separate paid amount.",
+            seat.paid ? "This seat has a paid amount." : "This seat is selectable without a separate paid amount.",
             characteristicSummary,
         ],
         comparison: [
             { label: "Seat", value: seat.code, included: true },
-            { label: "Supplier price", value: `${currency} ${seatPrice.toFixed(2)}`, included: true },
+            { label: "Seat price", value: `${currency} ${seatPrice.toFixed(2)}`, included: true },
             { label: "Source", value: "Live seat map", included: true },
         ],
         rules: [
@@ -381,9 +381,9 @@ function mapLiveOfferToPreset(offer: NonNullable<BookingAncillaryOfferCatalog["c
         highlight: offer.highlight || "Live",
         bullets: offer.bullets?.length ? offer.bullets : ["Retrieved from the live booking record."],
         comparison: offer.comparison?.length
-            ? offer.comparison
-            : [
-                  { label: "Source", value: "Live supplier record", included: true },
+              ? offer.comparison
+              : [
+                  { label: "Source", value: "Live booking record", included: true },
                   { label: "Pricing", value: `${offer.currency} ${offer.baseAmount.toFixed(2)}`, included: true },
                   { label: "Segment", value: offer.segmentLabel || "Booking-linked", included: true },
               ],
@@ -1336,15 +1336,13 @@ function AncillariesPageContent() {
 
                                     <div className="mt-5 rounded-[1.35rem] bg-[rgba(255,247,236,0.88)] px-4 py-4">
                                         <div className="text-xs uppercase tracking-[0.18em] text-[var(--accent-strong)]">
-                                            {preset.isLive ? "Supplier base amount" : "Base servicing amount"}
+                                            Add-on amount
                                         </div>
                                         <div className="mt-2 text-3xl font-semibold text-[var(--ink)]">
                                             {formatCurrency(preset.baseAmount, preset.currency ?? "MYR")}
                                         </div>
                                         <div className="mt-1 text-xs text-slate-500">
-                                            {preset.isLive
-                                                ? "Portal quote will preserve the supplier amount and add configured ancillary markup before charge."
-                                                : "Portal quote will add configured ancillary markup before charge."}
+                                            This amount will be charged to the wallet when the request is confirmed.
                                         </div>
                                     </div>
 
@@ -1462,8 +1460,7 @@ function AncillariesPageContent() {
                                         Included in this flow
                                     </div>
                                     <div className="mt-3 text-sm leading-7 text-slate-500">
-                                        Wallet hold, ancillary ledger write, admin markup capture, and automatic queue logging
-                                        for fulfillment or manual service fallback.
+                                        Wallet hold, ancillary ledger write, and automatic queue logging for fulfillment or manual service fallback.
                                     </div>
                                 </div>
                                 <div className="rounded-[1.35rem] bg-white/88 p-4">
@@ -1482,8 +1479,7 @@ function AncillariesPageContent() {
                                         Queue handling
                                     </div>
                                     <div className="mt-3 text-sm leading-7 text-slate-500">
-                                        Every add-on request is stored with its sector, option code, amount split, notes, and
-                                        final servicing status for audit and reporting.
+                                        Every add-on request is stored with its sector, option code, amount, notes, and final servicing status for audit and reporting.
                                     </div>
                                 </div>
                             </div>
@@ -1660,14 +1656,6 @@ function AncillariesPageContent() {
 
                         {quote ? (
                             <div className="mt-4 space-y-3 rounded-[1.5rem] bg-white/84 p-4 text-sm text-slate-600">
-                                <div className="flex items-center justify-between">
-                                    <span>Base amount</span>
-                                    <span className="font-semibold text-[var(--ink)]">{formatCurrency(quote.baseAmount, quote.currency)}</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span>Portal markup</span>
-                                    <span className="font-semibold text-[var(--ink)]">{formatCurrency(quote.markupAmount, quote.currency)}</span>
-                                </div>
                                 <div className="flex items-center justify-between border-t border-[rgba(89,64,46,0.08)] pt-3">
                                     <span className="font-semibold text-[var(--ink)]">Total charge</span>
                                     <span className="text-2xl font-semibold text-[var(--accent-strong)]">{formatCurrency(quote.totalAmount, quote.currency)}</span>

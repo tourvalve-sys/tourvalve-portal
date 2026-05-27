@@ -22,11 +22,16 @@ import {
     type BookingRecord,
     type BookingRetrieveResponse,
 } from "@/lib/api";
+import { getUserFromToken } from "@/lib/auth";
 
 function BookingsPageContent() {
     const router = useRouter();
     const params = useSearchParams();
     const created = params.get("created");
+    const currentUser = getUserFromToken();
+    const isReservedAdmin =
+        currentUser?.role?.toUpperCase() === "ADMIN" &&
+        (currentUser?.email ?? "").trim().toLowerCase() === "admin@tourvalve.com";
     const [bookings, setBookings] = useState<BookingRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -209,6 +214,11 @@ function BookingsPageContent() {
     };
 
     const handleIssueTicket = (bookingIdOverride?: string) => {
+        if (!isReservedAdmin) {
+            setError("Ticket issuance is restricted. Contact admin@tourvalve.com for ticket issuance.");
+            return;
+        }
+
         const bookingId = bookingIdOverride ?? selectedBookingId;
         if (!bookingId) return;
         window.open(`/air-ticketing/${bookingId}`, "_blank", "noopener,noreferrer");
@@ -456,16 +466,18 @@ function BookingsPageContent() {
                                         </td>
                                         <td className="text-right">
                                             <div className="flex justify-end gap-2">
-                                                <button
-                                                    onClick={(event) => {
-                                                        event.stopPropagation();
-                                                        handleIssueTicket(booking.id);
-                                                    }}
-                                                    className="gold-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold"
-                                                >
-                                                    <Ticket size={16} />
-                                                    {booking.status === "TICKETED" ? "Open AirTicketing" : "Issue Ticket"}
-                                                </button>
+                                                {isReservedAdmin ? (
+                                                    <button
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            handleIssueTicket(booking.id);
+                                                        }}
+                                                        className="gold-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold"
+                                                    >
+                                                        <Ticket size={16} />
+                                                        {booking.status === "TICKETED" ? "Open AirTicketing" : "Issue Ticket"}
+                                                    </button>
+                                                ) : null}
                                                 <button
                                                     onClick={(event) => {
                                                         event.stopPropagation();
@@ -535,14 +547,18 @@ function BookingsPageContent() {
                             <div className="soft-panel rounded-[1.5rem] p-4">
                                 <div className="subtle-kicker">Ticketing</div>
                                 <div className="mt-2 text-sm leading-7 text-slate-500">
-                                    Open the dedicated AirTicketing workspace to choose payment type, save the ticketing date, issue now, or void unpaid tickets after issuance.
+                                    {isReservedAdmin
+                                        ? "Open the dedicated AirTicketing workspace to choose payment type, save the ticketing date, issue now, or void unpaid tickets after issuance."
+                                        : "Ticket issuance is handled by the TourValve admin. Contact admin@tourvalve.com for ticketing support."}
                                 </div>
-                                <button
-                                    onClick={() => handleIssueTicket()}
-                                    className="gold-button mt-3 w-full rounded-2xl px-4 py-3 text-sm font-semibold"
-                                >
-                                    {selectedBooking.status === "TICKETED" ? "Open AirTicketing" : "Issue Ticket"}
-                                </button>
+                                {isReservedAdmin ? (
+                                    <button
+                                        onClick={() => handleIssueTicket()}
+                                        className="gold-button mt-3 w-full rounded-2xl px-4 py-3 text-sm font-semibold"
+                                    >
+                                        {selectedBooking.status === "TICKETED" ? "Open AirTicketing" : "Issue Ticket"}
+                                    </button>
+                                ) : null}
                             </div>
 
                             <div className="soft-panel rounded-[1.5rem] p-4">
@@ -600,82 +616,88 @@ function BookingsPageContent() {
                                     <div className="mt-1">Ancillary charges are held first, captured once the request is logged, and refunded automatically if the order is failed or cancelled later.</div>
                                 </div>
 
-                                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                                    <select
-                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
-                                        value={ancillaryDraft.type}
-                                        onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, type: event.target.value })}
-                                    >
-                                        <option value="BAGGAGE">Baggage</option>
-                                        <option value="MEAL">Meal</option>
-                                        <option value="SEAT">Seat</option>
-                                    </select>
-                                    <input
-                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
-                                        placeholder="Segment label"
-                                        value={ancillaryDraft.segmentLabel}
-                                        onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, segmentLabel: event.target.value })}
-                                    />
-                                    <input
-                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
-                                        placeholder="Option code"
-                                        value={ancillaryDraft.optionCode}
-                                        onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, optionCode: event.target.value })}
-                                    />
-                                    <input
-                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
-                                        placeholder="Description"
-                                        value={ancillaryDraft.description}
-                                        onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, description: event.target.value })}
-                                    />
-                                    <input
-                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        placeholder="Base airline cost"
-                                        value={ancillaryDraft.baseAmount}
-                                        onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, baseAmount: event.target.value })}
-                                    />
-                                    <input
-                                        className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
-                                        placeholder="Currency"
-                                        value={ancillaryDraft.currency}
-                                        onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, currency: event.target.value.toUpperCase() })}
-                                    />
-                                </div>
-                                <textarea
-                                    className="mt-3 min-h-[90px] w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
-                                    placeholder="Ancillary servicing note"
-                                    value={ancillaryDraft.notes}
-                                    onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, notes: event.target.value })}
-                                />
-                                {ancillaryQuote && (
-                                    <div className="mt-3 rounded-2xl bg-white/80 px-4 py-4 text-sm text-slate-600">
-                                        <div className="font-semibold text-[var(--ink)]">{ancillaryQuote.type} quote</div>
-                                        <div className="mt-2">Base: {ancillaryQuote.currency} {ancillaryQuote.baseAmount.toFixed(2)}</div>
-                                        <div>Markup: {ancillaryQuote.currency} {ancillaryQuote.markupAmount.toFixed(2)}</div>
-                                        <div className="mt-1 font-semibold text-[var(--accent-strong)]">Total charge: {ancillaryQuote.currency} {ancillaryQuote.totalAmount.toFixed(2)}</div>
-                                        <div className="mt-1 text-xs text-slate-500">Fulfillment mode: {ancillaryQuote.fulfillmentMode}</div>
-                                        <div className="mt-1 text-xs text-slate-500">Expected queue status after charge: Manual service required</div>
+                                {isReservedAdmin ? (
+                                    <>
+                                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                            <select
+                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
+                                                value={ancillaryDraft.type}
+                                                onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, type: event.target.value })}
+                                            >
+                                                <option value="BAGGAGE">Baggage</option>
+                                                <option value="MEAL">Meal</option>
+                                                <option value="SEAT">Seat</option>
+                                            </select>
+                                            <input
+                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
+                                                placeholder="Segment label"
+                                                value={ancillaryDraft.segmentLabel}
+                                                onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, segmentLabel: event.target.value })}
+                                            />
+                                            <input
+                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
+                                                placeholder="Option code"
+                                                value={ancillaryDraft.optionCode}
+                                                onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, optionCode: event.target.value })}
+                                            />
+                                            <input
+                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
+                                                placeholder="Description"
+                                                value={ancillaryDraft.description}
+                                                onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, description: event.target.value })}
+                                            />
+                                            <input
+                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                placeholder="Add-on amount"
+                                                value={ancillaryDraft.baseAmount}
+                                                onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, baseAmount: event.target.value })}
+                                            />
+                                            <input
+                                                className="w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
+                                                placeholder="Currency"
+                                                value={ancillaryDraft.currency}
+                                                onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, currency: event.target.value.toUpperCase() })}
+                                            />
+                                        </div>
+                                        <textarea
+                                            className="mt-3 min-h-[90px] w-full rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/80 p-4 outline-none"
+                                            placeholder="Ancillary servicing note"
+                                            value={ancillaryDraft.notes}
+                                            onChange={(event) => setAncillaryDraft({ ...ancillaryDraft, notes: event.target.value })}
+                                        />
+                                        {ancillaryQuote && (
+                                            <div className="mt-3 rounded-2xl bg-white/80 px-4 py-4 text-sm text-slate-600">
+                                                <div className="font-semibold text-[var(--ink)]">{ancillaryQuote.type} quote</div>
+                                                <div className="mt-2 font-semibold text-[var(--accent-strong)]">Total charge: {ancillaryQuote.currency} {ancillaryQuote.totalAmount.toFixed(2)}</div>
+                                                <div className="mt-1 text-xs text-slate-500">Fulfillment mode: {ancillaryQuote.fulfillmentMode}</div>
+                                                <div className="mt-1 text-xs text-slate-500">Expected queue status after charge: Manual service required</div>
+                                            </div>
+                                        )}
+                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                            <button
+                                                onClick={() => void handleAncillaryQuote()}
+                                                disabled={serviceAction === "ancillary-quote"}
+                                                className="ghost-button rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60"
+                                            >
+                                                {serviceAction === "ancillary-quote" ? "Quoting..." : "Preview Quote"}
+                                            </button>
+                                            <button
+                                                onClick={() => void handleAncillaryOrder()}
+                                                disabled={serviceAction === "ancillary-order"}
+                                                className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
+                                            >
+                                                {serviceAction === "ancillary-order" ? "Charging..." : "Charge Wallet & Log Request"}
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="mt-4 rounded-2xl bg-[rgba(241,248,255,0.9)] px-4 py-4 text-sm text-slate-600">
+                                        Use Ancillary Studio to select baggage, meals, and seats for this reservation.
                                     </div>
                                 )}
-                                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                    <button
-                                        onClick={() => void handleAncillaryQuote()}
-                                        disabled={serviceAction === "ancillary-quote"}
-                                        className="ghost-button rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60"
-                                    >
-                                        {serviceAction === "ancillary-quote" ? "Quoting..." : "Preview Quote"}
-                                    </button>
-                                    <button
-                                        onClick={() => void handleAncillaryOrder()}
-                                        disabled={serviceAction === "ancillary-order"}
-                                        className="gold-button rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
-                                    >
-                                        {serviceAction === "ancillary-order" ? "Charging..." : "Charge Wallet & Log Request"}
-                                    </button>
-                                </div>
                             </div>
 
                             <div className="soft-panel rounded-[1.5rem] p-4">
@@ -688,7 +710,7 @@ function BookingsPageContent() {
                                                     <div className="font-semibold text-[var(--ink)]">{order.type} | {order.description}</div>
                                                     <div className="mt-1 text-sm text-slate-500">{order.segmentLabel || "All segments"}</div>
                                                     <div className="mt-1 text-sm text-slate-500">
-                                                        {order.currency} {order.totalAmount.toFixed(2)} total | base {order.currency} {order.baseAmount.toFixed(2)} | markup {order.currency} {order.markupAmount.toFixed(2)}
+                                                        {order.currency} {order.totalAmount.toFixed(2)}
                                                     </div>
                                                     <div className="mt-1 text-sm text-slate-500">{order.fulfillmentMode} | requested {new Date(order.requestedAt).toLocaleString()}</div>
                                                     <div className="mt-2">
@@ -702,32 +724,34 @@ function BookingsPageContent() {
                                                         </div>
                                                     )}
                                                 </div>
-                                                <div className="grid gap-2 lg:min-w-[18rem]">
-                                                    <input
-                                                        className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white p-3 text-sm outline-none"
-                                                        placeholder="Provider reference"
-                                                        value={ancillaryProviderRefs[order.id] ?? order.providerReference ?? ""}
-                                                        onChange={(event) => setAncillaryProviderRefs((current) => ({ ...current, [order.id]: event.target.value }))}
-                                                    />
-                                                    <input
-                                                        className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white p-3 text-sm outline-none"
-                                                        placeholder="Processing note"
-                                                        value={ancillaryStatusNotes[order.id] ?? order.notes ?? ""}
-                                                        onChange={(event) => setAncillaryStatusNotes((current) => ({ ...current, [order.id]: event.target.value }))}
-                                                    />
-                                                    <div className="grid gap-2 md:grid-cols-4">
-                                                        {["PROCESSING", "FULFILLED", "FAILED", "CANCELLED"].map((status) => (
-                                                            <button
-                                                                key={status}
-                                                                onClick={() => void handleAncillaryStatus(order.id, status)}
-                                                                disabled={serviceAction === `ancillary-status-${order.id}`}
-                                                                className="ghost-button rounded-2xl px-3 py-2 text-xs font-semibold transition disabled:opacity-60"
-                                                            >
-                                                                {serviceAction === `ancillary-status-${order.id}` ? "Saving..." : status}
-                                                            </button>
-                                                        ))}
+                                                {isReservedAdmin ? (
+                                                    <div className="grid gap-2 lg:min-w-[18rem]">
+                                                        <input
+                                                            className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white p-3 text-sm outline-none"
+                                                            placeholder="Provider reference"
+                                                            value={ancillaryProviderRefs[order.id] ?? order.providerReference ?? ""}
+                                                            onChange={(event) => setAncillaryProviderRefs((current) => ({ ...current, [order.id]: event.target.value }))}
+                                                        />
+                                                        <input
+                                                            className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white p-3 text-sm outline-none"
+                                                            placeholder="Processing note"
+                                                            value={ancillaryStatusNotes[order.id] ?? order.notes ?? ""}
+                                                            onChange={(event) => setAncillaryStatusNotes((current) => ({ ...current, [order.id]: event.target.value }))}
+                                                        />
+                                                        <div className="grid gap-2 md:grid-cols-4">
+                                                            {["PROCESSING", "FULFILLED", "FAILED", "CANCELLED"].map((status) => (
+                                                                <button
+                                                                    key={status}
+                                                                    onClick={() => void handleAncillaryStatus(order.id, status)}
+                                                                    disabled={serviceAction === `ancillary-status-${order.id}`}
+                                                                    className="ghost-button rounded-2xl px-3 py-2 text-xs font-semibold transition disabled:opacity-60"
+                                                                >
+                                                                    {serviceAction === `ancillary-status-${order.id}` ? "Saving..." : status}
+                                                                </button>
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                ) : null}
                                             </div>
                                             {order.errorMessage && (
                                                 <div className="mt-3 text-sm text-red-600">{order.errorMessage}</div>
