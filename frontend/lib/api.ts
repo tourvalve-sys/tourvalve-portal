@@ -55,6 +55,7 @@ export type FlightResult = {
         departure: string;
         arrival: string;
         durationMinutes?: number | null;
+        seatCount?: number | null;
     }>;
     prebookSelections?: {
         baggagePreference: string;

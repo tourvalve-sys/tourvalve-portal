@@ -300,7 +300,8 @@ public sealed class AtlasFlightsController : ControllerBase
             To = segment.ArrAirport,
             Departure = FormatAtlasTime(segment.DepTime),
             Arrival = FormatAtlasTime(segment.ArrTime),
-            DurationMinutes = segment.Duration > 0 ? segment.Duration : null
+            DurationMinutes = segment.Duration > 0 ? segment.Duration : null,
+            SeatCount = segment.SeatCount > 0 ? segment.SeatCount : null
         }).ToList();
 
         var paxCount = Math.Max(adults, 0) + Math.Max(child, 0) + Math.Max(infant, 0);

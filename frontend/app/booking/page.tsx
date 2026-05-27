@@ -3,21 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
-    BriefcaseBusiness,
-    ChefHat,
     CreditCard,
     Luggage,
-    MapPin,
-    Ticket,
     X,
 } from "lucide-react";
 import {
     bookAtlasFlight,
     bookFlight,
-    getFlightSeatMap,
-    type FlightSeatMapResponse,
 } from "@/lib/api";
-import AirlineBrand, { formatFlightDesignator } from "@/components/AirlineBrand";
+import AirlineBrand from "@/components/AirlineBrand";
 import PageLoader from "@/components/PageLoader";
 import { inferPortalBookingSupport } from "@/lib/bookingWorkflow";
 import { scrubProviderMentions } from "@/lib/scrubProviderMentions";
@@ -25,7 +19,6 @@ import {
     LATEST_BOOKING_CONFIRMATION_KEY,
     type BookingConfirmationState,
 } from "@/lib/bookingConfirmation";
-import { getUserFromToken } from "@/lib/auth";
 import { useBooking } from "../context/BookingContext";
 
 type PassengerForm = {
@@ -104,16 +97,6 @@ function createPassenger(type: string): PassengerForm {
         gender: "M",
         travelerType: type,
     };
-}
-
-function buildSegmentLabel(segment: {
-    carrier: string;
-    flightNumber: string;
-    from: string;
-    to: string;
-}) {
-    const flightLabel = formatFlightDesignator(segment.carrier, segment.flightNumber);
-    return `${segment.from} -> ${segment.to}${flightLabel ? ` (${flightLabel})` : ""}`;
 }
 
 function extractKgBadges(value: unknown) {
@@ -199,63 +182,6 @@ function deriveJourneyEndpoints(
     };
 }
 
-function isSeatSelectable(seat: {
-    code: string;
-    availability: string;
-    characteristics: string[];
-}) {
-    const availability = seat.availability.trim().toLowerCase();
-    const characteristics = seat.characteristics.map((item) => item.trim().toLowerCase());
-
-    if (!seat.code.trim()) {
-        return false;
-    }
-
-    if (characteristics.some((item) => ["blocked", "occupied", "unavailable", "restrict", "no-seat"].includes(item))) {
-        return false;
-    }
-
-    if (["blocked", "occupied", "unavailable", "no seat", "taken", "held"].includes(availability)) {
-        return false;
-    }
-
-    return true;
-}
-
-function seatTone(seat: {
-    code: string;
-    availability: string;
-    paid: boolean;
-    characteristics: string[];
-}, isSelected: boolean) {
-    if (isSelected) {
-        return "border-[rgba(45,120,92,0.44)] bg-[rgba(225,246,236,0.96)] text-[var(--success)] shadow-[0_10px_24px_rgba(40,116,79,0.18)]";
-    }
-
-    if (!isSeatSelectable(seat)) {
-        return "border-[rgba(89,64,46,0.08)] bg-[rgba(225,221,214,0.34)] text-slate-400 opacity-60";
-    }
-
-    if (seat.paid) {
-        return "border-[rgba(176,122,67,0.2)] bg-[rgba(255,245,229,0.92)] text-[var(--accent-strong)]";
-    }
-
-    return "border-[rgba(89,64,46,0.1)] bg-white/90 text-[var(--ink)] hover:-translate-y-0.5 hover:border-[rgba(176,122,67,0.4)] hover:shadow-[0_10px_22px_rgba(66,49,30,0.12)]";
-}
-
-function coerceFiniteNumber(value: unknown) {
-    if (typeof value === "number" && Number.isFinite(value)) {
-        return value;
-    }
-
-    if (typeof value === "string" && value.trim()) {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : null;
-    }
-
-    return null;
-}
-
 function parseInlineMoney(value: string, fallbackCurrency: string) {
     const text = typeof value === "string" ? value.replace(/,/g, " ").trim() : "";
     if (!text) {
@@ -281,36 +207,9 @@ function parseInlineMoney(value: string, fallbackCurrency: string) {
     return null;
 }
 
-function normalizeSeatRows(seatMap: FlightSeatMapResponse | null) {
-    if (!Array.isArray(seatMap?.rows)) {
-        return [];
-    }
-
-    return seatMap.rows
-        .filter((row) => row && typeof row === "object" && Array.isArray(row.seats))
-        .map((row, rowIndex) => ({
-            number: typeof row.number === "string" && row.number.trim() ? row.number : String(rowIndex + 1),
-            seats: row.seats
-                .filter((seat) => seat && typeof seat === "object")
-                .map((seat) => ({
-                    ...seat,
-                    code: typeof seat.code === "string" ? seat.code : "",
-                    availability: typeof seat.availability === "string" ? seat.availability : "",
-                    paid: Boolean(seat.paid),
-                    characteristics: Array.isArray(seat.characteristics)
-                        ? seat.characteristics.filter((item): item is string => typeof item === "string")
-                        : [],
-                    seatPrice: coerceFiniteNumber(seat.seatPrice),
-                    currency: typeof seat.currency === "string" ? seat.currency : "",
-                })),
-        }))
-        .filter((row) => row.seats.length > 0);
-}
-
 export default function BookingPage() {
     const router = useRouter();
     const { selectedFlight: rawSelectedFlight, travelerCounts, setSelectedFlight } = useBooking();
-    const currentUser = useMemo(() => getUserFromToken(), []);
     const isHydrated = useSyncExternalStore(
         () => () => {},
         () => true,
@@ -387,11 +286,7 @@ export default function BookingPage() {
         cancellationFeeOverride: "",
         changeFeeOverride: "",
     });
-    const [activeSeatSegmentIndex, setActiveSeatSegmentIndex] = useState(0);
     const [fareCategoryModalOpen, setFareCategoryModalOpen] = useState(false);
-    const [seatMapLoading, setSeatMapLoading] = useState(false);
-    const [seatMapError, setSeatMapError] = useState("");
-    const [seatMap, setSeatMap] = useState<FlightSeatMapResponse | null>(null);
 
     const availablePrograms = useMemo(
         () => frequentFlyerPrograms[selectedFlight?.carrier ?? ""] ?? [],
@@ -424,12 +319,6 @@ export default function BookingPage() {
                     : [],
         [selectedFlight]
     );
-
-    const seatMapSegments = itinerarySegments.map((segment, index) => ({
-        ...segment,
-        airSegmentXml: itinerarySegmentXmls[index] ?? itinerarySegmentXmls[0] ?? "",
-        label: buildSegmentLabel(segment),
-    }));
     const journeyEndpoints = useMemo(
         () =>
             deriveJourneyEndpoints(
@@ -440,7 +329,6 @@ export default function BookingPage() {
         [itinerarySegments, selectedFlight?.from, selectedFlight?.to]
     );
 
-    const activeSeatSegment = seatMapSegments[activeSeatSegmentIndex] ?? null;
     const baggageHighlights = useMemo(() => {
         if (!selectedFlight) {
             return [];
@@ -517,11 +405,6 @@ export default function BookingPage() {
 
         return selectedFlight.bookingNotice || "This itinerary is not ready for the TourValve portal checkout flow yet. Search again or choose another fare.";
     }, [selectedFlight]);
-    const normalizedSeatRows = useMemo(
-        () => normalizeSeatRows(seatMap),
-        [seatMap]
-    );
-    const canViewSeatDiagnostics = currentUser?.role === "ADMIN";
 
     useEffect(() => {
         const items: PassengerForm[] = [];
@@ -574,17 +457,6 @@ export default function BookingPage() {
         }));
     }, [selectedFlight]);
 
-    useEffect(() => {
-        if (activeSeatSegmentIndex >= seatMapSegments.length) {
-            setActiveSeatSegmentIndex(0);
-        }
-    }, [activeSeatSegmentIndex, seatMapSegments.length]);
-
-    useEffect(() => {
-        setSeatMap(null);
-        setSeatMapError("");
-    }, [activeSeatSegmentIndex, selectedFlight?.id]);
-
     const updatePassenger = (
         index: number,
         field: keyof PassengerForm,
@@ -609,22 +481,6 @@ export default function BookingPage() {
         if (type === "INF") return "Infant";
         return "Adult";
     };
-
-    const selectedSeatSummary = servicePreferences.selectedSeats
-        .map((seat) => `${seat.segmentLabel}: ${seat.seatCode}`)
-        .join(" | ");
-
-    const selectedPaidBaggageAddOns = useMemo(() => {
-        const fallbackCurrency = selectedFlight?.currency || "MYR";
-
-        return servicePreferences.selectedAncillaries
-            .filter((item) => item.type === "BAGGAGE")
-            .filter((item) => typeof item.amount === "number" && Number.isFinite(item.amount) && item.amount > 0)
-            .map((item) => ({
-                ...item,
-                currency: typeof item.currency === "string" && item.currency.trim().length > 0 ? item.currency : fallbackCurrency,
-            }));
-    }, [selectedFlight?.currency, servicePreferences.selectedAncillaries]);
 
     const estimatedSeatAddOnTotal = useMemo(() => {
         return servicePreferences.selectedSeats.reduce((sum, seat) => {
@@ -696,68 +552,6 @@ export default function BookingPage() {
         createdAt: new Date().toISOString(),
         portalSyncPending: reservation.portalSyncPending,
     });
-
-    const loadSeatMap = async () => {
-        const provider = (selectedFlight?.providerCode || "").trim().toUpperCase();
-        if (provider === "ATLAS") {
-            setSeatMapError("Seat maps are not available in pre-book mode for this fare yet.");
-            return;
-        }
-
-        if (!activeSeatSegment?.airSegmentXml) {
-            setSeatMapError("This flight leg does not include enough segment data for seat mapping.");
-            return;
-        }
-
-        try {
-            setSeatMapLoading(true);
-            setSeatMapError("");
-
-            const response = await getFlightSeatMap({
-                airSegmentXml: activeSeatSegment.airSegmentXml,
-                airPricingSolutionXml: selectedFlight?.airPricingSolutionXml ?? "",
-                airPricingContextXml: selectedFlight?.airPricingContextXml ?? "",
-                frequentFlyerProgram: servicePreferences.frequentFlyerProgram,
-                frequentFlyerNumber: servicePreferences.frequentFlyerNumber,
-            });
-
-            setSeatMap(response);
-        } catch (value: unknown) {
-            setSeatMapError(getErrorMessage(value));
-        } finally {
-            setSeatMapLoading(false);
-        }
-    };
-
-    const chooseSeat = (seatCode: string) => {
-        if (!activeSeatSegment) {
-            return;
-        }
-
-        const selectedSeat = normalizedSeatRows
-            .flatMap((row) => row.seats)
-            .find((seat) => seat.code === seatCode);
-        const seatPrice = selectedSeat?.seatPrice ?? null;
-        const seatCurrency = selectedSeat?.currency ?? selectedFlight?.currency ?? "MYR";
-
-        const nextSelections = [
-            ...servicePreferences.selectedSeats.filter(
-                (item) => item.segmentLabel !== activeSeatSegment.label
-            ),
-            {
-                segmentLabel: activeSeatSegment.label,
-                segmentIndex: activeSeatSegmentIndex + 1,
-                seatCode,
-                seatPrice,
-                currency: seatCurrency,
-            },
-        ];
-
-        setServicePreferences((current) => ({
-            ...current,
-            selectedSeats: nextSelections,
-        }));
-    };
 
     const handleBooking = async () => {
         if (!selectedFlight) {
@@ -1344,11 +1138,12 @@ export default function BookingPage() {
 
                     <div className="premium-panel rounded-[1.6rem] p-4 sm:rounded-[2rem] sm:p-6">
                         <div className="mb-4 flex items-center gap-3">
-                            <Ticket className="text-[var(--accent-strong)]" size={18} />
-                            <h2 className="font-semibold">Traveler Preferences</h2>
+                            <CreditCard className="text-[var(--accent-strong)]" size={18} />
+                            <h2 className="font-semibold">Rewards Program</h2>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-3 sm:gap-4">
+                            {/* Keep only rewards selection on booking.
                             <div className="rounded-[1.35rem] border border-[rgba(45,120,92,0.12)] bg-[rgba(238,248,242,0.88)] p-4 md:col-span-2 sm:rounded-[1.5rem]">
                                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--success)]">
                                     <Luggage size={15} />
@@ -1453,7 +1248,7 @@ export default function BookingPage() {
                                     <option>Infant meal</option>
                                 </select>
                             </div>
-
+                            */}
                             <div className="soft-panel rounded-[1.35rem] p-4 sm:rounded-[1.5rem]">
                                 <div className="mb-3 flex items-center gap-2 text-sm text-slate-500">
                                     <CreditCard size={16} />
@@ -1480,6 +1275,7 @@ export default function BookingPage() {
                             </div>
                         </div>
 
+                        {/*
                         <div className="mt-6 rounded-[1.75rem] border border-[rgba(50,93,147,0.1)] bg-[linear-gradient(135deg,rgba(245,249,255,0.98),rgba(234,243,255,0.92))] p-5 shadow-[0_18px_42px_rgba(28,64,118,0.08)]">
                             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start">
                                 <div className="min-w-0">
@@ -1676,6 +1472,7 @@ export default function BookingPage() {
                         <div className="mt-4 rounded-[1.5rem] bg-[rgba(241,248,255,0.9)] px-4 py-3 text-sm leading-7 text-slate-500">
                             This is a preview step. Selected seat codes are sent as booking seat requests, while final fulfilment still depends on airline rules and servicing support.
                         </div>
+                        */}
                     </div>
                 </div>
 

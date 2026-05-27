@@ -16,6 +16,8 @@ import { createPortal } from "react-dom";
 import Image from "next/image";
 import {
     ArrowLeftRight,
+    Armchair,
+    Backpack,
     Baby,
     Check,
     Luggage,
@@ -24,6 +26,7 @@ import {
     Search,
     SlidersHorizontal,
     Sparkles,
+    UtensilsCrossed,
     UserRound,
     UsersRound,
     X,
@@ -31,7 +34,6 @@ import {
 import { useRouter } from "next/navigation";
 import {
     getAtlasPrebookAncillaries,
-    getCurrentUser,
     getFlightSeatMap,
     getPrebookAncillaryOffers,
     priceFlight,
@@ -39,7 +41,6 @@ import {
     searchFlights,
     type AtlasAncillaryProductElement,
     type AtlasPrebookAncillariesResponse,
-    type CurrentUser,
     type FlightResult,
     type FlightSeatMapResponse,
     type PrebookAncillaryOfferCatalog,
@@ -627,6 +628,19 @@ function extractBaggageSizeLabel(value: string) {
     return extractKgBadges(value)[0] ?? extractPieceBadges(value)[0] ?? "";
 }
 
+function extractIncludedBaggageLabel(value: string) {
+    if (typeof value !== "string") return "";
+    const label = extractBaggageSizeLabel(value);
+    if (!label) return "";
+
+    const amount = Number.parseInt(label.replace(/\D/g, ""), 10);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return "";
+    }
+
+    return label;
+}
+
 function baggageSizeSortKey(label: string) {
     const value = typeof label === "string" ? label.trim() : "";
     const kgMatch = value.match(/(\d{1,3})\s*kg\b/i);
@@ -642,6 +656,137 @@ function baggageSizeSortKey(label: string) {
     return { rank: 2, size: Number.POSITIVE_INFINITY };
 }
 
+function extractClassOfServiceFromXml(xml: string) {
+    if (typeof xml !== "string" || !xml.trim()) {
+        return "";
+    }
+
+    const match = xml.match(/\bClassOfService=(\"|')([^\"']+)\1/i);
+    if (match?.[2]) {
+        return match[2].trim();
+    }
+
+    const bookingCodeMatch = xml.match(/\bBookingCode=(\"|')([^\"']+)\1/i);
+    if (bookingCodeMatch?.[2]) {
+        return bookingCodeMatch[2].trim();
+    }
+
+    return "";
+}
+
+function inferFlightClassOfService(flight: FlightResult) {
+    const candidates = [
+        flight.airPricingSolutionXml,
+        ...(flight.airSegmentXmls?.length ? flight.airSegmentXmls : flight.airSegmentXml ? [flight.airSegmentXml] : []),
+        flight.airPricingContextXml,
+    ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+    for (const xml of candidates) {
+        const code = extractClassOfServiceFromXml(xml);
+        if (code) {
+            return code;
+        }
+    }
+
+    return "";
+}
+
+function parseBookingCountsMax(bookingCounts: string) {
+    if (typeof bookingCounts !== "string" || !bookingCounts.trim()) {
+        return null;
+    }
+
+    let max = 0;
+    let sawNumber = false;
+
+    for (const token of bookingCounts.split("|")) {
+        const match = token.match(/(\d{1,2})\s*$/);
+        if (!match?.[1]) continue;
+
+        const value = Number.parseInt(match[1], 10);
+        if (!Number.isFinite(value)) continue;
+
+        sawNumber = true;
+        max = Math.max(max, value);
+    }
+
+    return sawNumber ? max : null;
+}
+
+function inferSegmentSeatAvailability(segmentXml: string, cabinClass: string) {
+    if (typeof segmentXml !== "string" || !segmentXml.trim()) {
+        return null;
+    }
+
+    const normalizedCabin = cabinClass.trim().toLowerCase();
+    const infos = Array.from(
+        segmentXml.matchAll(
+            /<[^:>]*:?BookingCodeInfo\b[^>]*\bCabinClass=(\"|')([^\"']+)\1[^>]*\bBookingCounts=(\"|')([^\"']+)\3[^>]*\/?>/gi
+        )
+    ).map((match) => ({
+        cabinClass: (match[2] ?? "").trim(),
+        bookingCounts: (match[4] ?? "").trim(),
+    }));
+
+    if (infos.length === 0) {
+        const bookingCountsMatch = segmentXml.match(/\bBookingCounts=(\"|')([^\"']+)\1/i);
+        return bookingCountsMatch?.[2] ? parseBookingCountsMax(bookingCountsMatch[2]) : null;
+    }
+
+    const exact = infos.find((item) => item.cabinClass.trim().toLowerCase() === normalizedCabin);
+    const partial = !exact && normalizedCabin ? infos.find((item) => item.cabinClass.toLowerCase().includes(normalizedCabin)) : null;
+    const candidate = exact ?? partial ?? infos[0];
+
+    return parseBookingCountsMax(candidate.bookingCounts);
+}
+
+function inferFlightSeatAvailability(flight: FlightResult) {
+    const itineraryCounts = (flight.itinerarySegments ?? [])
+        .map((segment) => segment.seatCount)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+
+    if (itineraryCounts.length > 0) {
+        return Math.min(...itineraryCounts);
+    }
+
+    const segmentXmls = flight.airSegmentXmls?.length ? flight.airSegmentXmls : flight.airSegmentXml ? [flight.airSegmentXml] : [];
+    if (segmentXmls.length === 0) {
+        return null;
+    }
+
+    const cabinClass = typeof flight.cabinClass === "string" ? flight.cabinClass : "";
+    const segmentCounts = segmentXmls
+        .map((xml) => inferSegmentSeatAvailability(xml, cabinClass))
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
+
+    if (segmentCounts.length === 0) {
+        return null;
+    }
+
+    return Math.min(...segmentCounts);
+}
+
+function inferMealIncluded(flight: FlightResult) {
+    const xml = typeof flight.airPricingSolutionXml === "string" ? flight.airPricingSolutionXml : "";
+    if (!xml.trim()) {
+        return false;
+    }
+
+    const hasMealOptionalService =
+        /OptionalService\b[^>]*\bType=(\"|')MealOrBeverage\1/i.test(xml) ||
+        /MealOrBeverage/i.test(xml);
+
+    if (!hasMealOptionalService) {
+        return false;
+    }
+
+    return (
+        /Chargeable=(\"|')Included in the brand\1/i.test(xml) ||
+        /Inflight meal is included/i.test(xml) ||
+        /meal\s+is\s+included/i.test(xml)
+    );
+}
+
 function formatMinutesDuration(minutes: number | null) {
     if (minutes == null || minutes <= 0) return "";
     const hours = Math.floor(minutes / 60);
@@ -652,40 +797,6 @@ function formatMinutesDuration(minutes: number | null) {
     }
 
     return `${hours}h ${remainingMinutes.toString().padStart(2, "0")}m`;
-}
-
-function formatSeatMapRawPreview(raw: unknown) {
-    if (typeof raw !== "string" || !raw.trim()) {
-        return "No raw provider response was returned for this request.";
-    }
-
-    return raw.replace(/\s+/g, " ").trim().slice(0, 1200);
-}
-
-function normalizeSeatRows(seatMap: FlightSeatMapResponse | null) {
-    if (!Array.isArray(seatMap?.rows)) {
-        return [];
-    }
-
-    return seatMap.rows
-        .filter((row) => row && typeof row === "object" && Array.isArray(row.seats))
-        .map((row, rowIndex) => ({
-            number: typeof row.number === "string" && row.number.trim() ? row.number : String(rowIndex + 1),
-            seats: row.seats
-                .filter((seat) => seat && typeof seat === "object")
-                .map((seat) => ({
-                    ...seat,
-                    code: typeof seat.code === "string" ? seat.code : "",
-                    availability: typeof seat.availability === "string" ? seat.availability : "",
-                    paid: Boolean(seat.paid),
-                    characteristics: Array.isArray(seat.characteristics)
-                        ? seat.characteristics.filter((item): item is string => typeof item === "string")
-                        : [],
-                    seatPrice: coerceFiniteNumber(seat.seatPrice),
-                    currency: typeof seat.currency === "string" ? seat.currency : "",
-                })),
-        }))
-        .filter((row) => row.seats.length > 0);
 }
 
 function getBaggageHighlights(flight: FlightResult) {
@@ -971,16 +1082,6 @@ export default function FlightSearch() {
     const persistedUiState = readPersistedFlightSearchState();
     const sanitizedContextState = sanitizeInMemoryFlightSearchState(flightSearchState);
     const restoredState = sanitizedContextState ?? persistedUiState;
-    const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-    const canViewProviderDiagnostics = currentUser?.role === "ADMIN";
-
-    useEffect(() => {
-        getCurrentUser()
-            .then(setCurrentUser)
-            .catch(() => {
-                // Non-blocking: flight shopping should still work even if user lookup fails.
-            });
-    }, []);
 
     const [tripType, setTripType] = useState<"oneway" | "return" | "multicity">(
         restoredState?.tripType ?? "oneway"
@@ -1302,10 +1403,6 @@ export default function FlightSearch() {
         prebookAtlasLuggage,
         prebookFlight,
     ]);
-    const prebookSeatRows = useMemo(
-        () => normalizeSeatRows(prebookSeatMap),
-        [prebookSeatMap]
-    );
 
     useEffect(() => {
         if (prebookActiveSegmentIndex >= prebookSegments.length) {
@@ -3020,6 +3117,11 @@ export default function FlightSearch() {
                                 });
                                 const aircraftLabel = extractAircraftLabel(flight.airSegmentXmls, flight.airSegmentXml);
                                 const baggageHighlights = getBaggageHighlights(flight);
+                                const carryOnIncluded = extractIncludedBaggageLabel(flight.carryOnAllowance);
+                                const checkedIncluded = extractIncludedBaggageLabel(flight.checkedBaggageAllowance);
+                                const seatsAvailable = inferFlightSeatAvailability(flight);
+                                const classOfService = inferFlightClassOfService(flight);
+                                const mealIncluded = inferMealIncluded(flight);
                                 const detailsExpanded = expandedFlightId === flight.id;
                                 const segmentXmls = detailsExpanded
                                     ? flight.airSegmentXmls?.length
@@ -3070,7 +3172,7 @@ export default function FlightSearch() {
                                                             {isBookable ? "Ready to book" : isAvailabilityCard ? "Availability" : "Needs pricing"}
                                                         </span>
                                                         <span className="inline-flex items-center rounded-full border border-[rgba(89,64,46,0.12)] bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink)] shadow-[0_10px_24px_rgba(31,42,68,0.04)]">
-                                                            {form.cabin}
+                                                            {flight.cabinClass || form.cabin}
                                                         </span>
                                                         {returnSegments.length > 0 ? (
                                                             <span className="inline-flex items-center rounded-full border border-[rgba(125,63,228,0.18)] bg-[rgba(125,63,228,0.12)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[rgba(125,63,228,0.9)] shadow-[0_10px_24px_rgba(125,63,228,0.12)]">
@@ -3080,21 +3182,41 @@ export default function FlightSearch() {
                                                     </div>
                                                 </div>
 
-                                                <div className="flex flex-wrap items-center gap-3">
+                                                <div className="flex flex-wrap items-center gap-2">
                                                     <span className="rounded-full border border-[rgba(89,64,46,0.1)] bg-white/85 px-3 py-1 text-[11px] font-medium text-slate-500">
                                                         {stopSummary}
                                                     </span>
-                                                    {baggageHighlights.slice(0, 2).map((text) => (
+                                                    {carryOnIncluded ? (
                                                         <span
-                                                            key={text}
-                                                            className="rounded-full border border-[rgba(45,120,92,0.14)] bg-[rgba(232,245,237,0.92)] px-3 py-1 text-[11px] font-medium text-[var(--success)]"
+                                                            className="inline-flex items-center gap-2 rounded-full border border-[rgba(23,68,152,0.12)] bg-[rgba(241,248,255,0.92)] px-3 py-1 text-[11px] font-semibold text-[#174498]"
                                                         >
-                                                            {text}
+                                                            <Backpack size={14} className="text-[#174498]" />
+                                                            {carryOnIncluded}
                                                         </span>
-                                                    ))}
-                                                    {baggageHighlights.length > 2 ? (
+                                                    ) : null}
+                                                    {checkedIncluded ? (
                                                         <span className="rounded-full border border-[rgba(45,120,92,0.14)] bg-[rgba(232,245,237,0.92)] px-3 py-1 text-[11px] font-medium text-[var(--success)]">
-                                                            +{baggageHighlights.length - 2} more
+                                                            <span className="inline-flex items-center gap-2">
+                                                                <Luggage size={14} className="text-[var(--success)]" />
+                                                                {checkedIncluded}
+                                                            </span>
+                                                        </span>
+                                                    ) : null}
+                                                    {typeof seatsAvailable === "number" ? (
+                                                        <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(89,64,46,0.12)] bg-white/85 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                                                            <Armchair size={14} className="text-slate-500" />
+                                                            {seatsAvailable} Seat
+                                                        </span>
+                                                    ) : null}
+                                                    {classOfService ? (
+                                                        <span className="rounded-full border border-[rgba(89,64,46,0.12)] bg-white/85 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                                                            Class: {classOfService}
+                                                        </span>
+                                                    ) : null}
+                                                    {mealIncluded ? (
+                                                        <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(176,122,67,0.16)] bg-[rgba(255,247,236,0.92)] px-3 py-1 text-[11px] font-semibold text-[var(--accent-strong)]">
+                                                            <UtensilsCrossed size={14} className="text-[var(--accent-strong)]" />
+                                                            Meal included
                                                         </span>
                                                     ) : null}
                                                 </div>
@@ -3954,67 +4076,6 @@ export default function FlightSearch() {
                                                 </button>
                                             );
                                         })}
-                                    </div>
-                                )}
-
-                                {prebookSeatMap && (
-                                    <div className="mt-4 rounded-[1.4rem] border border-[rgba(23,68,152,0.1)] bg-white/88 p-4 shadow-[0_14px_30px_rgba(33,64,111,0.08)]">
-                                        <div className="flex flex-wrap items-center justify-between gap-3">
-                                            <div>
-                                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                                    Live response
-                                                </div>
-                                                <div className="mt-1 text-sm font-semibold text-[var(--ink)]">
-                                                    {canViewProviderDiagnostics && prebookSeatMap.source ? `${prebookSeatMap.source} - ` : ""}
-                                                    {prebookSeatMap.carrier || prebookFlight.carrier} {prebookSeatMap.flightNumber || prebookFlight.flightNumber}
-                                                </div>
-                                            </div>
-                                            <span className="rounded-full bg-[rgba(225,246,236,0.96)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--success)]">
-                                                Live
-                                            </span>
-                                        </div>
-
-                                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                            {[
-                                                ["Rows", prebookSeatMap.diagnostics?.rowCount ?? prebookSeatRows.length],
-                                                ["Facilities", prebookSeatMap.diagnostics?.facilityCount ?? 0],
-                                                ["Seat nodes", prebookSeatMap.diagnostics?.seatLikeFacilityCount ?? prebookSeatRows.reduce((sum, row) => sum + row.seats.length, 0)],
-                                                ["Optional services", prebookSeatMap.diagnostics?.optionalServiceCount ?? 0],
-                                            ].map(([label, value]) => (
-                                                <div key={label} className="rounded-[1rem] bg-[rgba(241,248,255,0.92)] px-3 py-3">
-                                                    <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400">{label}</div>
-                                                    <div className="mt-1 text-lg font-semibold text-[var(--ink)]">{value}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-
-                                        {prebookSeatMap.diagnostics?.supplierMessages?.length ? (
-                                            <div className="mt-4 rounded-[1rem] bg-[rgba(247,244,239,0.8)] px-3 py-3 text-sm leading-6 text-slate-600">
-                                                <div className="font-semibold text-[var(--ink)]">Supplier message</div>
-                                                <div className="mt-1">{prebookSeatMap.diagnostics.supplierMessages.join(" | ")}</div>
-                                            </div>
-                                        ) : null}
-
-                                        {prebookSeatMap.diagnostics?.sampleSeatCodes?.length ? (
-                                            <div className="mt-3 flex flex-wrap gap-2">
-                                                {prebookSeatMap.diagnostics.sampleSeatCodes.map((code) => (
-                                                    <span key={code} className="rounded-full border border-[rgba(23,68,152,0.12)] bg-white px-3 py-1 text-xs font-semibold text-[#174498]">
-                                                        {code}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        ) : null}
-
-                                        {canViewProviderDiagnostics ? (
-                                            <details className="mt-4 rounded-[1rem] border border-[rgba(23,68,152,0.08)] bg-[rgba(248,250,255,0.86)] px-3 py-3 text-xs leading-6 text-slate-600">
-                                                <summary className="cursor-pointer font-semibold text-[var(--ink)]">
-                                                    View raw XML preview
-                                                </summary>
-                                                <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-[0.85rem] bg-slate-950 p-3 text-[11px] leading-5 text-slate-100">
-                                                    {formatSeatMapRawPreview(prebookSeatMap.rawResponse)}
-                                                </pre>
-                                            </details>
-                                        ) : null}
                                     </div>
                                 )}
 

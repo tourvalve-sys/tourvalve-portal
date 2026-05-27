@@ -15,6 +15,7 @@ public class FlightSegmentDto
     public string Departure { get; set; } = string.Empty;
     public string Arrival { get; set; } = string.Empty;
     public int? DurationMinutes { get; set; }
+    public int? SeatCount { get; set; }
 }
 
 public class FlightDto
