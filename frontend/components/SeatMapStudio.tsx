@@ -315,7 +315,7 @@ export default function SeatMapStudio({
 
                                 <div className="relative pt-8 pb-10">
                                     {!detailed && cabinPlan && cabinPlan.supportsPlanLayout ? (
-                                        <div className="overflow-x-auto px-2 pb-1">
+                                        <div className="overflow-x-scroll px-2 pb-3">
                                             <div className="min-w-max rounded-[2.5rem] border border-[rgba(89,64,46,0.08)] bg-white/90 px-4 py-4 shadow-[0_22px_60px_rgba(31,42,68,0.08)] backdrop-blur-sm sm:px-6">
                                                 <div className="flex items-start gap-4">
                                                     <div className="mt-5 flex w-7 shrink-0 flex-col items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
@@ -364,6 +364,7 @@ export default function SeatMapStudio({
                                                                                 : legendFilter === "ALL" || status === legendFilter;
                                                                         const disabled = !isSeatSelectable(seat) || !matchesFilter;
                                                                         const seatLetter = extractSeatLetter(seat.code);
+                                                                        const seatLabel = planRow.number && seatLetter ? `${planRow.number}${seatLetter}` : seatLetter || seat.code;
                                                                         const tone = selected
                                                                             ? "border-[rgba(45,120,92,0.36)] bg-[rgba(225,246,236,0.96)] text-[var(--success)]"
                                                                             : status === "PAID"
@@ -391,7 +392,7 @@ export default function SeatMapStudio({
                                                                                     matchesFilter ? "" : "opacity-25"
                                                                                 } disabled:cursor-not-allowed disabled:opacity-40`}
                                                                             >
-                                                                                {status === "BLOCKED" ? "×" : seatLetter}
+                                                                                {status === "BLOCKED" ? "×" : seatLabel}
                                                                             </button>
                                                                         );
                                                                     })}
@@ -417,6 +418,7 @@ export default function SeatMapStudio({
                                                                                 : legendFilter === "ALL" || status === legendFilter;
                                                                         const disabled = !isSeatSelectable(seat) || !matchesFilter;
                                                                         const seatLetter = extractSeatLetter(seat.code);
+                                                                        const seatLabel = planRow.number && seatLetter ? `${planRow.number}${seatLetter}` : seatLetter || seat.code;
                                                                         const tone = selected
                                                                             ? "border-[rgba(45,120,92,0.36)] bg-[rgba(225,246,236,0.96)] text-[var(--success)]"
                                                                             : status === "PAID"
@@ -444,7 +446,7 @@ export default function SeatMapStudio({
                                                                                     matchesFilter ? "" : "opacity-25"
                                                                                 } disabled:cursor-not-allowed disabled:opacity-40`}
                                                                             >
-                                                                                {status === "BLOCKED" ? "×" : seatLetter}
+                                                                                {status === "BLOCKED" ? "×" : seatLabel}
                                                                             </button>
                                                                         );
                                                                     })}
