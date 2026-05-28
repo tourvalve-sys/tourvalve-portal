@@ -1318,6 +1318,19 @@ export default function FlightSearch() {
             return [];
         }
 
+        const toFiniteNumber = (value: unknown) => {
+            if (typeof value === "number") {
+                return Number.isFinite(value) ? value : null;
+            }
+
+            if (typeof value === "string") {
+                const numeric = Number(value);
+                return Number.isFinite(numeric) ? numeric : null;
+            }
+
+            return null;
+        };
+
         const parseBadgeKg = (value: string) => {
             const match = value.match(/(\d{1,3})\s*kg/i);
             return match ? Number(match[1]) : null;
@@ -1342,11 +1355,11 @@ export default function FlightSearch() {
                     const pieceLabel = aux?.piece ? `${aux.piece}pc` : "";
                     const title = weightLabel || "";
                     const fallbackTitle = pieceLabel || item.productName || "Baggage";
-                    const inferredWeightKg = aux?.weight
-                        ? aux.weight
-                        : aux?.piece
-                            ? aux.piece * 23
-                            : null;
+                    const inferredWeightKg = toFiniteNumber(aux?.weight) ??
+                        (toFiniteNumber(aux?.piece) != null ? (toFiniteNumber(aux?.piece) as number) * 23 : null) ??
+                        parseBadgeKg(fallbackTitle);
+
+                    const amountCandidate = toFiniteNumber(item.price);
 
                     return {
                         option: {
@@ -1355,17 +1368,20 @@ export default function FlightSearch() {
                             segmentIndex: item.segmentIndex,
                             code: item.productCode,
                             title: title || fallbackTitle,
-                            amount: typeof item.price === "number" ? item.price : Number(item.price ?? 0),
+                            amount: amountCandidate ?? 0,
                             currency: item.currency || prebookFlight.currency,
                         },
                         weightKg: inferredWeightKg,
                     };
                 })
                 .sort((a, b) => {
-                    const weightA = typeof a.weightKg === "number" ? a.weightKg : Number.POSITIVE_INFINITY;
-                    const weightB = typeof b.weightKg === "number" ? b.weightKg : Number.POSITIVE_INFINITY;
+                    const weightA = typeof a.weightKg === "number" && Number.isFinite(a.weightKg) ? a.weightKg : Number.POSITIVE_INFINITY;
+                    const weightB = typeof b.weightKg === "number" && Number.isFinite(b.weightKg) ? b.weightKg : Number.POSITIVE_INFINITY;
                     if (weightA !== weightB) return weightA - weightB;
-                    return a.option.amount - b.option.amount;
+
+                    const amountA = typeof a.option.amount === "number" && Number.isFinite(a.option.amount) ? a.option.amount : Number.POSITIVE_INFINITY;
+                    const amountB = typeof b.option.amount === "number" && Number.isFinite(b.option.amount) ? b.option.amount : Number.POSITIVE_INFINITY;
+                    return amountA - amountB;
                 })
                 .map((entry) => entry.option);
         }
@@ -1416,10 +1432,13 @@ export default function FlightSearch() {
                 };
             })
             .sort((a, b) => {
-                const weightA = typeof a.weightKg === "number" ? a.weightKg : Number.POSITIVE_INFINITY;
-                const weightB = typeof b.weightKg === "number" ? b.weightKg : Number.POSITIVE_INFINITY;
+                const weightA = typeof a.weightKg === "number" && Number.isFinite(a.weightKg) ? a.weightKg : Number.POSITIVE_INFINITY;
+                const weightB = typeof b.weightKg === "number" && Number.isFinite(b.weightKg) ? b.weightKg : Number.POSITIVE_INFINITY;
                 if (weightA !== weightB) return weightA - weightB;
-                return a.option.amount - b.option.amount;
+
+                const amountA = typeof a.option.amount === "number" && Number.isFinite(a.option.amount) ? a.option.amount : Number.POSITIVE_INFINITY;
+                const amountB = typeof b.option.amount === "number" && Number.isFinite(b.option.amount) ? b.option.amount : Number.POSITIVE_INFINITY;
+                return amountA - amountB;
             })
             .map((entry) => entry.option);
     }, [
@@ -2607,6 +2626,47 @@ export default function FlightSearch() {
         : "Pricing the selected itinerary and preparing the booking handoff.";
     const loaderCaptions = loading ? SEARCH_LOADING_CAPTIONS : PRICING_LOADING_CAPTIONS;
 
+    const prebookRouteSummary = useMemo(() => {
+        if (!prebookFlight) {
+            return {
+                origin: "",
+                destination: "",
+                hasReturn: false,
+                label: "",
+            };
+        }
+
+        const itinerarySegments = prebookFlight.itinerarySegments?.length
+            ? prebookFlight.itinerarySegments
+            : [{
+                carrier: prebookFlight.carrier,
+                flightNumber: prebookFlight.flightNumber,
+                from: prebookFlight.from,
+                to: prebookFlight.to,
+                departure: prebookFlight.departure,
+                arrival: prebookFlight.arrival,
+            }];
+
+        const { outboundSegments, returnSegments } = splitJourneyLegs(itinerarySegments);
+        const outboundOrigin = outboundSegments[0]?.from?.trim() || itinerarySegments[0]?.from?.trim() || prebookFlight.from;
+        const outboundDestination = outboundSegments.length
+            ? outboundSegments[outboundSegments.length - 1]?.to?.trim() || prebookFlight.to
+            : itinerarySegments[itinerarySegments.length - 1]?.to?.trim() || prebookFlight.to;
+
+        const origin = outboundOrigin.trim().toUpperCase();
+        const destination = outboundDestination.trim().toUpperCase();
+        const hasReturn = returnSegments.length > 0;
+
+        return {
+            origin,
+            destination,
+            hasReturn,
+            label: origin && destination
+                ? `${origin} ${hasReturn ? "\u2194" : "\u2192"} ${destination}`
+                : `${prebookFlight.from} \u2192 ${prebookFlight.to}`,
+        };
+    }, [prebookFlight, splitJourneyLegs]);
+
     return (
         <>
             {showPageLoader ? (
@@ -3316,7 +3376,7 @@ export default function FlightSearch() {
                                             : []
                                     : [];
 
-                                return (
+                            return (
                                     <div
                                         key={bundle ? `bundle-${bundle.key}` : flight.id}
                                         ref={index === 0 ? firstResultCardRef : null}
@@ -3328,7 +3388,7 @@ export default function FlightSearch() {
                                                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                                     <div className="min-w-0 flex-1">
                                                         <div className="flex flex-wrap items-center gap-3">
-                                                            <div className="w-full max-w-[14rem]">
+                                                            <div className="max-w-[14rem] shrink-0">
                                                                 <AirlineBrand
                                                                     carrier={flight.carrier || "FL"}
                                                                     flightNumber={flight.flightNumber || "Live itinerary"}
@@ -3344,7 +3404,7 @@ export default function FlightSearch() {
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex flex-wrap gap-2">
+                                                    <div className="flex flex-wrap items-center justify-end gap-2">
                                                         <span
                                                             className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] shadow-[0_10px_24px_rgba(31,42,68,0.06)] ring-1 ring-inset ${
                                                                 isBookable
@@ -4034,7 +4094,7 @@ export default function FlightSearch() {
                                     Pre-Book Studio
                                 </div>
                                 <h2 className="mt-2 truncate text-2xl font-semibold">
-                                    {prebookFlight.from} {"->"} {prebookFlight.to}
+                                    {prebookRouteSummary.label || `${prebookFlight.from} \u2192 ${prebookFlight.to}`}
                                 </h2>
                                 <div className="mt-1 text-sm text-white/75">
                                     Review real seat-map availability and carry supplier baggage text into the booking before checkout.
@@ -4691,12 +4751,14 @@ export default function FlightSearch() {
                             </section>
 
                             <aside className="min-h-0 border-l border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,rgba(244,247,252,0.96),rgba(238,243,250,0.96))] p-5">
-                                <div className="rounded-[1.35rem] bg-white/88 p-4 shadow-[0_14px_30px_rgba(33,64,111,0.08)]">
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Live summary</div>
-                                    <div className="mt-3 text-lg font-semibold text-[var(--ink)]">{prebookFlight.from} {"->"} {prebookFlight.to}</div>
-                                    <div className="mt-1 text-sm text-slate-500">
-                                        {new Date(prebookFlight.departure).toLocaleString()} to {new Date(prebookFlight.arrival).toLocaleString()}
-                                    </div>
+                                            <div className="rounded-[1.35rem] bg-white/88 p-4 shadow-[0_14px_30px_rgba(33,64,111,0.08)]">
+                                                <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Live summary</div>
+                                                <div className="mt-3 text-lg font-semibold text-[var(--ink)]">
+                                                    {prebookRouteSummary.label || `${prebookFlight.from} \u2192 ${prebookFlight.to}`}
+                                                </div>
+                                                <div className="mt-1 text-sm text-slate-500">
+                                                    {new Date(prebookFlight.departure).toLocaleString()} to {new Date(prebookFlight.arrival).toLocaleString()}
+                                                </div>
                                     <div className="mt-4 rounded-[1.2rem] bg-[rgba(247,244,239,0.8)] px-3 py-3">
                                         <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Included baggage</div>
                                         <div className="mt-1 text-sm font-semibold text-[var(--ink)]">
