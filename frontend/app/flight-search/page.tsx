@@ -35,7 +35,6 @@ import {
 import { useRouter } from "next/navigation";
 import {
     getAtlasPrebookAncillaries,
-    getCurrentUser,
     getFlightSeatMap,
     getPrebookAncillaryOffers,
     priceFlight,
@@ -43,7 +42,6 @@ import {
     searchFlights,
     type AtlasAncillaryProductElement,
     type AtlasPrebookAncillariesResponse,
-    type CurrentUser,
     type FlightResult,
     type FlightSeatMapResponse,
     type PrebookAncillaryOfferCatalog,
@@ -719,7 +717,17 @@ function getBaggageHighlights(flight: FlightResult) {
     ].filter(Boolean) as string[];
 
     const badges = highlights.flatMap(extractKgBadges).filter(Boolean);
-    return Array.from(new Set(badges));
+    return Array.from(new Set(badges)).sort((a, b) => {
+        const parse = (value: string) => {
+            const match = value.match(/(\d{1,3})/);
+            return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+        };
+
+        const weightA = parse(a);
+        const weightB = parse(b);
+        if (weightA !== weightB) return weightA - weightB;
+        return a.localeCompare(b);
+    });
 }
 
 function sanitizeFlightResult(flight: FlightResult): FlightResult {
@@ -993,16 +1001,7 @@ export default function FlightSearch() {
     const persistedUiState = readPersistedFlightSearchState();
     const sanitizedContextState = sanitizeInMemoryFlightSearchState(flightSearchState);
     const restoredState = sanitizedContextState ?? persistedUiState;
-    const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-    const canViewProviderDiagnostics = currentUser?.role === "ADMIN";
-
-    useEffect(() => {
-        getCurrentUser()
-            .then(setCurrentUser)
-            .catch(() => {
-                // Non-blocking: flight shopping should still work even if user lookup fails.
-            });
-    }, []);
+    const canViewProviderDiagnostics = false;
 
     const [tripType, setTripType] = useState<"oneway" | "return" | "multicity">(
         restoredState?.tripType ?? "oneway"
@@ -1319,6 +1318,11 @@ export default function FlightSearch() {
             return [];
         }
 
+        const parseBadgeKg = (value: string) => {
+            const match = value.match(/(\d{1,3})\s*kg/i);
+            return match ? Number(match[1]) : null;
+        };
+
         const provider = prebookFlight.providerCode.trim().toUpperCase();
         const segmentLabel = prebookActiveSegment?.label ?? `${prebookFlight.from} -> ${prebookFlight.to}`;
         const segmentIndex = prebookActiveSegmentIndex + 1;
@@ -1338,17 +1342,32 @@ export default function FlightSearch() {
                     const pieceLabel = aux?.piece ? `${aux.piece}pc` : "";
                     const title = weightLabel || "";
                     const fallbackTitle = pieceLabel || item.productName || "Baggage";
+                    const inferredWeightKg = aux?.weight
+                        ? aux.weight
+                        : aux?.piece
+                            ? aux.piece * 23
+                            : null;
 
                     return {
-                        type: "BAGGAGE",
-                        segmentLabel,
-                        segmentIndex: item.segmentIndex,
-                        code: item.productCode,
-                        title: title || fallbackTitle,
-                        amount: typeof item.price === "number" ? item.price : Number(item.price ?? 0),
-                        currency: item.currency || prebookFlight.currency,
+                        option: {
+                            type: "BAGGAGE" as const,
+                            segmentLabel,
+                            segmentIndex: item.segmentIndex,
+                            code: item.productCode,
+                            title: title || fallbackTitle,
+                            amount: typeof item.price === "number" ? item.price : Number(item.price ?? 0),
+                            currency: item.currency || prebookFlight.currency,
+                        },
+                        weightKg: inferredWeightKg,
                     };
-                });
+                })
+                .sort((a, b) => {
+                    const weightA = typeof a.weightKg === "number" ? a.weightKg : Number.POSITIVE_INFINITY;
+                    const weightB = typeof b.weightKg === "number" ? b.weightKg : Number.POSITIVE_INFINITY;
+                    if (weightA !== weightB) return weightA - weightB;
+                    return a.option.amount - b.option.amount;
+                })
+                .map((entry) => entry.option);
         }
 
         const offers = prebookAncillaryCatalog?.categories?.BAGGAGE ?? [];
@@ -1368,19 +1387,41 @@ export default function FlightSearch() {
             .map((offer) => {
                 const candidateValue =
                     offer.comparison?.find((item) => item.label?.toLowerCase().includes("checked baggage"))?.value ??
+                    offer.subtitle ??
+                    offer.description ??
                     offer.title ??
                     "";
-                const kgLabel = extractKgBadges(candidateValue)[0] ?? "";
+                const kgLabel =
+                    extractKgBadges(candidateValue)[0] ??
+                    extractKgBadges(offer.title)[0] ??
+                    extractKgBadges(offer.subtitle)[0] ??
+                    extractKgBadges(offer.description)[0] ??
+                    "";
+
+                const titleSource = `${offer.title ?? ""} ${offer.subtitle ?? ""}`.trim();
+                const isPrepaid = /\bprepaid\b/i.test(titleSource);
+                const titlePrefix = isPrepaid ? "Prepaid baggage" : offer.title || "Baggage option";
+                const title = kgLabel ? `${titlePrefix} ${kgLabel}` : titlePrefix;
 
                 return {
-                    type: "BAGGAGE" as const,
-                    segmentLabel: (offer.segmentLabel ?? "").trim() || segmentLabel,
-                    code: offer.code,
-                    title: kgLabel || offer.title || "Baggage option",
-                    amount: offer.baseAmount,
-                    currency: offer.currency || prebookFlight.currency,
+                    option: {
+                        type: "BAGGAGE" as const,
+                        segmentLabel: (offer.segmentLabel ?? "").trim() || segmentLabel,
+                        code: offer.code,
+                        title,
+                        amount: offer.baseAmount,
+                        currency: offer.currency || prebookFlight.currency,
+                    },
+                    weightKg: parseBadgeKg(kgLabel),
                 };
-            });
+            })
+            .sort((a, b) => {
+                const weightA = typeof a.weightKg === "number" ? a.weightKg : Number.POSITIVE_INFINITY;
+                const weightB = typeof b.weightKg === "number" ? b.weightKg : Number.POSITIVE_INFINITY;
+                if (weightA !== weightB) return weightA - weightB;
+                return a.option.amount - b.option.amount;
+            })
+            .map((entry) => entry.option);
     }, [
         prebookActiveSegment?.label,
         prebookActiveSegmentIndex,
@@ -4083,6 +4124,13 @@ export default function FlightSearch() {
                                         </div>
                                     ) : null}
 
+                                    {prebookFlight.carrier?.trim().toUpperCase() === "MH" &&
+                                    prebookPaidBaggageOptions.some((option) => /\bprepaid\b/i.test(option.title)) ? (
+                                        <div className="mt-3 rounded-[1rem] bg-[rgba(255,247,236,0.92)] px-3 py-3 text-xs leading-6 text-[var(--ink)]">
+                                            Prepaid baggage means extra checked baggage purchased in advance (typically cheaper than paying at the airport).
+                                        </div>
+                                    ) : null}
+
                                     <div className="mt-3 space-y-2">
                                         <button
                                             type="button"
@@ -4394,19 +4442,22 @@ export default function FlightSearch() {
                                 <div className="mt-5 overflow-hidden rounded-[1.8rem] border border-[rgba(23,68,152,0.08)] bg-white shadow-[0_18px_40px_rgba(33,64,111,0.12)]">
                                     <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_240px]">
                                         <div className="relative bg-[linear-gradient(180deg,rgba(235,242,252,0.9),rgba(246,249,255,0.96))] p-5">
-                                            <div className="mx-auto max-w-[720px] rounded-[1.8rem] border border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,#fefefe,#f6f8fc)] px-4 py-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.5)]">
+                                            <div className="mx-auto w-full max-w-[920px] rounded-[1.8rem] border border-[rgba(32,63,92,0.08)] bg-[linear-gradient(180deg,#fefefe,#f6f8fc)] px-4 py-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.5)]">
                                                 <div className="mb-4 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
                                                     <span>{prebookActiveSegment?.carrier || prebookSeatMap?.carrier || prebookFlight.carrier} {prebookActiveSegment?.flightNumber || prebookSeatMap?.flightNumber || prebookFlight.flightNumber}</span>
                                                     <span>Front of plane</span>
                                                 </div>
 
                                                 {prebookSeatRows.length ? (
-                                                    <div className="max-h-[50vh] overflow-auto pr-1">
-                                                    <div className="min-w-max space-y-3">
+                                                    <div className="max-h-[54vh] overflow-auto overscroll-contain pr-1">
+                                                    <div className="min-w-max space-y-3 pb-4">
                                                         {prebookSeatRows.map((row) => {
                                                             const { left, right } = splitSeatRow(row.seats);
                                                             return (
                                                                 <div key={row.number} className="flex items-center gap-3">
+                                                                    <div className="shrink-0 w-11 text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                                                        {row.number}
+                                                                    </div>
                                                                     <div className="grid grid-flow-col auto-cols-[72px] gap-2">
                                                                         {left.map((seat) => {
                                                                             const seatOwner = prebookSelectedSeats.find(
@@ -4455,7 +4506,7 @@ export default function FlightSearch() {
                                                                                 >
                                                                                     <div className="flex items-start justify-between gap-2">
                                                                                         <div className="font-semibold">
-                                                                                            {seat.code.match(/[A-Za-z]+$/)?.[0] ?? seat.code}
+                                                                                            {`${row.number}${seat.code.match(/[A-Za-z]+$/)?.[0] ?? seat.code}`}
                                                                                         </div>
                                                                                         {ownerBadge ? (
                                                                                             <span
@@ -4533,7 +4584,7 @@ export default function FlightSearch() {
                                                                                 >
                                                                                     <div className="flex items-start justify-between gap-2">
                                                                                         <div className="font-semibold">
-                                                                                            {seat.code.match(/[A-Za-z]+$/)?.[0] ?? seat.code}
+                                                                                            {`${row.number}${seat.code.match(/[A-Za-z]+$/)?.[0] ?? seat.code}`}
                                                                                         </div>
                                                                                         {ownerBadge ? (
                                                                                             <span
