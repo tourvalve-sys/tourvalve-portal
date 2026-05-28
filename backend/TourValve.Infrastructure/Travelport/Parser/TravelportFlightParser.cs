@@ -82,7 +82,7 @@ public static class TravelportFlightParser
                 CarryOnAllowance = baggageContext.CarryOnAllowance,
                 CheckedBaggageAllowance = baggageContext.CheckedBagAllowance,
                 BaggageOfferTexts = baggageContext.OfferTexts,
-                MealIncluded = IsMealIncluded(solution),
+                MealIncluded = IsMealIncluded(solution, firstSegment.Attribute("Carrier")?.Value),
                 AirPricingSolutionXml = solution.ToString(SaveOptions.DisableFormatting),
                 AirPricingContextXml = doc.Root?.ToString(SaveOptions.DisableFormatting) ?? xml,
                 AirSegmentXml = firstSegment.ToString(SaveOptions.DisableFormatting),
@@ -301,7 +301,7 @@ public static class TravelportFlightParser
                 CarryOnAllowance = baggageContext.CarryOnAllowance,
                 CheckedBaggageAllowance = baggageContext.CheckedBagAllowance,
                 BaggageOfferTexts = baggageContext.OfferTexts,
-                MealIncluded = IsMealIncluded(point),
+                MealIncluded = IsMealIncluded(point, firstSegment.Attribute("Carrier")?.Value),
                 AirPricingSolutionXml = point.ToString(SaveOptions.DisableFormatting),
                 AirPricingContextXml = doc.Root?.ToString(SaveOptions.DisableFormatting) ?? xml,
                 AirSegmentXml = firstSegment.ToString(SaveOptions.DisableFormatting),
@@ -745,9 +745,53 @@ public static class TravelportFlightParser
         );
     }
 
-    private static bool IsMealIncluded(XElement container)
+    private static readonly HashSet<string> MealIncludedCarrierCodes = new(StringComparer.OrdinalIgnoreCase)
     {
-        return container.Descendants()
+        "AC", // Air Canada
+        "AF", // Air France
+        "AI", // Air India
+        "NZ", // Air New Zealand
+        "NH", // All Nippon Airways (ANA)
+        "AA", // American Airlines
+        "OZ", // Asiana Airlines
+        "OS", // Austrian Airlines
+        "BA", // British Airways
+        "CX", // Cathay Pacific
+        "CI", // China Airlines
+        "DL", // Delta Air Lines
+        "EK", // Emirates
+        "EY", // Etihad
+        "BR", // EVA Air
+        "FJ", // Fiji Airways
+        "GA", // Garuda Indonesia
+        "GF", // Gulf Air
+        "HA", // Hawaiian Airlines
+        "JL", // Japan Airlines (JAL)
+        "KL", // KLM
+        "KE", // Korean Air
+        "LA", // LATAM
+        "LH", // Lufthansa
+        "MH", // Malaysia Airlines
+        "WY", // Oman Air
+        "PR", // Philippine Airlines
+        "QF", // Qantas
+        "QR", // Qatar Airways
+        "BI", // Royal Brunei
+        "SV", // Saudia
+        "SQ", // Singapore Airlines
+        "JX", // STARLUX
+        "LX", // SWISS
+        "TP", // TAP Air Portugal
+        "TG", // Thai Airways
+        "TK", // Turkish Airlines
+        "UA", // United Airlines
+        "VN", // Vietnam Airlines
+        "VS"  // Virgin Atlantic
+    };
+
+    private static bool IsMealIncluded(XElement container, string? primaryCarrier)
+    {
+        var explicitIncluded = container.Descendants()
             .Where(x => x.Name.LocalName.Equals("OptionalService", StringComparison.OrdinalIgnoreCase))
             .Any(service =>
             {
@@ -768,6 +812,22 @@ public static class TravelportFlightParser
 
                 return false;
             });
+
+        if (explicitIncluded)
+            return true;
+
+        var carriers = container.Descendants()
+            .Where(x => x.Name.LocalName.Equals("AirSegment", StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.Attribute("Carrier")?.Value?.Trim())
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (carriers.Count == 0 && !string.IsNullOrWhiteSpace(primaryCarrier))
+            carriers.Add(primaryCarrier.Trim());
+
+        return carriers.Any(code => MealIncludedCarrierCodes.Contains(code));
     }
 
     private static (List<string> CarryOnSummaries, List<string> CheckedSummaries, List<string> OfferTexts) ReadIncludedBaggageFromOptionalServices(XElement container)
@@ -1054,6 +1114,13 @@ public static class TravelportFlightParser
         if (string.IsNullOrWhiteSpace(weightHint))
         {
             weightHint = ExtractWeightHintKg(restrictionText);
+        }
+
+        if (string.IsNullOrWhiteSpace(weightHint) && int.TryParse(pieces, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pieceCount) && pieceCount > 0)
+        {
+            var estimatedKg = pieceCount * 23;
+            if (estimatedKg > 0)
+                weightHint = $"{estimatedKg}kg";
         }
 
         if (!string.IsNullOrWhiteSpace(weightHint))
