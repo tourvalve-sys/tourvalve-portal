@@ -709,6 +709,8 @@ public static class TravelportFlightParser
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var brandedBaggageOffers = ReadIncludedBaggageFromOptionalServices(solution);
+
         var genericBaggageTexts = solution.Descendants()
             .Where(x =>
                 x.Name.LocalName.Contains("Baggage", StringComparison.OrdinalIgnoreCase) ||
@@ -721,23 +723,24 @@ public static class TravelportFlightParser
 
         var offerTexts = carryOnOffers
             .Concat(checkedBagOffers)
+            .Concat(brandedBaggageOffers.OfferTexts)
             .Concat(genericBaggageTexts)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var carryOnCandidate = PickBestBaggageSummary(
+            carryOnOffers.Concat(brandedBaggageOffers.CarryOnSummaries),
+            genericBaggageTexts,
+            preferCarryOn: true);
+
+        var checkedBagCandidate = PickBestBaggageSummary(
+            checkedBagOffers.Concat(brandedBaggageOffers.CheckedSummaries),
+            genericBaggageTexts,
+            preferCarryOn: false);
+
         return (
-            carryOnOffers.FirstOrDefault()
-                ?? genericBaggageTexts.FirstOrDefault(x =>
-                    x.Contains("carry", StringComparison.OrdinalIgnoreCase) ||
-                    x.Contains("cabin", StringComparison.OrdinalIgnoreCase))
-                ?? string.Empty,
-            checkedBagOffers.FirstOrDefault()
-                ?? genericBaggageTexts.FirstOrDefault(x =>
-                    x.Contains("checked", StringComparison.OrdinalIgnoreCase) ||
-                    x.Contains("bag", StringComparison.OrdinalIgnoreCase) ||
-                    x.Contains("piece", StringComparison.OrdinalIgnoreCase) ||
-                    x.Contains("kg", StringComparison.OrdinalIgnoreCase))
-                ?? string.Empty,
+            carryOnCandidate,
+            checkedBagCandidate,
             offerTexts
         );
     }
@@ -753,8 +756,191 @@ public static class TravelportFlightParser
                     return false;
 
                 var chargeable = service.Attribute("Chargeable")?.Value ?? string.Empty;
-                return chargeable.Contains("included", StringComparison.OrdinalIgnoreCase);
+                if (chargeable.Contains("included", StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                var totalPrice = service.Attribute("TotalPrice")?.Value ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(totalPrice))
+                {
+                    var (_, price) = ParsePrice(totalPrice);
+                    return price <= 0m;
+                }
+
+                return false;
             });
+    }
+
+    private static (List<string> CarryOnSummaries, List<string> CheckedSummaries, List<string> OfferTexts) ReadIncludedBaggageFromOptionalServices(XElement container)
+    {
+        var carryOnSummaries = new List<string>();
+        var checkedSummaries = new List<string>();
+        var offerTexts = new List<string>();
+
+        var optionalServices = container.Descendants()
+            .Where(x => x.Name.LocalName.Equals("OptionalService", StringComparison.OrdinalIgnoreCase))
+            .Where(x =>
+                string.Equals(x.Attribute("Type")?.Value, "Baggage", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var service in optionalServices)
+        {
+            var chargeable = service.Attribute("Chargeable")?.Value ?? string.Empty;
+            var isIncluded = chargeable.Contains("included", StringComparison.OrdinalIgnoreCase);
+            if (!isIncluded)
+            {
+                var totalPrice = service.Attribute("TotalPrice")?.Value ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(totalPrice))
+                {
+                    var (_, price) = ParsePrice(totalPrice);
+                    isIncluded = price <= 0m;
+                }
+            }
+
+            if (!isIncluded)
+                continue;
+
+            var shortTitles = service.Descendants()
+                .Where(x => x.Name.LocalName.Equals("Title", StringComparison.OrdinalIgnoreCase))
+                .Where(x => string.Equals(x.Attribute("Type")?.Value, "Short", StringComparison.OrdinalIgnoreCase))
+                .Select(x => (x.Value ?? string.Empty).Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var shortTitle in shortTitles)
+            {
+                if (!TryParseBaggageShortTitle(shortTitle, out var bagType, out var quantity, out var weightKg))
+                    continue;
+
+                var summary = bagType.Equals("CY", StringComparison.OrdinalIgnoreCase)
+                    ? quantity > 1
+                        ? $"Carry-on: {weightKg:0}kg x{quantity}"
+                        : $"Carry-on: {weightKg:0}kg"
+                    : quantity > 1
+                        ? $"Checked baggage: {weightKg:0}kg x{quantity}"
+                        : $"Checked baggage: {weightKg:0}kg";
+
+                offerTexts.Add(summary);
+
+                if (bagType.Equals("CY", StringComparison.OrdinalIgnoreCase))
+                    carryOnSummaries.Add(summary);
+                else
+                    checkedSummaries.Add(summary);
+            }
+
+            var displayText = service.Attribute("DisplayText")?.Value?.Trim() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(displayText))
+                offerTexts.Add(displayText);
+
+            var descriptionValues = service.Descendants()
+                .Where(x => x.Name.LocalName.Equals("Description", StringComparison.OrdinalIgnoreCase))
+                .Select(x => (x.Value ?? string.Empty).Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Take(4)
+                .ToList();
+            offerTexts.AddRange(descriptionValues);
+        }
+
+        return (
+            carryOnSummaries
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            checkedSummaries
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            offerTexts
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+        );
+    }
+
+    private static bool TryParseBaggageShortTitle(string raw, out string bagType, out int quantity, out int weightKg)
+    {
+        bagType = string.Empty;
+        quantity = 0;
+        weightKg = 0;
+
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        var parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 4)
+            return false;
+
+        if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out quantity) || quantity <= 0)
+            return false;
+
+        if (!int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out weightKg) || weightKg <= 0)
+            return false;
+
+        var type = parts[3].Trim();
+        if (type.Equals("CY", StringComparison.OrdinalIgnoreCase))
+        {
+            bagType = "CY";
+            return true;
+        }
+
+        if (type.Equals("Bag", StringComparison.OrdinalIgnoreCase))
+        {
+            bagType = "Bag";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string PickBestBaggageSummary(IEnumerable<string> candidateSummaries, IReadOnlyList<string> genericTexts, bool preferCarryOn)
+    {
+        var weightedCandidate = candidateSummaries
+            .Select(summary => new
+            {
+                Summary = summary,
+                WeightHint = ExtractWeightHintKg(summary)
+            })
+            .Select(value => new
+            {
+                value.Summary,
+                Weight = TryParseWeightKg(value.WeightHint)
+            })
+            .Where(value => value.Weight > 0)
+            .OrderByDescending(value => value.Weight)
+            .Select(value => value.Summary)
+            .FirstOrDefault();
+
+        if (!string.IsNullOrWhiteSpace(weightedCandidate))
+            return weightedCandidate;
+
+        var firstCandidate = candidateSummaries.FirstOrDefault(summary => !string.IsNullOrWhiteSpace(summary));
+        if (!string.IsNullOrWhiteSpace(firstCandidate))
+            return firstCandidate;
+
+        var genericCandidate = preferCarryOn
+            ? genericTexts.FirstOrDefault(x =>
+                x.Contains("carry", StringComparison.OrdinalIgnoreCase) ||
+                x.Contains("cabin", StringComparison.OrdinalIgnoreCase) ||
+                x.Contains("hand", StringComparison.OrdinalIgnoreCase))
+            : genericTexts.FirstOrDefault(x =>
+                x.Contains("checked", StringComparison.OrdinalIgnoreCase) ||
+                x.Contains("bag", StringComparison.OrdinalIgnoreCase) ||
+                x.Contains("piece", StringComparison.OrdinalIgnoreCase) ||
+                x.Contains("kg", StringComparison.OrdinalIgnoreCase));
+
+        return genericCandidate ?? string.Empty;
+    }
+
+    private static int TryParseWeightKg(string weightHint)
+    {
+        if (string.IsNullOrWhiteSpace(weightHint))
+            return 0;
+
+        var raw = weightHint.Trim();
+        if (raw.EndsWith("kg", StringComparison.OrdinalIgnoreCase))
+            raw = raw[..^2];
+
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var weight) ? weight : 0;
     }
 
     private static string FormatCarryOnAllowance(XElement carryOnInfo)
