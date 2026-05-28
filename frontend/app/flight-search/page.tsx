@@ -637,7 +637,10 @@ function computeItineraryDurationMinutes(segments: DurationAwareSegment[], fallb
 
 function extractKgBadges(value: string) {
     if (typeof value !== "string") return [];
-    const matches = Array.from(value.matchAll(/(\d{1,3}(?:\.\d{1,2})?)\s*(kg|kgs|kilograms?|k)\b/gi));
+    const matches = [
+        ...Array.from(value.matchAll(/(\d{1,3}(?:\.\d{1,2})?)\s*(kg|kgs|kilograms?)/gi)),
+        ...Array.from(value.matchAll(/(\d{1,3}(?:\.\d{1,2})?)\s*k\b/gi)),
+    ];
     return matches
         .map((match) => match[1])
         .filter(Boolean)
@@ -1331,9 +1334,23 @@ export default function FlightSearch() {
             return null;
         };
 
-        const parseBadgeKg = (value: string) => {
-            const match = value.match(/(\d{1,3})\s*kg/i);
-            return match ? Number(match[1]) : null;
+        const parseWeightKgFromText = (value: unknown) => {
+            if (typeof value !== "string" || !value.trim()) {
+                return null;
+            }
+
+            const badge = extractKgBadges(value)[0];
+            if (!badge) {
+                return null;
+            }
+
+            const match = badge.match(/(\d{1,3})/);
+            if (!match) {
+                return null;
+            }
+
+            const parsed = Number(match[1]);
+            return Number.isFinite(parsed) ? parsed : null;
         };
 
         const provider = prebookFlight.providerCode.trim().toUpperCase();
@@ -1357,7 +1374,8 @@ export default function FlightSearch() {
                     const fallbackTitle = pieceLabel || item.productName || "Baggage";
                     const inferredWeightKg = toFiniteNumber(aux?.weight) ??
                         (toFiniteNumber(aux?.piece) != null ? (toFiniteNumber(aux?.piece) as number) * 23 : null) ??
-                        parseBadgeKg(fallbackTitle);
+                        parseWeightKgFromText(weightLabel) ??
+                        parseWeightKgFromText(fallbackTitle);
 
                     const amountCandidate = toFiniteNumber(item.price);
 
@@ -1428,7 +1446,12 @@ export default function FlightSearch() {
                         amount: offer.baseAmount,
                         currency: offer.currency || prebookFlight.currency,
                     },
-                    weightKg: parseBadgeKg(kgLabel),
+                    weightKg:
+                        parseWeightKgFromText(kgLabel) ??
+                        parseWeightKgFromText(title) ??
+                        parseWeightKgFromText(titlePrefix) ??
+                        parseWeightKgFromText(candidateValue) ??
+                        null,
                 };
             })
             .sort((a, b) => {
@@ -2294,9 +2317,9 @@ export default function FlightSearch() {
             return { outboundSegments: segments, returnSegments: [] as typeof segments };
         }
 
-        const origin = form.from.trim().toUpperCase();
-        const destination = form.to.trim().toUpperCase();
-        if (!origin || !destination || segments.length < 2) {
+        const originHint = form.from.trim().toUpperCase();
+        const destinationHint = form.to.trim().toUpperCase();
+        if (segments.length < 2) {
             return { outboundSegments: segments, returnSegments: [] as typeof segments };
         }
 
@@ -2306,18 +2329,43 @@ export default function FlightSearch() {
             to: segment.to.trim().toUpperCase(),
         }));
 
+        const actualOrigin = normalized[0]?.from ?? "";
+        const isRoundTrip = Boolean(actualOrigin && normalized[normalized.length - 1]?.to === actualOrigin);
+
         let splitIndex = -1;
-        for (let i = 0; i < normalized.length - 1; i += 1) {
-            if (normalized[i].to === destination && normalized[i + 1].from === destination) {
-                splitIndex = i + 1;
-                break;
+        if (destinationHint) {
+            for (let i = 0; i < normalized.length - 1; i += 1) {
+                if (normalized[i].to === destinationHint && normalized[i + 1].from === destinationHint) {
+                    splitIndex = i + 1;
+                    break;
+                }
+            }
+
+            if (splitIndex === -1) {
+                const firstDestinationIndex = normalized.findIndex((segment) => segment.to === destinationHint);
+                if (firstDestinationIndex >= 0 && firstDestinationIndex < normalized.length - 1) {
+                    splitIndex = firstDestinationIndex + 1;
+                }
             }
         }
 
-        if (splitIndex === -1) {
-            const firstDestinationIndex = normalized.findIndex((segment) => segment.to === destination);
-            if (firstDestinationIndex >= 0 && firstDestinationIndex < normalized.length - 1) {
-                splitIndex = firstDestinationIndex + 1;
+        if (splitIndex === -1 && isRoundTrip) {
+            let bestIndex = -1;
+            let bestLayoverMinutes = -1;
+
+            for (let i = 0; i < normalized.length - 1; i += 1) {
+                if (normalized[i].to !== normalized[i + 1].from) continue;
+                if (normalized[i].to === actualOrigin) continue;
+
+                const layoverMinutes = computeMinutesBetween(segments[i].arrival, segments[i + 1].departure);
+                if (layoverMinutes != null && layoverMinutes > bestLayoverMinutes) {
+                    bestLayoverMinutes = layoverMinutes;
+                    bestIndex = i + 1;
+                }
+            }
+
+            if (bestIndex > 0 && bestIndex < normalized.length) {
+                splitIndex = bestIndex;
             }
         }
 
@@ -2331,8 +2379,33 @@ export default function FlightSearch() {
         const outboundStart = outboundSegments[0]?.from?.trim().toUpperCase();
         const outboundEnd = outboundSegments[outboundSegments.length - 1]?.to?.trim().toUpperCase();
         const returnStart = returnSegments[0]?.from?.trim().toUpperCase();
+        const returnEnd = returnSegments[returnSegments.length - 1]?.to?.trim().toUpperCase();
 
-        if (!outboundStart || !outboundEnd || outboundStart !== origin || outboundEnd !== destination || returnStart !== destination) {
+        const expectedOrigin = originHint || actualOrigin;
+        const hintOk = Boolean(
+            destinationHint &&
+                expectedOrigin &&
+                outboundStart &&
+                outboundEnd &&
+                returnStart &&
+                outboundStart === expectedOrigin &&
+                outboundEnd === destinationHint &&
+                returnStart === destinationHint
+        );
+
+        const inferredOk = Boolean(
+            isRoundTrip &&
+                actualOrigin &&
+                outboundStart &&
+                outboundEnd &&
+                returnStart &&
+                returnEnd &&
+                outboundStart === actualOrigin &&
+                outboundEnd === returnStart &&
+                returnEnd === actualOrigin
+        );
+
+        if (!hintOk && !inferredOk) {
             return { outboundSegments: segments, returnSegments: [] as typeof segments };
         }
 
@@ -3385,8 +3458,8 @@ export default function FlightSearch() {
                                     >
                                         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] xl:items-start">
                                             <div className="min-w-0 space-y-3">
-                                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                                                    <div className="min-w-0 flex-1">
+                                                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                                                    <div className="min-w-0">
                                                         <div className="flex flex-wrap items-center gap-3">
                                                             <div className="max-w-[14rem] shrink-0">
                                                                 <AirlineBrand
@@ -3404,7 +3477,7 @@ export default function FlightSearch() {
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                                    <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:justify-self-end">
                                                         <span
                                                             className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] shadow-[0_10px_24px_rgba(31,42,68,0.06)] ring-1 ring-inset ${
                                                                 isBookable
