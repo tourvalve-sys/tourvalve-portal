@@ -228,6 +228,14 @@ function isSeatSelectable(seat: {
     return true;
 }
 
+function splitSeatRow<T>(seats: T[]) {
+    const midpoint = Math.ceil(seats.length / 2);
+    return {
+        left: seats.slice(0, midpoint),
+        right: seats.slice(midpoint),
+    };
+}
+
 function travelerLabel(type: string) {
     if (type === "CNN") return "Child";
     if (type === "INF") return "Infant";
@@ -1770,73 +1778,130 @@ export default function BookingPage() {
                                         </div>
                                     </div>
 
-                                    <div className="max-h-[50vh] overflow-auto pr-1">
-                                        <div className="space-y-3">
-                                            {normalizedSeatRows.map((row) => (
-                                                <div
-                                                    key={row.number}
-                                                    className="grid grid-cols-1 gap-3 rounded-[1.3rem] bg-white/55 px-3 py-3 backdrop-blur-sm sm:grid-cols-[4rem_1fr] sm:items-center"
-                                                >
-                                                    <div className="text-sm font-semibold text-[var(--accent-strong)]">
-                                                        Row {row.number}
-                                                    </div>
-                                                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-                                                        {row.seats.map((seat) => {
-                                                            const seatOwner = servicePreferences.selectedSeats.find(
-                                                                (item) =>
-                                                                    item.segmentLabel === (activeSeatSegment?.label ?? "") &&
-                                                                    item.seatCode === seat.code
-                                                            );
-                                                            const ownerPassengerIndex =
-                                                                seatOwner && typeof seatOwner.passengerIndex === "number"
-                                                                    ? seatOwner.passengerIndex
-                                                                    : seatOwner
-                                                                        ? 0
-                                                                        : null;
-                                                            const selectionTone =
-                                                                ownerPassengerIndex == null
-                                                                    ? "none"
-                                                                    : ownerPassengerIndex === activeSeatPassengerIndex
-                                                                        ? "active"
-                                                                        : "other";
-                                                            const ownerBadge =
-                                                                ownerPassengerIndex == null ? "" : passengerBadgeLabel(ownerPassengerIndex);
+                                    <div className="max-h-[54vh] overflow-auto overscroll-contain pr-1">
+                                        <div className="min-w-max space-y-3 pb-4">
+                                            {normalizedSeatRows.map((row) => {
+                                                const { left, right } = splitSeatRow(row.seats);
+                                                return (
+                                                    <div key={row.number} className="flex items-center gap-3">
+                                                        <div className="shrink-0 w-11 text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                                            {row.number}
+                                                        </div>
+                                                        <div className="grid grid-flow-col auto-cols-[72px] gap-2">
+                                                            {left.map((seat) => {
+                                                                const seatOwner = servicePreferences.selectedSeats.find(
+                                                                    (item) =>
+                                                                        item.segmentLabel === (activeSeatSegment?.label ?? "") &&
+                                                                        item.seatCode === seat.code
+                                                                );
+                                                                const ownerPassengerIndex =
+                                                                    seatOwner && typeof seatOwner.passengerIndex === "number"
+                                                                        ? seatOwner.passengerIndex
+                                                                        : seatOwner
+                                                                            ? 0
+                                                                            : null;
+                                                                const selectionTone =
+                                                                    ownerPassengerIndex == null
+                                                                        ? "none"
+                                                                        : ownerPassengerIndex === activeSeatPassengerIndex
+                                                                            ? "active"
+                                                                            : "other";
+                                                                const ownerBadge =
+                                                                    ownerPassengerIndex == null ? "" : passengerBadgeLabel(ownerPassengerIndex);
 
-                                                            return (
-                                                                <button
-                                                                    key={`${row.number}-${seat.code}`}
-                                                                    type="button"
-                                                                    disabled={!isSeatSelectable(seat)}
-                                                                    onClick={() => chooseSeat(seat.code)}
-                                                                    className={`relative rounded-2xl border px-3 py-3 text-left text-sm transition ${seatTone(seat, selectionTone)}`}
-                                                                    title={[seat.availability, ...seat.characteristics].filter(Boolean).join(" | ")}
-                                                                >
-                                                                    <div className="flex items-start justify-between gap-2">
-                                                                        <div className="font-semibold">
-                                                                            {(seat.code.match(/[A-Za-z]+$/)?.[0] ?? seat.code) || "--"}
+                                                                return (
+                                                                    <button
+                                                                        key={`${row.number}-${seat.code}-left`}
+                                                                        type="button"
+                                                                        disabled={!isSeatSelectable(seat)}
+                                                                        onClick={() => chooseSeat(seat.code)}
+                                                                        className={`relative min-h-[72px] rounded-[1rem] border px-2 py-2 text-left text-xs transition ${seatTone(
+                                                                            seat,
+                                                                            selectionTone
+                                                                        )}`}
+                                                                        title={[seat.availability, ...seat.characteristics].filter(Boolean).join(" | ")}
+                                                                    >
+                                                                        <div className="flex items-start justify-between gap-2">
+                                                                            <div className="font-semibold">{seat.code || "--"}</div>
+                                                                            {ownerBadge ? (
+                                                                                <span
+                                                                                    className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-[11px] font-semibold shadow ring-1 ring-inset ${
+                                                                                        selectionTone === "active"
+                                                                                            ? "bg-[rgba(45,120,92,0.2)] text-[var(--success)] ring-[rgba(45,120,92,0.28)]"
+                                                                                            : "bg-[rgba(23,68,152,0.14)] text-[#174498] ring-[rgba(23,68,152,0.22)]"
+                                                                                    }`}
+                                                                                    title={passengerDisplayLabel(ownerPassengerIndex ?? 0)}
+                                                                                >
+                                                                                    {ownerBadge}
+                                                                                </span>
+                                                                            ) : null}
                                                                         </div>
-                                                                        {ownerBadge ? (
-                                                                            <span
-                                                                                className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-[11px] font-semibold shadow ring-1 ring-inset ${
-                                                                                    selectionTone === "active"
-                                                                                        ? "bg-[rgba(45,120,92,0.2)] text-[var(--success)] ring-[rgba(45,120,92,0.28)]"
-                                                                                        : "bg-[rgba(23,68,152,0.14)] text-[#174498] ring-[rgba(23,68,152,0.22)]"
-                                                                                }`}
-                                                                                title={passengerDisplayLabel(ownerPassengerIndex ?? 0)}
-                                                                            >
-                                                                                {ownerBadge}
-                                                                            </span>
-                                                                        ) : null}
-                                                                    </div>
-                                                                    <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-75">
-                                                                        {seat.paid ? "Paid" : seat.availability || "Open"}
-                                                                    </div>
-                                                                </button>
-                                                            );
-                                                        })}
+                                                                        <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-75">
+                                                                            {seat.paid ? "Paid" : seat.availability || "Open"}
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        <div className="grid grid-flow-col auto-cols-[72px] gap-2">
+                                                            {right.map((seat) => {
+                                                                const seatOwner = servicePreferences.selectedSeats.find(
+                                                                    (item) =>
+                                                                        item.segmentLabel === (activeSeatSegment?.label ?? "") &&
+                                                                        item.seatCode === seat.code
+                                                                );
+                                                                const ownerPassengerIndex =
+                                                                    seatOwner && typeof seatOwner.passengerIndex === "number"
+                                                                        ? seatOwner.passengerIndex
+                                                                        : seatOwner
+                                                                            ? 0
+                                                                            : null;
+                                                                const selectionTone =
+                                                                    ownerPassengerIndex == null
+                                                                        ? "none"
+                                                                        : ownerPassengerIndex === activeSeatPassengerIndex
+                                                                            ? "active"
+                                                                            : "other";
+                                                                const ownerBadge =
+                                                                    ownerPassengerIndex == null ? "" : passengerBadgeLabel(ownerPassengerIndex);
+
+                                                                return (
+                                                                    <button
+                                                                        key={`${row.number}-${seat.code}-right`}
+                                                                        type="button"
+                                                                        disabled={!isSeatSelectable(seat)}
+                                                                        onClick={() => chooseSeat(seat.code)}
+                                                                        className={`relative min-h-[72px] rounded-[1rem] border px-2 py-2 text-left text-xs transition ${seatTone(
+                                                                            seat,
+                                                                            selectionTone
+                                                                        )}`}
+                                                                        title={[seat.availability, ...seat.characteristics].filter(Boolean).join(" | ")}
+                                                                    >
+                                                                        <div className="flex items-start justify-between gap-2">
+                                                                            <div className="font-semibold">{seat.code || "--"}</div>
+                                                                            {ownerBadge ? (
+                                                                                <span
+                                                                                    className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-[11px] font-semibold shadow ring-1 ring-inset ${
+                                                                                        selectionTone === "active"
+                                                                                            ? "bg-[rgba(45,120,92,0.2)] text-[var(--success)] ring-[rgba(45,120,92,0.28)]"
+                                                                                            : "bg-[rgba(23,68,152,0.14)] text-[#174498] ring-[rgba(23,68,152,0.22)]"
+                                                                                    }`}
+                                                                                    title={passengerDisplayLabel(ownerPassengerIndex ?? 0)}
+                                                                                >
+                                                                                    {ownerBadge}
+                                                                                </span>
+                                                                            ) : null}
+                                                                        </div>
+                                                                        <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-75">
+                                                                            {seat.paid ? "Paid" : seat.availability || "Open"}
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
 
