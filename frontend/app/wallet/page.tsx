@@ -41,6 +41,14 @@ export default function WalletPage() {
     const [updatingWithdrawalId, setUpdatingWithdrawalId] = useState("");
     const [creatingBillplzTopUp, setCreatingBillplzTopUp] = useState(false);
 
+    const AGENT_TOPUP_MIN = 1500;
+    const AGENT_TOPUP_MAX = 20000;
+    const agentTopUpAmountNumber = Number(agentTopUpAmount);
+    const isAgentTopUpAmountValid =
+        Number.isFinite(agentTopUpAmountNumber) &&
+        agentTopUpAmountNumber >= AGENT_TOPUP_MIN &&
+        agentTopUpAmountNumber <= AGENT_TOPUP_MAX;
+
     const isReservedAdmin =
         user?.role === "ADMIN" && (user?.email ?? "").trim().toLowerCase() === "admin@tourvalve.com";
 
@@ -141,12 +149,22 @@ export default function WalletPage() {
     };
 
     const handleBillplzTopUp = async () => {
+        if (user?.role !== "AGENT") {
+            setError("Billplz top-up is available to agent wallets only.");
+            return;
+        }
+
+        if (!isAgentTopUpAmountValid) {
+            setError(`Top-up amount must be between MYR ${AGENT_TOPUP_MIN.toFixed(2)} and MYR ${AGENT_TOPUP_MAX.toFixed(2)}.`);
+            return;
+        }
+
         try {
             setCreatingBillplzTopUp(true);
             setError("");
             setSuccess("");
 
-            const session = await createBillplzWalletTopUp(Number(agentTopUpAmount));
+            const session = await createBillplzWalletTopUp(agentTopUpAmountNumber);
             window.location.href = session.checkoutUrl;
         } catch (value: unknown) {
             setError(value instanceof Error ? value.message : "Billplz top-up could not be started");
@@ -660,7 +678,8 @@ export default function WalletPage() {
                                     <input
                                         className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white/90 p-4 outline-none transition focus:border-[var(--accent)]"
                                         type="number"
-                                        min="1"
+                                        min={AGENT_TOPUP_MIN}
+                                        max={AGENT_TOPUP_MAX}
                                         step="0.01"
                                         value={agentTopUpAmount}
                                         onChange={(event) => setAgentTopUpAmount(event.target.value)}
@@ -668,11 +687,14 @@ export default function WalletPage() {
                                     />
                                     <button
                                         onClick={() => void handleBillplzTopUp()}
-                                        disabled={creatingBillplzTopUp}
+                                        disabled={creatingBillplzTopUp || user?.role !== "AGENT" || !isAgentTopUpAmountValid}
                                         className="gold-button rounded-2xl px-5 py-4 font-semibold disabled:opacity-60"
                                     >
                                         {creatingBillplzTopUp ? "Redirecting..." : "Top Up via Billplz"}
                                     </button>
+                                </div>
+                                <div className="mt-2 text-xs text-slate-500">
+                                    Minimum top-up: MYR {AGENT_TOPUP_MIN.toFixed(2)} · Maximum: MYR {AGENT_TOPUP_MAX.toFixed(2)}
                                 </div>
                             </div>
 

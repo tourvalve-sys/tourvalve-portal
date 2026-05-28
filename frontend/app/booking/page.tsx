@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
     BriefcaseBusiness,
     ChefHat,
@@ -45,6 +45,7 @@ type SeatSelection = {
     productCode?: string;
     seatPrice?: number | null;
     currency?: string;
+    passengerIndex?: number;
 };
 
 type PaidAncillarySelection = {
@@ -118,11 +119,16 @@ function buildSegmentLabel(segment: {
 
 function extractKgBadges(value: unknown) {
     if (typeof value !== "string") return [];
-    const matches = Array.from(value.matchAll(/(\d{1,3})\s*kg\b/gi));
+    const matches = Array.from(value.matchAll(/(\d{1,3}(?:\.\d{1,2})?)\s*(kg|kgs|kilograms?|k)\b/gi));
     return matches
         .map((match) => match[1])
         .filter(Boolean)
-        .map((amount) => `${amount}kg`);
+        .map((amount) => {
+            const parsed = Number(amount);
+            if (!Number.isFinite(parsed) || parsed <= 0) return "";
+            return `${Math.round(parsed)}kg`;
+        })
+        .filter(Boolean);
 }
 
 function formatDateTimeLabel(value: string) {
@@ -222,14 +228,24 @@ function isSeatSelectable(seat: {
     return true;
 }
 
+function travelerLabel(type: string) {
+    if (type === "CNN") return "Child";
+    if (type === "INF") return "Infant";
+    return "Adult";
+}
+
 function seatTone(seat: {
     code: string;
     availability: string;
     paid: boolean;
     characteristics: string[];
-}, isSelected: boolean) {
-    if (isSelected) {
+}, selectionTone: "none" | "active" | "other") {
+    if (selectionTone === "active") {
         return "border-[rgba(45,120,92,0.44)] bg-[rgba(225,246,236,0.96)] text-[var(--success)] shadow-[0_10px_24px_rgba(40,116,79,0.18)]";
+    }
+
+    if (selectionTone === "other") {
+        return "border-[rgba(23,68,152,0.28)] bg-[rgba(241,248,255,0.92)] text-[#174498] shadow-[0_10px_24px_rgba(31,42,68,0.1)]";
     }
 
     if (!isSeatSelectable(seat)) {
@@ -388,6 +404,7 @@ export default function BookingPage() {
         changeFeeOverride: "",
     });
     const [activeSeatSegmentIndex, setActiveSeatSegmentIndex] = useState(0);
+    const [activeSeatPassengerIndex, setActiveSeatPassengerIndex] = useState<number | null>(null);
     const [fareCategoryModalOpen, setFareCategoryModalOpen] = useState(false);
     const [seatMapLoading, setSeatMapLoading] = useState(false);
     const [seatMapError, setSeatMapError] = useState("");
@@ -604,15 +621,77 @@ export default function BookingPage() {
 
     const todayDate = new Date().toISOString().split("T")[0];
 
-    const travelerLabel = (type: string) => {
-        if (type === "CNN") return "Child";
-        if (type === "INF") return "Infant";
-        return "Adult";
-    };
+    const passengerDisplayLabel = useCallback(
+        (passengerIndex: number) => {
+            const passengerType = passengers[passengerIndex]?.travelerType ?? "ADT";
+            let ordinal = 0;
+            for (let index = 0; index <= passengerIndex && index < passengers.length; index++) {
+                if (passengers[index]?.travelerType === passengerType) {
+                    ordinal += 1;
+                }
+            }
+            return `${travelerLabel(passengerType)} ${ordinal || passengerIndex + 1}`;
+        },
+        [passengers]
+    );
 
-    const selectedSeatSummary = servicePreferences.selectedSeats
-        .map((seat) => `${seat.segmentLabel}: ${seat.seatCode}`)
-        .join(" | ");
+    const passengerBadgeLabel = useCallback(
+        (passengerIndex: number) => {
+            const passengerType = passengers[passengerIndex]?.travelerType ?? "ADT";
+            let ordinal = 0;
+            for (let index = 0; index <= passengerIndex && index < passengers.length; index++) {
+                if (passengers[index]?.travelerType === passengerType) {
+                    ordinal += 1;
+                }
+            }
+
+            const prefix = passengerType === "CNN" ? "C" : passengerType === "INF" ? "I" : "A";
+            return `${prefix}${ordinal || passengerIndex + 1}`;
+        },
+        [passengers]
+    );
+
+    const seatEligiblePassengers = useMemo(
+        () =>
+            passengers
+                .map((passenger, index) => ({ index, type: passenger.travelerType }))
+                .filter((passenger) => passenger.type !== "INF"),
+        [passengers]
+    );
+
+    useEffect(() => {
+        if (seatEligiblePassengers.length === 0) {
+            if (activeSeatPassengerIndex !== null) {
+                setActiveSeatPassengerIndex(null);
+            }
+            return;
+        }
+
+        if (
+            activeSeatPassengerIndex != null &&
+            seatEligiblePassengers.some((passenger) => passenger.index === activeSeatPassengerIndex)
+        ) {
+            return;
+        }
+
+        setActiveSeatPassengerIndex(seatEligiblePassengers[0].index);
+    }, [activeSeatPassengerIndex, seatEligiblePassengers]);
+
+    const selectedSeatSummary = useMemo(() => {
+        const segmentLabel = activeSeatSegment?.label ?? "";
+        if (!segmentLabel) {
+            return "";
+        }
+
+        const selections = servicePreferences.selectedSeats
+            .filter((seat) => seat.segmentLabel === segmentLabel && seat.seatCode)
+            .map((seat) => {
+                const passengerIndex = typeof seat.passengerIndex === "number" ? seat.passengerIndex : 0;
+                return `${passengerDisplayLabel(passengerIndex)}: ${seat.seatCode}`;
+            });
+
+        return selections.join(" | ");
+    }, [activeSeatSegment?.label, passengerDisplayLabel, servicePreferences.selectedSeats]);
 
     const selectedPaidBaggageAddOns = useMemo(() => {
         const fallbackCurrency = selectedFlight?.currency || "MYR";
@@ -734,24 +813,65 @@ export default function BookingPage() {
             return;
         }
 
+        if (activeSeatPassengerIndex == null) {
+            setSeatMapError("Add at least one seat-eligible passenger to request seats.");
+            return;
+        }
+
+        const passengerIndex = activeSeatPassengerIndex;
+        const segmentLabel = activeSeatSegment.label;
+        const existingSeatOwner = servicePreferences.selectedSeats.find(
+            (item) => item.segmentLabel === segmentLabel && item.seatCode === seatCode
+        );
+        if (existingSeatOwner && (existingSeatOwner.passengerIndex ?? 0) !== passengerIndex) {
+            const ownerIndex = existingSeatOwner.passengerIndex ?? 0;
+            const ownerType = passengers[ownerIndex]?.travelerType ?? "ADT";
+            let ordinal = 0;
+            for (let index = 0; index <= ownerIndex && index < passengers.length; index++) {
+                if (passengers[index]?.travelerType === ownerType) {
+                    ordinal += 1;
+                }
+            }
+            setSeatMapError(`Seat ${seatCode} is already assigned to ${travelerLabel(ownerType)} ${ordinal || ownerIndex + 1}.`);
+            return;
+        }
+
+        setSeatMapError("");
+
         const selectedSeat = normalizedSeatRows
             .flatMap((row) => row.seats)
             .find((seat) => seat.code === seatCode);
         const seatPrice = selectedSeat?.seatPrice ?? null;
         const seatCurrency = selectedSeat?.currency ?? selectedFlight?.currency ?? "MYR";
 
-        const nextSelections = [
-            ...servicePreferences.selectedSeats.filter(
-                (item) => item.segmentLabel !== activeSeatSegment.label
-            ),
-            {
-                segmentLabel: activeSeatSegment.label,
-                segmentIndex: activeSeatSegmentIndex + 1,
-                seatCode,
-                seatPrice,
-                currency: seatCurrency,
-            },
-        ];
+        const isAlreadySelectedForPassenger = servicePreferences.selectedSeats.some(
+            (item) =>
+                item.segmentLabel === segmentLabel &&
+                (item.passengerIndex ?? 0) === passengerIndex &&
+                item.seatCode === seatCode
+        );
+
+        const baseSelections = servicePreferences.selectedSeats.filter(
+            (item) =>
+                !(
+                    item.segmentLabel === segmentLabel &&
+                    (item.passengerIndex ?? 0) === passengerIndex
+                )
+        );
+
+        const nextSelections = isAlreadySelectedForPassenger
+            ? baseSelections
+            : [
+                  ...baseSelections,
+                  {
+                      segmentLabel,
+                      segmentIndex: activeSeatSegmentIndex + 1,
+                      seatCode,
+                      seatPrice,
+                      currency: seatCurrency,
+                      passengerIndex,
+                  },
+              ];
 
         setServicePreferences((current) => ({
             ...current,
@@ -1513,9 +1633,20 @@ export default function BookingPage() {
                             {!!seatMapSegments.length && (
                                 <div className="mt-5 flex flex-wrap gap-3">
                                     {seatMapSegments.map((segment, index) => {
-                                        const selected = servicePreferences.selectedSeats.find(
-                                            (item) => item.segmentLabel === segment.label
-                                        );
+                                        const segmentSelections = servicePreferences.selectedSeats
+                                            .filter((item) => item.segmentLabel === segment.label && item.seatCode)
+                                            .sort((a, b) => (a.passengerIndex ?? 0) - (b.passengerIndex ?? 0));
+
+                                        const seatSummary = segmentSelections.length
+                                            ? segmentSelections
+                                                  .slice(0, 2)
+                                                  .map((item) => {
+                                                      const passengerIndex =
+                                                          typeof item.passengerIndex === "number" ? item.passengerIndex : 0;
+                                                      return `${passengerDisplayLabel(passengerIndex)} ${item.seatCode}`;
+                                                  })
+                                                  .join(" • ") + (segmentSelections.length > 2 ? ` • +${segmentSelections.length - 2} more` : "")
+                                            : "No seat requested yet";
 
                                         return (
                                             <button
@@ -1530,13 +1661,68 @@ export default function BookingPage() {
                                             >
                                                 <div className="font-semibold">{segment.label}</div>
                                                 <div className="mt-1 text-xs opacity-80">
-                                                    {selected ? `Seat ${selected.seatCode} requested` : "No seat requested yet"}
+                                                    {seatSummary}
                                                 </div>
                                             </button>
                                         );
                                     })}
                                 </div>
                             )}
+
+                            {activeSeatSegment && seatEligiblePassengers.length > 0 ? (
+                                <div className="mt-4 rounded-[1.3rem] border border-[rgba(89,64,46,0.08)] bg-white/70 px-4 py-4 shadow-[0_12px_28px_rgba(31,42,68,0.04)]">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                            Selecting for traveler
+                                        </div>
+                                        <div className="text-xs font-semibold text-slate-500">
+                                            {activeSeatSegment.label}
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {seatEligiblePassengers.map((passenger) => {
+                                            const passengerIndex = passenger.index;
+                                            const active = passengerIndex === activeSeatPassengerIndex;
+                                            const seatForPassenger = servicePreferences.selectedSeats.find(
+                                                (item) =>
+                                                    item.segmentLabel === activeSeatSegment.label &&
+                                                    (item.passengerIndex ?? 0) === passengerIndex &&
+                                                    item.seatCode
+                                            );
+
+                                            return (
+                                                <button
+                                                    key={passengerIndex}
+                                                    type="button"
+                                                    aria-pressed={active}
+                                                    onClick={() => setActiveSeatPassengerIndex(passengerIndex)}
+                                                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left text-sm shadow-sm transition ${
+                                                        active
+                                                            ? "border-[rgba(45,120,92,0.28)] bg-[rgba(225,246,236,0.92)] text-[var(--success)]"
+                                                            : "border-[rgba(89,64,46,0.1)] bg-white/80 text-[var(--ink)] hover:bg-white"
+                                                    }`}
+                                                >
+                                                    <span
+                                                        className={`inline-flex h-8 min-w-8 items-center justify-center rounded-full text-xs font-semibold shadow ring-1 ring-inset ${
+                                                            active
+                                                                ? "bg-[rgba(45,120,92,0.18)] text-[var(--success)] ring-[rgba(45,120,92,0.22)]"
+                                                                : "bg-[rgba(23,68,152,0.08)] text-[#174498] ring-[rgba(23,68,152,0.16)]"
+                                                        }`}
+                                                    >
+                                                        {passengerBadgeLabel(passengerIndex)}
+                                                    </span>
+                                                    <div className="min-w-0">
+                                                        <div className="font-semibold">{passengerDisplayLabel(passengerIndex)}</div>
+                                                        <div className="mt-1 text-[11px] uppercase tracking-[0.14em] opacity-75">
+                                                            {seatForPassenger ? `Seat ${seatForPassenger.seatCode}` : "No seat selected"}
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ) : null}
 
                             {selectedSeatSummary && (
                                 <div className="mt-4 rounded-[1.3rem] bg-[rgba(228,243,235,0.76)] px-4 py-3 text-sm text-[var(--success)]">
@@ -1568,7 +1754,11 @@ export default function BookingPage() {
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <span className="h-3 w-3 rounded-full bg-[rgba(225,246,236,0.96)] shadow ring-1 ring-[rgba(45,120,92,0.3)]"></span>
-                                            Selected
+                                            Selected (active)
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="h-3 w-3 rounded-full bg-[rgba(241,248,255,0.92)] shadow ring-1 ring-[rgba(23,68,152,0.26)]"></span>
+                                            Selected (other)
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <span className="h-3 w-3 rounded-full bg-[rgba(255,245,229,0.92)] shadow ring-1 ring-[rgba(176,122,67,0.3)]"></span>
@@ -1580,42 +1770,74 @@ export default function BookingPage() {
                                         </div>
                                     </div>
 
-                                    <div className="space-y-3">
-                                        {normalizedSeatRows.map((row) => (
-                                            <div
-                                                key={row.number}
-                                                className="grid grid-cols-1 gap-3 rounded-[1.3rem] bg-white/55 px-3 py-3 backdrop-blur-sm sm:grid-cols-[4rem_1fr] sm:items-center"
-                                            >
-                                                <div className="text-sm font-semibold text-[var(--accent-strong)]">
-                                                    Row {row.number}
-                                                </div>
-                                                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-                                                    {row.seats.map((seat) => {
-                                                        const isSelected = servicePreferences.selectedSeats.some(
-                                                            (item) =>
-                                                                item.segmentLabel === (activeSeatSegment?.label ?? "") &&
-                                                                item.seatCode === seat.code
-                                                        );
+                                    <div className="max-h-[50vh] overflow-auto pr-1">
+                                        <div className="space-y-3">
+                                            {normalizedSeatRows.map((row) => (
+                                                <div
+                                                    key={row.number}
+                                                    className="grid grid-cols-1 gap-3 rounded-[1.3rem] bg-white/55 px-3 py-3 backdrop-blur-sm sm:grid-cols-[4rem_1fr] sm:items-center"
+                                                >
+                                                    <div className="text-sm font-semibold text-[var(--accent-strong)]">
+                                                        Row {row.number}
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                                                        {row.seats.map((seat) => {
+                                                            const seatOwner = servicePreferences.selectedSeats.find(
+                                                                (item) =>
+                                                                    item.segmentLabel === (activeSeatSegment?.label ?? "") &&
+                                                                    item.seatCode === seat.code
+                                                            );
+                                                            const ownerPassengerIndex =
+                                                                seatOwner && typeof seatOwner.passengerIndex === "number"
+                                                                    ? seatOwner.passengerIndex
+                                                                    : seatOwner
+                                                                        ? 0
+                                                                        : null;
+                                                            const selectionTone =
+                                                                ownerPassengerIndex == null
+                                                                    ? "none"
+                                                                    : ownerPassengerIndex === activeSeatPassengerIndex
+                                                                        ? "active"
+                                                                        : "other";
+                                                            const ownerBadge =
+                                                                ownerPassengerIndex == null ? "" : passengerBadgeLabel(ownerPassengerIndex);
 
-                                                        return (
-                                                            <button
-                                                                key={`${row.number}-${seat.code}`}
-                                                                type="button"
-                                                                disabled={!isSeatSelectable(seat)}
-                                                                onClick={() => chooseSeat(seat.code)}
-                                                                className={`rounded-2xl border px-3 py-3 text-left text-sm transition ${seatTone(seat, isSelected)}`}
-                                                                title={[seat.availability, ...seat.characteristics].filter(Boolean).join(" | ")}
-                                                            >
-                                                                <div className="font-semibold">{seat.code || "--"}</div>
-                                                                <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-75">
-                                                                    {seat.paid ? "Paid" : seat.availability || "Open"}
-                                                                </div>
-                                                            </button>
-                                                        );
-                                                    })}
+                                                            return (
+                                                                <button
+                                                                    key={`${row.number}-${seat.code}`}
+                                                                    type="button"
+                                                                    disabled={!isSeatSelectable(seat)}
+                                                                    onClick={() => chooseSeat(seat.code)}
+                                                                    className={`relative rounded-2xl border px-3 py-3 text-left text-sm transition ${seatTone(seat, selectionTone)}`}
+                                                                    title={[seat.availability, ...seat.characteristics].filter(Boolean).join(" | ")}
+                                                                >
+                                                                    <div className="flex items-start justify-between gap-2">
+                                                                        <div className="font-semibold">
+                                                                            {(seat.code.match(/[A-Za-z]+$/)?.[0] ?? seat.code) || "--"}
+                                                                        </div>
+                                                                        {ownerBadge ? (
+                                                                            <span
+                                                                                className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-[11px] font-semibold shadow ring-1 ring-inset ${
+                                                                                    selectionTone === "active"
+                                                                                        ? "bg-[rgba(45,120,92,0.2)] text-[var(--success)] ring-[rgba(45,120,92,0.28)]"
+                                                                                        : "bg-[rgba(23,68,152,0.14)] text-[#174498] ring-[rgba(23,68,152,0.22)]"
+                                                                                }`}
+                                                                                title={passengerDisplayLabel(ownerPassengerIndex ?? 0)}
+                                                                            >
+                                                                                {ownerBadge}
+                                                                            </span>
+                                                                        ) : null}
+                                                                    </div>
+                                                                    <div className="mt-1 text-[11px] uppercase tracking-[0.12em] opacity-75">
+                                                                        {seat.paid ? "Paid" : seat.availability || "Open"}
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            ))}
+                                        </div>
                                     </div>
 
                                     {!normalizedSeatRows.length && (

@@ -1634,6 +1634,8 @@ public sealed class AirBookingController : ControllerBase
                 })
                 .ToList();
 
+            var preferenceAncillaries = BuildBookingPreferenceAncillaries(booking, request);
+
             var model = new BookingItineraryPdfModel(
                 BookingReference: string.IsNullOrWhiteSpace(bookingReference) ? booking.BookingReference : bookingReference,
                 Status: booking.Status,
@@ -1649,7 +1651,7 @@ public sealed class AirBookingController : ControllerBase
                 ContactPhone: request.ContactPhone,
                 ItinerarySegments: segments,
                 TicketNumbers: Array.Empty<string>(),
-                Ancillaries: Array.Empty<BookingAncillaryOrder>());
+                Ancillaries: preferenceAncillaries);
 
             var pdfBytes = new BookingItineraryPdfBuilder().Build(booking, model);
             var fileName = $"TourValve Booking - {booking.BookingReference}.pdf";
@@ -1663,6 +1665,148 @@ public sealed class AirBookingController : ControllerBase
         {
             return null;
         }
+    }
+
+    private static IReadOnlyList<BookingAncillaryOrder> BuildBookingPreferenceAncillaries(Booking booking, AirBookingRequest request)
+    {
+        var currencyFallback = string.IsNullOrWhiteSpace(request.Currency) ? "MYR" : request.Currency.Trim().ToUpperInvariant();
+        var now = DateTime.UtcNow;
+        var ancillaries = new List<BookingAncillaryOrder>();
+
+        foreach (var seat in request.ServicePreferences.SelectedSeats
+                     .Where(x => !string.IsNullOrWhiteSpace(x.SeatCode)))
+        {
+            var segment = string.IsNullOrWhiteSpace(seat.SegmentLabel) ? "Seat" : seat.SegmentLabel.Trim();
+            var passengerLabel = BuildPassengerLabel(request.Passengers, seat.PassengerIndex);
+            var seatCode = seat.SeatCode.Trim();
+            var seatCurrency = string.IsNullOrWhiteSpace(seat.Currency) ? currencyFallback : seat.Currency.Trim().ToUpperInvariant();
+            var amount = seat.SeatPrice ?? 0m;
+
+            ancillaries.Add(new BookingAncillaryOrder
+            {
+                Id = Guid.NewGuid(),
+                BookingId = booking.Id,
+                AgentId = booking.AgentId,
+                Type = "SEAT",
+                SegmentLabel = segment,
+                OptionCode = seatCode,
+                Description = $"{segment}: {passengerLabel} seat {seatCode}",
+                BaseAmount = amount,
+                MarkupAmount = 0m,
+                TotalAmount = amount,
+                Currency = seatCurrency,
+                Status = "RECORDED",
+                FulfillmentMode = "BOOKING_REQUEST",
+                RequestedAt = now
+            });
+        }
+
+        foreach (var item in request.ServicePreferences.SelectedAncillaries
+                     .Where(x => !string.IsNullOrWhiteSpace(x.Type) && !string.IsNullOrWhiteSpace(x.Code)))
+        {
+            var type = (item.Type ?? string.Empty).Trim().ToUpperInvariant();
+            var segment = string.IsNullOrWhiteSpace(item.SegmentLabel) ? string.Empty : item.SegmentLabel.Trim();
+            var description = string.IsNullOrWhiteSpace(item.Title) ? item.Code.Trim() : item.Title.Trim();
+            if (!string.IsNullOrWhiteSpace(segment))
+            {
+                description = $"{segment}: {description}";
+            }
+
+            var itemCurrency = string.IsNullOrWhiteSpace(item.Currency) ? currencyFallback : item.Currency.Trim().ToUpperInvariant();
+
+            ancillaries.Add(new BookingAncillaryOrder
+            {
+                Id = Guid.NewGuid(),
+                BookingId = booking.Id,
+                AgentId = booking.AgentId,
+                Type = type,
+                SegmentLabel = segment,
+                OptionCode = item.Code.Trim(),
+                Description = description,
+                BaseAmount = item.Amount,
+                MarkupAmount = 0m,
+                TotalAmount = item.Amount,
+                Currency = itemCurrency,
+                Status = "RECORDED",
+                FulfillmentMode = "BOOKING_REQUEST",
+                RequestedAt = now
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ServicePreferences.BaggagePreference))
+        {
+            ancillaries.Add(new BookingAncillaryOrder
+            {
+                Id = Guid.NewGuid(),
+                BookingId = booking.Id,
+                AgentId = booking.AgentId,
+                Type = "BAGGAGE",
+                SegmentLabel = string.Empty,
+                OptionCode = string.Empty,
+                Description = request.ServicePreferences.BaggagePreference.Trim(),
+                BaseAmount = 0m,
+                MarkupAmount = 0m,
+                TotalAmount = 0m,
+                Currency = currencyFallback,
+                Status = "RECORDED",
+                FulfillmentMode = "BOOKING_REQUEST",
+                RequestedAt = now
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ServicePreferences.MealPreference))
+        {
+            ancillaries.Add(new BookingAncillaryOrder
+            {
+                Id = Guid.NewGuid(),
+                BookingId = booking.Id,
+                AgentId = booking.AgentId,
+                Type = "MEAL",
+                SegmentLabel = string.Empty,
+                OptionCode = string.Empty,
+                Description = request.ServicePreferences.MealPreference.Trim(),
+                BaseAmount = 0m,
+                MarkupAmount = 0m,
+                TotalAmount = 0m,
+                Currency = currencyFallback,
+                Status = "RECORDED",
+                FulfillmentMode = "BOOKING_REQUEST",
+                RequestedAt = now
+            });
+        }
+
+        return ancillaries;
+    }
+
+    private static string BuildPassengerLabel(IReadOnlyList<AirBookingPassengerRequest> passengers, int? passengerIndex)
+    {
+        if (passengers.Count == 0)
+            return "Passenger 1";
+
+        var index = passengerIndex.GetValueOrDefault(0);
+        if (index < 0 || index >= passengers.Count)
+        {
+            index = 0;
+        }
+
+        var type = NormalizeTravelerType(passengers[index].TravelerType ?? string.Empty);
+        var ordinal = 0;
+        for (var i = 0; i <= index && i < passengers.Count; i++)
+        {
+            if (NormalizeTravelerType(passengers[i].TravelerType ?? string.Empty) == type)
+            {
+                ordinal += 1;
+            }
+        }
+
+        var label = type switch
+        {
+            "CNN" => "Child",
+            "INF" => "Infant",
+            _ => "Adult"
+        };
+
+        return $"{label} {Math.Max(1, ordinal)}";
     }
 
     private static string? Clean(string? value) =>

@@ -82,6 +82,7 @@ public static class TravelportFlightParser
                 CarryOnAllowance = baggageContext.CarryOnAllowance,
                 CheckedBaggageAllowance = baggageContext.CheckedBagAllowance,
                 BaggageOfferTexts = baggageContext.OfferTexts,
+                MealIncluded = IsMealIncluded(solution),
                 AirPricingSolutionXml = solution.ToString(SaveOptions.DisableFormatting),
                 AirPricingContextXml = doc.Root?.ToString(SaveOptions.DisableFormatting) ?? xml,
                 AirSegmentXml = firstSegment.ToString(SaveOptions.DisableFormatting),
@@ -300,6 +301,7 @@ public static class TravelportFlightParser
                 CarryOnAllowance = baggageContext.CarryOnAllowance,
                 CheckedBaggageAllowance = baggageContext.CheckedBagAllowance,
                 BaggageOfferTexts = baggageContext.OfferTexts,
+                MealIncluded = IsMealIncluded(point),
                 AirPricingSolutionXml = point.ToString(SaveOptions.DisableFormatting),
                 AirPricingContextXml = doc.Root?.ToString(SaveOptions.DisableFormatting) ?? xml,
                 AirSegmentXml = firstSegment.ToString(SaveOptions.DisableFormatting),
@@ -740,6 +742,21 @@ public static class TravelportFlightParser
         );
     }
 
+    private static bool IsMealIncluded(XElement container)
+    {
+        return container.Descendants()
+            .Where(x => x.Name.LocalName.Equals("OptionalService", StringComparison.OrdinalIgnoreCase))
+            .Any(service =>
+            {
+                var type = service.Attribute("Type")?.Value ?? string.Empty;
+                if (!type.Equals("MealOrBeverage", StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                var chargeable = service.Attribute("Chargeable")?.Value ?? string.Empty;
+                return chargeable.Contains("included", StringComparison.OrdinalIgnoreCase);
+            });
+    }
+
     private static string FormatCarryOnAllowance(XElement carryOnInfo)
     {
         var carryOnDetails = carryOnInfo.Descendants()
@@ -764,12 +781,27 @@ public static class TravelportFlightParser
             allowance.Add($"{applicableBags} carry-on bag{(applicableBags == "1" ? string.Empty : "s")}");
 
         if (!string.IsNullOrWhiteSpace(restrictionText))
-            allowance.Add(restrictionText.Trim());
+            allowance.Add(NormalizeBaggageText(restrictionText));
 
         if (allowance.Count == 0)
             allowance.AddRange(ReadTextInfoValues(carryOnInfo));
 
-        var summary = string.Join(" • ", allowance.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase));
+        var weightHint = ExtractWeightHintKg(restrictionText);
+        if (string.IsNullOrWhiteSpace(weightHint))
+        {
+            weightHint = allowance
+                .Select(ExtractWeightHintKg)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(weightHint))
+        {
+            return $"Carry-on: {weightHint}";
+        }
+
+        var summary = string.Join(" • ", allowance
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
 
         if (!string.IsNullOrWhiteSpace(price) && !price.EndsWith("0.00", StringComparison.OrdinalIgnoreCase))
             return $"Carry-on: {summary} ({price})";
@@ -829,11 +861,22 @@ public static class TravelportFlightParser
         if (!string.IsNullOrWhiteSpace(pieces))
             allowanceParts.Add($"{pieces} piece{(pieces == "1" ? string.Empty : "s")}");
 
-        if (!string.IsNullOrWhiteSpace(maxWeight))
-            allowanceParts.Add(string.IsNullOrWhiteSpace(weightUnit) ? maxWeight : $"{maxWeight} {weightUnit}");
+        var weightHint = ExtractWeightHintKg(
+            !string.IsNullOrWhiteSpace(maxWeight)
+                ? $"{maxWeight} {weightUnit}".Trim()
+                : string.Empty);
+        if (string.IsNullOrWhiteSpace(weightHint))
+        {
+            weightHint = ExtractWeightHintKg(restrictionText);
+        }
+
+        if (!string.IsNullOrWhiteSpace(weightHint))
+        {
+            allowanceParts.Add(weightHint);
+        }
 
         if (!string.IsNullOrWhiteSpace(restrictionText))
-            allowanceParts.Add(restrictionText.Trim());
+            allowanceParts.Add(NormalizeBaggageText(restrictionText));
 
         var allowance = string.Join(" • ", allowanceParts.Distinct(StringComparer.OrdinalIgnoreCase));
         var label = string.IsNullOrWhiteSpace(applicable) ? "Checked baggage" : applicable;
@@ -846,6 +889,47 @@ public static class TravelportFlightParser
         return string.IsNullOrWhiteSpace(allowance)
             ? label
             : $"{label}: {allowance}";
+    }
+
+    private static string NormalizeBaggageText(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return string.Empty;
+
+        return raw.Replace("\u00A0", " ", StringComparison.Ordinal).Trim();
+    }
+
+    private static string ExtractWeightHintKg(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return string.Empty;
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            raw.Trim(),
+            @"(?i)(\d{1,3}(?:\.\d{1,2})?)\s*(kg|kgs|kilograms?|k|lb|lbs|pounds?)\b");
+
+        if (!match.Success)
+            return string.Empty;
+
+        if (!decimal.TryParse(match.Groups[1].Value, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value))
+            return string.Empty;
+
+        var unit = match.Groups[2].Value.Trim().ToLowerInvariant();
+
+        decimal kg;
+        if (unit.StartsWith("lb") || unit.StartsWith("pound"))
+        {
+            kg = decimal.Round(value * 0.45359237m, 0, MidpointRounding.AwayFromZero);
+        }
+        else
+        {
+            kg = decimal.Round(value, 0, MidpointRounding.AwayFromZero);
+        }
+
+        if (kg <= 0m)
+            return string.Empty;
+
+        return $"{kg:0}kg";
     }
 
     private static IEnumerable<string> ReadTextInfoValues(XElement container)

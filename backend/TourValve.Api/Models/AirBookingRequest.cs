@@ -54,6 +54,9 @@ public sealed class AirBookingSeatSelectionRequest
     public string SegmentLabel { get; set; } = string.Empty;
     public int? SegmentIndex { get; set; }
     public string SeatCode { get; set; } = string.Empty;
+    public int? PassengerIndex { get; set; }
+    public decimal? SeatPrice { get; set; }
+    public string? Currency { get; set; }
     public string? ProductCode { get; set; }
 }
 

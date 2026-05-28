@@ -10,6 +10,9 @@ namespace TourValve.Infrastructure.Services;
 
 public class BillplzTopUpService : IBillplzTopUpService
 {
+    private const decimal AgentTopUpMinAmount = 1500m;
+    private const decimal AgentTopUpMaxAmount = 20000m;
+
     private readonly HttpClient _httpClient;
     private readonly TourValveDbContext _db;
     private readonly IAuditTrailService _audit;
@@ -40,6 +43,11 @@ public class BillplzTopUpService : IBillplzTopUpService
         }
 
         var roundedAmount = decimal.Round(amount, 2, MidpointRounding.AwayFromZero);
+        if (roundedAmount < AgentTopUpMinAmount || roundedAmount > AgentTopUpMaxAmount)
+        {
+            throw new InvalidOperationException($"Top-up amount must be between MYR {AgentTopUpMinAmount:0.00} and MYR {AgentTopUpMaxAmount:0.00}.");
+        }
+
         var amountInSen = ConvertToSen(roundedAmount);
 
         var agent = await _db.Agents.AsNoTracking().FirstOrDefaultAsync(x => x.Id == agentId && x.IsActive);

@@ -417,7 +417,6 @@ function AncillariesPageContent() {
     const [seatMap, setSeatMap] = useState<FlightSeatMapResponse | null>(null);
     const [seatMapLoading, setSeatMapLoading] = useState(false);
     const [seatMapError, setSeatMapError] = useState("");
-    const [seatMapDetailed, setSeatMapDetailed] = useState(false);
     const [seatLegendFilter, setSeatLegendFilter] = useState<SeatLegendFilter>("ALL");
     const [quote, setQuote] = useState<BookingAncillaryQuote | null>(null);
     const [notes, setNotes] = useState("");
@@ -913,25 +912,6 @@ function AncillariesPageContent() {
                                           >
                                               {seatMapLoading ? "Loading live seat map..." : "Refresh Seat Map"}
                                           </button>
-                                          <button
-                                              type="button"
-                                              aria-pressed={seatMapDetailed}
-                                              onClick={() => setSeatMapDetailed((value) => !value)}
-                                              className="flex items-center gap-3 rounded-full border border-[rgba(89,64,46,0.12)] bg-white/85 px-4 py-3 text-sm font-semibold text-slate-600 shadow-[0_12px_28px_rgba(31,42,68,0.06)] transition hover:bg-white"
-                                          >
-                                              Detailed view
-                                              <span
-                                                  className={`relative h-6 w-11 rounded-full p-0.5 shadow-[inset_0_0_0_1px_rgba(89,64,46,0.08)] transition ${
-                                                      seatMapDetailed ? "bg-[var(--accent-strong)]" : "bg-[rgba(225,221,214,0.9)]"
-                                                  }`}
-                                              >
-                                                  <span
-                                                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
-                                                          seatMapDetailed ? "translate-x-5" : "translate-x-0.5"
-                                                      }`}
-                                                  />
-                                              </span>
-                                          </button>
                                       </div>
                                   </div>
 
@@ -1003,7 +983,8 @@ function AncillariesPageContent() {
                                                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-28 w-[120%] -translate-x-1/2 -translate-y-1/2 rounded-[2.5rem] bg-[rgba(255,247,236,0.75)]" />
                                                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[rgba(30,125,240,0.12)] blur-3xl" />
 
-                                                  <div className="relative space-y-3 pt-8 pb-10">
+                                                  <div className="relative max-h-[50vh] overflow-auto pr-1 pt-8 pb-10">
+                                                  <div className="min-w-max space-y-3">
                                                   {seatMap.rows.map((row) => {
                                                       const orderedSeats = [...row.seats].sort((a, b) =>
                                                           a.code.localeCompare(b.code, undefined, { numeric: true })
@@ -1078,11 +1059,6 @@ function AncillariesPageContent() {
                                                                                   <div className="mt-1 text-xs font-semibold tracking-[0.12em]">
                                                                                       {seat.code.match(/[A-Za-z]+$/)?.[0] ?? seat.code}
                                                                                   </div>
-                                                                                  {seatMapDetailed ? (
-                                                                                      <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                                                                                          {seat.availability || "Available"}
-                                                                                      </div>
-                                                                                  ) : null}
                                                                               </button>
                                                                           );
                                                                       })}
@@ -1138,11 +1114,6 @@ function AncillariesPageContent() {
                                                                                   <div className="mt-1 text-xs font-semibold tracking-[0.12em]">
                                                                                       {seat.code.match(/[A-Za-z]+$/)?.[0] ?? seat.code}
                                                                                   </div>
-                                                                                  {seatMapDetailed ? (
-                                                                                      <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                                                                                          {seat.availability || "Available"}
-                                                                                      </div>
-                                                                                  ) : null}
                                                                               </button>
                                                                           );
                                                                       })}
@@ -1151,6 +1122,7 @@ function AncillariesPageContent() {
                                                           </div>
                                                       );
                                                   })}
+                                                  </div>
                                                   </div>
                                               </div>
                                               </div>
@@ -1166,7 +1138,7 @@ function AncillariesPageContent() {
                                                           </div>
                                                       </div>
                                                       <div className="rounded-full bg-[rgba(241,248,255,0.92)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                                                          {seatMapDetailed ? "Detailed" : "Compact"}
+                                                          Compact
                                                       </div>
                                                   </div>
 

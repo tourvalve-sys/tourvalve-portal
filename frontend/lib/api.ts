@@ -34,6 +34,7 @@ export type FlightResult = {
     carryOnAllowance: string;
     checkedBaggageAllowance: string;
     baggageOfferTexts: string[];
+    mealIncluded?: boolean;
     cancellationPolicy: string;
     changePolicy: string;
     cancellationMaxFee: number;
@@ -63,6 +64,7 @@ export type FlightResult = {
             segmentLabel: string;
             segmentIndex?: number;
             seatCode: string;
+            passengerIndex?: number;
             productCode?: string;
             seatPrice?: number | null;
             currency?: string;
@@ -137,6 +139,9 @@ export type AirBookingServicePreferencesPayload = {
         segmentLabel: string;
         segmentIndex?: number;
         seatCode: string;
+        passengerIndex?: number;
+        seatPrice?: number | null;
+        currency?: string;
         productCode?: string;
     }>;
     selectedAncillaries?: Array<{
