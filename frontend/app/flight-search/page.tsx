@@ -3467,7 +3467,7 @@ export default function FlightSearch() {
                                             <div className="min-w-0 space-y-3">
                                                 <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                                                     <div className="min-w-0">
-                                                        <div className="flex flex-wrap items-center gap-3">
+                                                        <div className="flex min-w-0 items-center gap-3">
                                                             <div className="max-w-[14rem] shrink-0">
                                                                 <AirlineBrand
                                                                     carrier={flight.carrier || "FL"}
@@ -3475,7 +3475,7 @@ export default function FlightSearch() {
                                                                     compact
                                                                 />
                                                             </div>
-                                                            <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(23,68,152,0.12)] bg-[rgba(241,248,255,0.92)] px-3 py-1 text-[11px] font-semibold text-[#174498] shadow-[0_10px_24px_rgba(31,42,68,0.06)]">
+                                                            <span className="inline-flex min-w-0 max-w-[10rem] items-center gap-2 truncate rounded-full border border-[rgba(23,68,152,0.12)] bg-[rgba(241,248,255,0.92)] px-3 py-1 text-[11px] font-semibold text-[#174498] shadow-[0_10px_24px_rgba(31,42,68,0.06)]">
                                                                 {flightLabel}
                                                             </span>
                                                         </div>
