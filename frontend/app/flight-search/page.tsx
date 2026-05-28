@@ -671,6 +671,11 @@ function formatSeatMapRawPreview(raw: unknown) {
     return raw.replace(/\s+/g, " ").trim().slice(0, 1200);
 }
 
+function isAtlasProviderCode(providerCode: string) {
+    const normalized = (providerCode ?? "").trim().toUpperCase();
+    return normalized === "ATLAS" || normalized === "LCC";
+}
+
 function formatCountdown(seconds: number) {
     const safe = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
     const minutes = Math.floor(safe / 60);
@@ -1729,7 +1734,15 @@ export default function FlightSearch() {
     };
 
     const loadPrebookSeatMap = useCallback(async () => {
-        if (!prebookFlight || prebookFlight.providerCode.trim().toUpperCase() === "ATLAS" || !prebookActiveSegment?.airSegmentXml) {
+        if (!prebookFlight) {
+            return;
+        }
+
+        if (isAtlasProviderCode(prebookFlight.providerCode)) {
+            return;
+        }
+
+        if (!prebookActiveSegment?.airSegmentXml) {
             setPrebookSeatMapError("This flight leg does not include enough live segment data for seat mapping.");
             return;
         }
@@ -1756,7 +1769,11 @@ export default function FlightSearch() {
     }, [prebookActiveSegment, prebookFlight]);
 
     const loadPrebookAncillaryOffers = useCallback(async () => {
-        if (!prebookFlight || prebookFlight.providerCode.trim().toUpperCase() === "ATLAS") {
+        if (!prebookFlight) {
+            return;
+        }
+
+        if (isAtlasProviderCode(prebookFlight.providerCode)) {
             return;
         }
 
@@ -1780,7 +1797,11 @@ export default function FlightSearch() {
     }, [form.adults, form.child, form.infant, prebookFlight]);
 
     const loadPrebookAtlasAncillaries = useCallback(async () => {
-        if (!prebookFlight || prebookFlight.providerCode.trim().toUpperCase() !== "ATLAS") {
+        if (!prebookFlight) {
+            return;
+        }
+
+        if (!isAtlasProviderCode(prebookFlight.providerCode)) {
             return;
         }
 
@@ -1811,8 +1832,7 @@ export default function FlightSearch() {
             return;
         }
 
-        const provider = prebookFlight.providerCode.trim().toUpperCase();
-        if (provider === "ATLAS") {
+        if (isAtlasProviderCode(prebookFlight.providerCode)) {
             void loadPrebookAtlasAncillaries();
         } else {
             void loadPrebookAncillaryOffers();
@@ -1820,7 +1840,7 @@ export default function FlightSearch() {
     }, [loadPrebookAncillaryOffers, loadPrebookAtlasAncillaries, prebookFlight, prebookFlightId]);
 
     useEffect(() => {
-        if (!prebookFlight || prebookFlight.providerCode.trim().toUpperCase() === "ATLAS") {
+        if (!prebookFlight || isAtlasProviderCode(prebookFlight.providerCode)) {
             return;
         }
 
@@ -1832,7 +1852,7 @@ export default function FlightSearch() {
     }, [loadPrebookSeatMap, prebookActiveSegment?.airSegmentXml, prebookFlight]);
 
     useEffect(() => {
-        if (!prebookFlight || prebookFlight.providerCode.trim().toUpperCase() !== "ATLAS") {
+        if (!prebookFlight || !isAtlasProviderCode(prebookFlight.providerCode)) {
             return;
         }
 
@@ -4192,7 +4212,7 @@ export default function FlightSearch() {
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            if (prebookFlight?.providerCode.trim().toUpperCase() === "ATLAS") {
+                                            if (prebookFlight && isAtlasProviderCode(prebookFlight.providerCode)) {
                                                 void loadPrebookAtlasAncillaries();
                                             } else {
                                                 void loadPrebookSeatMap();
@@ -4201,7 +4221,7 @@ export default function FlightSearch() {
                                         disabled={
                                             prebookSeatMapLoading ||
                                             prebookAtlasAncillaryLoading ||
-                                            (prebookFlight?.providerCode.trim().toUpperCase() !== "ATLAS" && !prebookActiveSegment?.airSegmentXml)
+                                            (prebookFlight && !isAtlasProviderCode(prebookFlight.providerCode) && !prebookActiveSegment?.airSegmentXml)
                                         }
                                         className="rounded-2xl bg-[linear-gradient(135deg,#1e7df0,#0b58b6)] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(12,78,163,0.22)] transition hover:translate-y-[-1px] disabled:opacity-60"
                                     >
