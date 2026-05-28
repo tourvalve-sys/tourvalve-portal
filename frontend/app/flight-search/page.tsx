@@ -3431,14 +3431,21 @@ export default function FlightSearch() {
                                 });
                                 const aircraftLabel = extractAircraftLabel(flight.airSegmentXmls, flight.airSegmentXml);
                                 const baggageHighlights = getBaggageHighlights(flight);
-                                const carryOnBadge =
-                                    extractKgBadges(flight.carryOnAllowance)[0] ||
-                                    baggageHighlights[0] ||
-                                    "";
-                                const checkedBagBadge =
-                                    extractKgBadges(flight.checkedBaggageAllowance)[0] ||
-                                    baggageHighlights.find((item) => item !== carryOnBadge) ||
-                                    "";
+                                const offerTexts = Array.isArray(flight.baggageOfferTexts)
+                                    ? flight.baggageOfferTexts.filter((item): item is string => typeof item === "string")
+                                    : [];
+                                const carryOnOfferBadge =
+                                    offerTexts
+                                        .filter((text) => /\b(carry|cabin|hand)\b/i.test(text) || /\bCY\b/i.test(text))
+                                        .flatMap(extractKgBadges)[0] || "";
+                                const checkedBagOfferBadge =
+                                    offerTexts
+                                        .filter((text) => /\b(checked|bag|bags|baggage|luggage|piece)\b/i.test(text))
+                                        .filter((text) => !/\b(carry|cabin|hand)\b/i.test(text))
+                                        .flatMap(extractKgBadges)[0] || "";
+
+                                const carryOnBadge = extractKgBadges(flight.carryOnAllowance)[0] || carryOnOfferBadge || "";
+                                const checkedBagBadge = extractKgBadges(flight.checkedBaggageAllowance)[0] || checkedBagOfferBadge || "";
                                 const mealIncluded = Boolean(flight.mealIncluded);
                                 const detailsExpanded = expandedFlightId === flight.id;
                                 const segmentXmls = detailsExpanded

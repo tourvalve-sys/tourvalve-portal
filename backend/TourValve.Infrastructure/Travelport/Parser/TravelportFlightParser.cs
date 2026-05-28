@@ -859,6 +859,15 @@ public static class TravelportFlightParser
             if (!isIncluded)
                 continue;
 
+            var secondaryType = service.Attribute("SecondaryType")?.Value?.Trim() ?? string.Empty;
+            var tag = service.Attribute("Tag")?.Value?.Trim() ?? string.Empty;
+            var isCarryOnService = secondaryType.Equals("CY", StringComparison.OrdinalIgnoreCase)
+                || secondaryType.Contains("carry", StringComparison.OrdinalIgnoreCase)
+                || tag.Contains("carry", StringComparison.OrdinalIgnoreCase)
+                || tag.Contains("hand", StringComparison.OrdinalIgnoreCase)
+                || tag.Contains("cabin", StringComparison.OrdinalIgnoreCase);
+            var isCheckedService = tag.Contains("checked", StringComparison.OrdinalIgnoreCase);
+
             var shortTitles = service.Descendants()
                 .Where(x => x.Name.LocalName.Equals("Title", StringComparison.OrdinalIgnoreCase))
                 .Where(x => string.Equals(x.Attribute("Type")?.Value, "Short", StringComparison.OrdinalIgnoreCase))
@@ -866,6 +875,8 @@ public static class TravelportFlightParser
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
+            var hasStructuredSummary = false;
 
             foreach (var shortTitle in shortTitles)
             {
@@ -881,11 +892,56 @@ public static class TravelportFlightParser
                         : $"Checked baggage: {weightKg:0}kg";
 
                 offerTexts.Add(summary);
+                hasStructuredSummary = true;
 
                 if (bagType.Equals("CY", StringComparison.OrdinalIgnoreCase))
                     carryOnSummaries.Add(summary);
                 else
                     checkedSummaries.Add(summary);
+            }
+
+            if (!hasStructuredSummary)
+            {
+                var textualCandidates = new List<string>
+                {
+                    service.Attribute("DisplayText")?.Value?.Trim() ?? string.Empty,
+                    tag,
+                    secondaryType
+                };
+
+                textualCandidates.AddRange(service.Descendants()
+                    .Where(x =>
+                        x.Name.LocalName.Equals("Description", StringComparison.OrdinalIgnoreCase) ||
+                        x.Name.LocalName.Equals("Text", StringComparison.OrdinalIgnoreCase) ||
+                        x.Name.LocalName.Equals("Title", StringComparison.OrdinalIgnoreCase))
+                    .Select(x => (x.Value ?? string.Empty).Trim())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Take(10));
+
+                var bestWeightHint = textualCandidates
+                    .Select(ExtractWeightHintKg)
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => new { Hint = value, Weight = TryParseWeightKg(value) })
+                    .Where(value => value.Weight > 0)
+                    .OrderByDescending(value => value.Weight)
+                    .Select(value => value.Hint)
+                    .FirstOrDefault();
+
+                if (!string.IsNullOrWhiteSpace(bestWeightHint))
+                {
+                    var summary = isCarryOnService
+                        ? $"Carry-on: {bestWeightHint}"
+                        : isCheckedService
+                            ? $"Checked baggage: {bestWeightHint}"
+                            : $"Baggage: {bestWeightHint}";
+
+                    offerTexts.Add(summary);
+
+                    if (isCarryOnService)
+                        carryOnSummaries.Add(summary);
+                    else if (isCheckedService)
+                        checkedSummaries.Add(summary);
+                }
             }
 
             var displayText = service.Attribute("DisplayText")?.Value?.Trim() ?? string.Empty;
@@ -1029,8 +1085,7 @@ public static class TravelportFlightParser
         if (!string.IsNullOrWhiteSpace(restrictionText))
             allowance.Add(NormalizeBaggageText(restrictionText));
 
-        if (allowance.Count == 0)
-            allowance.AddRange(ReadTextInfoValues(carryOnInfo));
+        allowance.AddRange(ReadTextInfoValues(carryOnInfo));
 
         var weightHint = ExtractWeightHintKg(restrictionText);
         if (string.IsNullOrWhiteSpace(weightHint))
@@ -1072,9 +1127,23 @@ public static class TravelportFlightParser
             return Array.Empty<string>();
         }
 
-        return bagDetails
+        var formattedDetails = bagDetails
             .Select(FormatBagDetails)
             .Where(x => !string.IsNullOrWhiteSpace(x));
+
+        var textWeightHint = ReadTextInfoValues(baggageAllowanceInfo)
+            .Select(ExtractWeightHintKg)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => new { Hint = value, Weight = TryParseWeightKg(value) })
+            .Where(value => value.Weight > 0)
+            .OrderByDescending(value => value.Weight)
+            .Select(value => value.Hint)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(textWeightHint))
+            return formattedDetails;
+
+        return formattedDetails.Concat(new[] { $"Checked baggage: {textWeightHint}" });
     }
 
     private static string FormatBagDetails(XElement bagDetails)
