@@ -515,7 +515,7 @@ function BookingsPageContent() {
                                     <div className="subtle-kicker">Locator References</div>
                                     <div className="mt-2">Airline PNR: <span className="font-semibold text-[var(--ink)]">{selectedBooking.airlineLocator || "-"}</span></div>
                                     <div className="mt-2">Universal locator: <span className="font-semibold text-[var(--ink)]">{selectedBooking.universalRecordLocator || "-"}</span></div>
-                                    <div>Provider locator: <span className="font-semibold text-[var(--ink)]">{selectedBooking.providerLocator || "-"}</span></div>
+                                    <div>Reservation locator: <span className="font-semibold text-[var(--ink)]">{selectedBooking.providerLocator || "-"}</span></div>
                                 </div>
                                 <div className="soft-panel rounded-[1.5rem] p-4">
                                     <div className="subtle-kicker">Ownership</div>
@@ -728,7 +728,7 @@ function BookingsPageContent() {
                                                     <div className="grid gap-2 lg:min-w-[18rem]">
                                                         <input
                                                             className="rounded-2xl border border-[rgba(89,64,46,0.12)] bg-white p-3 text-sm outline-none"
-                                                            placeholder="Provider reference"
+                                                            placeholder="Airline reference"
                                                             value={ancillaryProviderRefs[order.id] ?? order.providerReference ?? ""}
                                                             onChange={(event) => setAncillaryProviderRefs((current) => ({ ...current, [order.id]: event.target.value }))}
                                                         />

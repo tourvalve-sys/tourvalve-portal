@@ -927,31 +927,31 @@ function normalizeFriendlyError(message: string): string {
     }
 
     if (safeMessage === "Failed to fetch") {
-        return "The portal could not reach the backend service. Please make sure the API is running.";
+        return "The portal could not reach the service. Please make sure the portal service is running.";
     }
 
     if (/Unable to connect to the remote server|ECONNREFUSED|network/i.test(safeMessage)) {
-        return "The backend service is not reachable right now. Please check that the API is running and try again.";
+        return "The portal service is not reachable right now. Please try again shortly.";
     }
 
     if (/504 Gateway Time-?out|Gateway Time-?out|upstream timed out|<title>504/i.test(normalized)) {
-        return "The live provider took too long to respond to this search. For multi-city itineraries, try fewer segments at a time or try again shortly.";
+        return "The live airline system took too long to respond to this search. For multi-city itineraries, try fewer segments at a time or try again shortly.";
     }
 
     if (/502 Bad Gateway|Bad Gateway|upstream prematurely closed connection|<title>502/i.test(normalized)) {
-        return "The live provider returned an unexpected gateway response. Please try the search again or choose another result.";
+        return "The live airline system returned an unexpected response. Please try the search again or choose another result.";
     }
 
     if (/408 Request Timeout|timed out|timeout/i.test(safeMessage)) {
-        return "The live provider timed out while processing this request. Please try again in a moment.";
+        return "The live airline system timed out while processing this request. Please try again in a moment.";
     }
 
     if (/mock mode is disabled/i.test(safeMessage)) {
-        return "Live provider mode is required for this action, and mock mode is currently disabled.";
+        return "Live airline mode is required for this action, and mock mode is currently disabled.";
     }
 
     if (/credentials are missing/i.test(safeMessage)) {
-        return "Live provider credentials are missing or incomplete for this action.";
+        return "Live airline credentials are missing or incomplete for this action.";
     }
 
     if (/No flight records found for this date or market/i.test(safeMessage)) {
@@ -963,15 +963,15 @@ function normalizeFriendlyError(message: string): string {
     }
 
     if (/OriginLocation@LocationCode|DestinationLocation@LocationCode|ACH carriers may not support Airport codes supplied/i.test(safeMessage)) {
-        return "The selected airport code is valid in the directory, but it is not currently supported for live fare shopping in this provider market. Try a nearby main airport or another route.";
+        return "The selected airport code is valid in the directory, but it is not currently supported for live fare shopping in this airline market. Try a nearby main airport or another route.";
     }
 
     if (/Invalid data type\s*\/\s*length\s*\/\s*value of attribute or element supplied/i.test(safeMessage)) {
-        return "The provider could not shop this route with the selected airport code format. Try a different airport nearby or another market.";
+        return "The live airline system could not shop this route with the selected airport code format. Try a different airport nearby or another market.";
     }
 
     if (/AirPriceReq.*PlatingCarrier|Expected .*AirPriceReq.*PlatingCarrier/i.test(safeMessage)) {
-        return "The live provider could not price this itinerary with the current response shape. Please try another result or search again.";
+        return "The live airline system could not price this itinerary with the current flight data. Please try another result or search again.";
     }
 
     if (
@@ -981,7 +981,7 @@ function normalizeFriendlyError(message: string): string {
         /Expected .*LowFareSearchReq/i.test(safeMessage) ||
         /Expected .*AvailabilitySearchReq/i.test(safeMessage)
     ) {
-        return "The live provider returned an unexpected response for this itinerary. Please try another result or search again.";
+        return "The live airline system returned an unexpected response for this itinerary. Please try another result or search again.";
     }
 
     if (/Run the latest database update against the same PostgreSQL database used by the API/i.test(safeMessage)) {
@@ -997,7 +997,7 @@ function normalizeFriendlyError(message: string): string {
     }
 
     if (/travelport/i.test(safeMessage) && /(schema|xml|fault|string|response)/i.test(safeMessage)) {
-        return "The live provider returned an unexpected response. Please try again or choose another itinerary.";
+        return "The live airline system returned an unexpected response. Please try again or choose another itinerary.";
     }
 
     return safeMessage;

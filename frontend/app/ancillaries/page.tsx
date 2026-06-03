@@ -29,6 +29,7 @@ import {
     type FlightSeatMapResponse,
     type BookingRetrieveResponse,
 } from "@/lib/api";
+import { scrubProviderMentions } from "@/lib/scrubProviderMentions";
 
 type AncillaryCategory = "BAGGAGE" | "MEAL" | "SEAT";
 
@@ -253,7 +254,7 @@ function normalizeTravelerQuantities(
 }
 
 function sanitizeTextList(items: string[] | undefined, fallback: string[]) {
-    const values = (items ?? []).map((item) => item.trim()).filter(Boolean);
+    const values = (items ?? []).map((item) => scrubProviderMentions(item.trim())).filter(Boolean);
     return values.length ? values.slice(0, 6) : fallback;
 }
 
@@ -373,26 +374,30 @@ function buildLiveSeatPreset(
 function mapLiveOfferToPreset(offer: NonNullable<BookingAncillaryOfferCatalog["categories"][string]>[number]): AncillaryPreset {
     return {
         code: offer.code,
-        title: offer.title,
-        subtitle: offer.subtitle || "Live airline-priced option",
-        description: offer.description,
+        title: scrubProviderMentions(offer.title),
+        subtitle: scrubProviderMentions(offer.subtitle || "Live airline-priced option"),
+        description: scrubProviderMentions(offer.description),
         baseAmount: offer.baseAmount,
         currency: offer.currency,
-        highlight: offer.highlight || "Live",
-        bullets: offer.bullets?.length ? offer.bullets : ["Retrieved from the live booking record."],
+        highlight: offer.highlight ? scrubProviderMentions(offer.highlight) : "Live",
+        bullets: offer.bullets?.length ? offer.bullets.map(scrubProviderMentions) : ["Retrieved from the live booking record."],
         comparison: offer.comparison?.length
-              ? offer.comparison
+              ? offer.comparison.map((item) => ({
+                  ...item,
+                  label: scrubProviderMentions(item.label),
+                  value: scrubProviderMentions(item.value),
+              }))
               : [
                   { label: "Source", value: "Live booking record", included: true },
                   { label: "Pricing", value: `${offer.currency} ${offer.baseAmount.toFixed(2)}`, included: true },
                   { label: "Segment", value: offer.segmentLabel || "Booking-linked", included: true },
               ],
         rules: offer.rules?.length
-            ? offer.rules
-            : ["Supplier-priced ancillary detected from the live booking record."],
+            ? offer.rules.map(scrubProviderMentions)
+            : ["Live-priced ancillary detected from the booking record."],
         isLive: offer.isLive,
         source: offer.source,
-        supplierText: offer.supplierText,
+        supplierText: offer.supplierText ? scrubProviderMentions(offer.supplierText) : offer.supplierText,
         segmentLabel: offer.segmentLabel,
     };
 }
@@ -584,18 +589,18 @@ function AncillariesPageContent() {
     );
     const supplierCategoryTexts = category === "BAGGAGE"
         ? sanitizeTextList(liveContext?.baggageTexts, [
-              "No exact supplier baggage wording was returned for this record yet.",
+              "No exact airline baggage wording was returned for this record yet.",
           ])
         : category === "MEAL"
             ? sanitizeTextList(liveContext?.mealTexts, [
-                  "No exact supplier meal wording was returned for this record yet.",
+                  "No exact airline meal wording was returned for this record yet.",
               ])
               : sanitizeTextList(
                     [...(liveContext?.seatTexts ?? []), ...(liveContext?.seatAssignments ?? [])],
-                    ["No exact supplier seat wording was returned for this record yet."]
+                    ["No exact airline seat wording was returned for this record yet."]
                 );
     const liveRuleTexts = sanitizeTextList(liveContext?.ruleTexts, [
-        "Exact supplier change and cancellation wording was not returned for this record yet.",
+        "Exact airline change and cancellation wording was not returned for this record yet.",
     ]);
     const selectedSeat = useMemo(
         () =>
@@ -890,8 +895,10 @@ function AncillariesPageContent() {
                                   : "bg-[rgba(241,248,255,0.92)] text-slate-600"
                           }`}>
                             {(usingLiveOptions && !liveOptions.length && liveCategoryOptions.length
-                                ? "Live airline-priced options were returned for this booking, so the studio is showing the broader supplier offer list for this category."
-                                : liveOfferCatalog?.message) ||
+                                ? "Live airline-priced options were returned for this booking, so the studio is showing the broader airline offer list for this category."
+                                : liveOfferCatalog?.message
+                                    ? scrubProviderMentions(liveOfferCatalog.message)
+                                    : "") ||
                                   "Fallback service options are being shown because no live airline-priced ancillary offers were detected yet."}
                           </div>
 
@@ -1245,7 +1252,7 @@ function AncillariesPageContent() {
                                                               {selectedSeat.code}
                                                           </div>
                                                           <div className="mt-1 text-sm text-slate-600">
-                                                              {selectedSeat.characteristics.join(", ") || "Seat characteristics were limited in the supplier response."}
+                                                              {selectedSeat.characteristics.join(", ") || "Seat characteristics were limited in the live response."}
                                                           </div>
                                                       </div>
                                                       <button
@@ -1407,7 +1414,7 @@ function AncillariesPageContent() {
                                 </div>
                                 <div className="mt-4 rounded-[1.35rem] border border-[rgba(89,64,46,0.08)] bg-white/84 p-4">
                                     <div className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                                        Supplier-returned wording
+                                        Airline-returned wording
                                     </div>
                                     <div className="mt-3 space-y-2">
                                         {supplierCategoryTexts.map((text) => (
@@ -1551,7 +1558,7 @@ function AncillariesPageContent() {
                                 ))}
                                 <div className="rounded-[1.35rem] bg-[rgba(255,247,236,0.84)] p-4 text-sm leading-7 text-slate-600">
                                     {selectedPreset?.rules?.[0] ??
-                                        "The service desk can still use the option card rules below where the supplier does not return a fuller policy wording."}
+                                        "The service desk can still use the option card rules below where the airline does not return a fuller policy wording."}
                                 </div>
                             </div>
                         </div>

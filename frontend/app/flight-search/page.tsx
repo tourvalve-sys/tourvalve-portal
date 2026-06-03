@@ -666,7 +666,7 @@ function formatMinutesDuration(minutes: number | null) {
 
 function formatSeatMapRawPreview(raw: unknown) {
     if (typeof raw !== "string" || !raw.trim()) {
-        return "No raw provider response was returned for this request.";
+        return "No raw live response was returned for this request.";
     }
 
     return raw.replace(/\s+/g, " ").trim().slice(0, 1200);
@@ -3300,7 +3300,7 @@ export default function FlightSearch() {
                             <div className="rounded-[1.75rem] soft-panel p-8 text-slate-500 fade-in" style={{ scrollMarginTop: "7rem" }}>
                                 <div className="font-semibold text-[var(--ink)]">Searching live flight inventory...</div>
                                 <div className="mt-2 max-w-2xl text-sm leading-7 text-slate-500">
-                                    We are checking the latest provider availability, pricing, and cabin options for your selected route. Results will appear here once the search completes.
+                                    We are checking the latest airline availability, pricing, and cabin options for your selected route. Results will appear here once the search completes.
                                 </div>
                             </div>
                         ) : isSearchDraftDirty ? (
@@ -3322,7 +3322,7 @@ export default function FlightSearch() {
                                 <div className="mt-2 text-sm leading-6 text-slate-500">
                                     {hasSearched
                                         ? "Try another route or date, loosen the filters, or reset the saved search state if the page looks out of sync."
-                                        : "Your latest live results will appear here once the provider search completes."}
+                                        : "Your latest live results will appear here once the search completes."}
                                 </div>
                                 {hasSearched && (
                                     <button
@@ -4177,7 +4177,7 @@ export default function FlightSearch() {
                                     {prebookRouteSummary.label || `${prebookFlight.from} \u2192 ${prebookFlight.to}`}
                                 </h2>
                                 <div className="mt-1 text-sm text-white/75">
-                                    Review real seat-map availability and carry supplier baggage text into the booking before checkout.
+                                    Review real seat-map availability and carry airline baggage details into the booking before checkout.
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
@@ -4260,7 +4260,7 @@ export default function FlightSearch() {
 
                                     {prebookAncillaryError || prebookAtlasAncillaryError ? (
                                         <div className="mt-3 rounded-[1rem] bg-[rgba(255,236,236,0.92)] px-3 py-3 text-xs leading-6 text-[var(--danger)]">
-                                            {prebookAncillaryError || prebookAtlasAncillaryError}
+                                            {scrubProviderMentions(prebookAncillaryError || prebookAtlasAncillaryError)}
                                         </div>
                                     ) : null}
 
@@ -4552,8 +4552,8 @@ export default function FlightSearch() {
 
                                         {prebookSeatMap.diagnostics?.supplierMessages?.length ? (
                                             <div className="mt-4 rounded-[1rem] bg-[rgba(247,244,239,0.8)] px-3 py-3 text-sm leading-6 text-slate-600">
-                                                <div className="font-semibold text-[var(--ink)]">Supplier message</div>
-                                                <div className="mt-1">{prebookSeatMap.diagnostics.supplierMessages.join(" | ")}</div>
+                                                <div className="font-semibold text-[var(--ink)]">Airline message</div>
+                                                <div className="mt-1">{scrubProviderMentions(prebookSeatMap.diagnostics.supplierMessages.join(" | "))}</div>
                                             </div>
                                         ) : null}
 

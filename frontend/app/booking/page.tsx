@@ -1228,7 +1228,7 @@ export default function BookingPage() {
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
                     <div className="rounded-[1.3rem] border border-[rgba(50,93,147,0.12)] bg-white/72 px-4 py-3">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Live itinerary</div>
-                        <div className="mt-1 text-sm font-semibold text-[var(--ink)]">Priced from provider response</div>
+                        <div className="mt-1 text-sm font-semibold text-[var(--ink)]">Priced from live fare data</div>
                     </div>
                     <div className="rounded-[1.3rem] border border-[rgba(50,93,147,0.12)] bg-white/72 px-4 py-3">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Seat request</div>
@@ -1619,7 +1619,7 @@ export default function BookingPage() {
                                         Review seats by flight leg before booking.
                                     </h3>
                                     <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">
-                                        Load the provider seat layout for each segment, then carry the selected seat code into the booking request when available.
+                                        Load the airline seat layout for each segment, then carry the selected seat code into the booking request when available.
                                     </p>
                                 </div>
 
@@ -1930,8 +1930,8 @@ export default function BookingPage() {
                                                     </div>
                                                     {(seatMap.diagnostics.supplierMessages?.length ?? 0) > 0 && (
                                                         <div className="mt-2">
-                                                            <div className="font-semibold text-slate-500">Supplier messages</div>
-                                                            <div>{seatMap.diagnostics.supplierMessages?.join(" | ")}</div>
+                                                            <div className="font-semibold text-slate-500">Airline messages</div>
+                                                            <div>{scrubProviderMentions(seatMap.diagnostics.supplierMessages?.join(" | ") ?? "")}</div>
                                                         </div>
                                                     )}
                                                     {(seatMap.diagnostics.structuralHints?.length ?? 0) > 0 && (

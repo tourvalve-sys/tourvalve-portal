@@ -15,6 +15,7 @@ import {
     type WalletSummary,
 } from "@/lib/api";
 import { getUserFromToken } from "@/lib/auth";
+import { scrubProviderMentions } from "@/lib/scrubProviderMentions";
 
 function getTodayString() {
     const now = new Date();
@@ -41,6 +42,14 @@ function statusTone(status?: string) {
 
 function labelizeFormOfPayment(value?: string) {
     return value === "TOURVALVE_WALLET" ? "TourValve Wallet" : value === "CASH" ? "Cash" : "-";
+}
+
+function formatDebugContentType(value?: string) {
+    const normalized = (value ?? "").trim();
+    if (!normalized) return "-";
+    return scrubProviderMentions(normalized)
+        .replace(/SUPPLIER/gi, "AIRLINE")
+        .replace(/PROVIDER/gi, "CONTENT");
 }
 
 export default function AirTicketingWorkspacePage() {
@@ -91,7 +100,7 @@ export default function AirTicketingWorkspacePage() {
 
     useEffect(() => {
         void loadWorkspace().catch((value: unknown) => {
-            setError(value instanceof Error ? value.message : "Failed to load AirTicketing workspace");
+            setError(scrubProviderMentions(value instanceof Error ? value.message : "Failed to load AirTicketing workspace"));
             setLoading(false);
         });
     }, [loadWorkspace]);
@@ -103,9 +112,9 @@ export default function AirTicketingWorkspacePage() {
             setMessage("");
             const result = await operation();
             await loadWorkspace();
-            setMessage(result.message || "AirTicketing workspace updated.");
+            setMessage(scrubProviderMentions(result.message || "AirTicketing workspace updated."));
         } catch (value: unknown) {
-            setError(value instanceof Error ? value.message : "AirTicketing action failed");
+            setError(scrubProviderMentions(value instanceof Error ? value.message : "AirTicketing action failed"));
         } finally {
             setAction("");
         }
@@ -130,7 +139,7 @@ export default function AirTicketingWorkspacePage() {
     };
 
     const handleVoid = async () => {
-        if (!window.confirm("Void this issued ticket with the provider? Only use this when the ticket is still unpaid.")) return;
+        if (!window.confirm("Void this issued ticket with the airline system? Only use this when the ticket is still unpaid.")) return;
         await runAction("void", () => voidBookingAirTicket(bookingId));
     };
 
@@ -192,7 +201,7 @@ export default function AirTicketingWorkspacePage() {
                             Booking reference: {booking.bookingReference}
                         </p>
                         <p className="mt-2 text-xs leading-6 text-slate-500 md:text-sm">
-                            Use this airline PNR with the passenger name on airline manage-booking portals. The universal locator is for provider record retrieval.
+                            Use this airline PNR with the passenger name on airline manage-booking portals. The universal locator is for reservation record retrieval.
                         </p>
                     </div>
 
@@ -365,7 +374,7 @@ export default function AirTicketingWorkspacePage() {
                             <div>Ticketing date: <span className="font-semibold text-[var(--ink)]">{booking.airTicketingDate || "-"}</span></div>
                             <div>Airline PNR: <span className="font-semibold text-[var(--ink)]">{pnr}</span></div>
                             <div>Universal locator: <span className="font-semibold text-[var(--ink)]">{booking.universalRecordLocator || "-"}</span></div>
-                            <div>Provider locator: <span className="font-semibold text-[var(--ink)]">{booking.providerLocator || "-"}</span></div>
+                            <div>Reservation locator: <span className="font-semibold text-[var(--ink)]">{booking.providerLocator || "-"}</span></div>
                         </div>
                     </div>
 
@@ -437,8 +446,8 @@ export default function AirTicketingWorkspacePage() {
 
                             <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                 <div className="rounded-[1.5rem] bg-white/80 px-4 py-3">
-                                    <div className="subtle-kicker">Provider type</div>
-                                    <div className="mt-2 text-sm font-semibold text-[var(--ink)]">{debugInfo.providerType}</div>
+                                    <div className="subtle-kicker">Content type</div>
+                                    <div className="mt-2 text-sm font-semibold text-[var(--ink)]">{formatDebugContentType(debugInfo.providerType)}</div>
                                 </div>
                                 <div className="rounded-[1.5rem] bg-white/80 px-4 py-3">
                                     <div className="subtle-kicker">Workflow assessment</div>
@@ -479,8 +488,8 @@ export default function AirTicketingWorkspacePage() {
 
                             {debugInfo.lastFailureSummary ? (
                                 <div className="mt-4 rounded-[1.5rem] bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                                    <div className="subtle-kicker">Last provider failure summary</div>
-                                    <div className="mt-2 leading-7">{debugInfo.lastFailureSummary}</div>
+                                    <div className="subtle-kicker">Last airline-system failure summary</div>
+                                    <div className="mt-2 leading-7">{scrubProviderMentions(debugInfo.lastFailureSummary)}</div>
                                 </div>
                             ) : null}
                         </div>
