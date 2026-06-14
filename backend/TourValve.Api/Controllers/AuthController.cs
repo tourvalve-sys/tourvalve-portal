@@ -133,7 +133,7 @@ public class AuthController : ControllerBase
     {
         var email = (request.Email ?? "").Trim().ToLower();
 
-        if (email == "admin@tourvalve.com" && request.Password == "Admin@123")
+        if (email == "admin@tourvalve.com" && request.Password == "Akina@7778")
         {
             var tempAdmin = new User
             {
