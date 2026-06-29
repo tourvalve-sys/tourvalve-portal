@@ -14,26 +14,17 @@ function getForwardedHost(request: NextRequest) {
 }
 
 function buildPublicUrl(request: NextRequest, pathname: string) {
-    const url = request.nextUrl.clone();
-    const forwardedHost = getForwardedHost(request);
-    const forwardedProto =
-        request.headers.get("x-forwarded-proto") ??
-        url.protocol.replace(":", "");
+    const behindProxy = !!request.headers.get("x-forwarded-host");
 
-    url.pathname = pathname;
-    url.search = "";
-    url.hash = "";
-
-    if (forwardedHost) {
-        url.hostname = forwardedHost.split(":")[0];
+    if (behindProxy) {
+        const forwardedHost = getForwardedHost(request);
+        const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
+        return new URL(pathname, `${forwardedProto}://${forwardedHost}`);
     }
 
-    if (forwardedProto) {
-        url.protocol = `${forwardedProto}:`;
-    }
-    url.port = "";
-
-    return url;
+    const host = request.headers.get("host") ?? "localhost:3000";
+    const protocol = request.nextUrl.protocol || "http:";
+    return new URL(pathname, `${protocol}//${host}`);
 }
 
 export function middleware(request: NextRequest) {

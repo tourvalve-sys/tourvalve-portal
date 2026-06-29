@@ -10,6 +10,7 @@
 frontend/node_modules/
 frontend/.next/
 frontend/out/
+travelport-proxy/node_modules/
 
 # Environment
 .env
