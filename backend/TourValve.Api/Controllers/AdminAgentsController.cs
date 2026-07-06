@@ -362,21 +362,65 @@ public class AdminAgentsController : ControllerBase
     [HttpPatch("{agentId:guid}/status")]
     public async Task<IActionResult> SetStatus(Guid agentId, [FromBody] ToggleAgentRequest req)
     {
-        var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId);
-
-        if (agent == null)
-            return NotFound(new { error = "Agent not found" });
-
-        agent.IsActive = req.IsActive;
-        await _db.SaveChangesAsync();
-        await _audit.WriteAsync(agent.Id, User.Identity?.Name ?? "admin@tourvalve.com", "AGENT", req.IsActive ? "ENABLE" : "DISABLE", "Agent", agent.Id.ToString(), agent.Email, $"Agent status set to {(req.IsActive ? "ACTIVE" : "INACTIVE")}.");
-
-        return Ok(new
+        try
         {
-            message = req.IsActive ? "Agent enabled" : "Agent disabled",
-            agentId = agent.Id,
-            agent.IsActive
-        });
+            var agent = await _db.Agents.AsNoTracking().FirstOrDefaultAsync(a => a.Id == agentId);
+            if (agent == null)
+                return NotFound(new { error = "Agent not found" });
+
+            await _agents.SetAgentStatusAsync(agentId, req.IsActive);
+
+            await _audit.WriteAsync(agentId, User.Identity?.Name ?? "admin@tourvalve.com", "AGENT", req.IsActive ? "ENABLE" : "DISABLE", "Agent", agentId.ToString(), agent.Email, $"Agent status set to {(req.IsActive ? "ACTIVE" : "INACTIVE")}.");
+
+            return Ok(new
+            {
+                message = req.IsActive ? "Agent enabled" : "Agent disabled",
+                agentId = agentId,
+                isActive = req.IsActive
+            });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Internal server error" });
+        }
+    }
+
+    [HttpDelete("{agentId:guid}")]
+    public async Task<IActionResult> Delete(Guid agentId)
+    {
+        try
+        {
+            var agent = await _db.Agents.AsNoTracking().FirstOrDefaultAsync(a => a.Id == agentId);
+            if (agent == null)
+                return NotFound(new { error = "Agent not found" });
+
+            await _agents.DeleteAgentAsync(agentId);
+
+            await _audit.WriteAsync(null, User.Identity?.Name ?? "admin@tourvalve.com", "AGENT", "DELETE", "Agent", agentId.ToString(), agent.Email, $"Permanently deleted agent account {agent.Email}.");
+            await _notifications.CreateAsync(null, "ADMIN", "AGENT", "Agent Deleted", $"Agent account for {agent.Email} has been permanently deleted.", "INFO", "/agents");
+
+            return Ok(new
+            {
+                message = "Agent and associated wallet accounts deleted successfully.",
+                agentId = agentId
+            });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Internal server error" });
+        }
     }
 
     [HttpPost("{agentId:guid}/reset-password")]

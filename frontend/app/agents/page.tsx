@@ -1,3 +1,4 @@
+// page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -12,11 +13,15 @@ import {
     rejectPasswordResetRequest,
     rejectRegistrationRequest,
     sendSmtpTestEmail,
+    toggleAgentStatus,
+    deleteAgent,
     type AccessRequestsResponse,
     type AgentListItem,
     type CurrentUser,
     type SmtpStatus,
 } from "@/lib/api";
+import { AgentActionDropdown } from "./agent-action-dropdown";
+import { AgentDeleteDialog } from "./agent-delete-dialog";
 
 export default function AgentsPage() {
     const [user, setUser] = useState<CurrentUser | null>(null);
@@ -29,6 +34,9 @@ export default function AgentsPage() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [actionKey, setActionKey] = useState("");
+
+    const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+    const [deletingAgent, setDeletingAgent] = useState<AgentListItem | null>(null);
 
     const loadAdminData = async () => {
         const [agentData, requestData, smtpData] = await Promise.all([
@@ -57,6 +65,10 @@ export default function AgentsPage() {
         };
 
         void load();
+
+        const closeDropdowns = () => setActiveDropdown(null);
+        window.addEventListener("click", closeDropdowns);
+        return () => window.removeEventListener("click", closeDropdowns);
     }, []);
 
     const runAction = async (key: string, action: () => Promise<{ message: string; temporaryPassword?: string }>) => {
@@ -70,6 +82,7 @@ export default function AgentsPage() {
             setError(value instanceof Error ? value.message : "Action failed");
         } finally {
             setActionKey("");
+            setActiveDropdown(null);
         }
     };
 
@@ -100,6 +113,7 @@ export default function AgentsPage() {
 
     return (
         <div className="space-y-6 fade-in">
+            {/* Top Stats and Cards Section remains identical ... */}
             <section className="premium-panel rounded-[2.5rem] p-8 md:p-10 classic-grid">
                 <div className="subtle-kicker mb-3">Agency Directory</div>
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
@@ -434,7 +448,8 @@ export default function AgentsPage() {
                 </div>
             </section>
 
-            <section className="premium-panel overflow-hidden rounded-[2rem]">
+            {/* Roster Section with structural z-index fixing and pure api passing */}
+            <section className={`premium-panel rounded-[2rem] ${activeDropdown ? "relative z-40" : ""}`}>
                 <div className="flex items-center justify-between border-b border-[rgba(89,64,46,0.08)] px-6 py-5">
                     <div>
                         <div className="subtle-kicker mb-2">Account Registry</div>
@@ -454,25 +469,51 @@ export default function AgentsPage() {
                             <th>Role</th>
                             <th>Wallet</th>
                             <th>Status</th>
+                            <th className="w-16 text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {agents.length ? agents.map((agent, index) => (
-                            <tr key={agent.id} className={index % 2 === 0 ? "bg-transparent" : "bg-[rgba(255,251,245,0.55)]"}>
-                                <td className="font-medium text-[var(--ink)]">{agent.email}</td>
-                                <td>{agent.countryOfOrigin || "-"}</td>
-                                <td>{agent.phoneNumber || "-"}</td>
-                                <td>{agent.role}</td>
-                                <td className="max-w-[18rem] truncate">{agent.wallet?.id ?? "-"}</td>
-                                <td>
-                                    <span className={`status-pill ${agent.isActive ? "status-success" : "status-danger"}`}>
-                                        {agent.isActive ? "ACTIVE" : "INACTIVE"}
-                                    </span>
-                                </td>
-                            </tr>
-                        )) : (
+                        {agents.length ? agents.map((agent, index) => {
+                            const isDropdownOpen = activeDropdown === agent.id;
+                            const statusKey = `status-${agent.id}`;
+                            const deleteKey = `delete-${agent.id}`;
+
+                            return (
+                                <tr
+                                    key={agent.id}
+                                    className={`relative ${index % 2 === 0 ? "bg-transparent" : "bg-[rgba(255,251,245,0.55)]"} ${isDropdownOpen ? "z-30" : "z-10"
+                                        }`}
+                                >
+                                    <td className="font-medium text-[var(--ink)]">{agent.email}</td>
+                                    <td>{agent.countryOfOrigin || "-"}</td>
+                                    <td>{agent.phoneNumber || "-"}</td>
+                                    <td>{agent.role}</td>
+                                    <td className="max-w-[14rem] truncate">{agent.wallet?.id ?? "-"}</td>
+                                    <td>
+                                        <span className={`status-pill ${agent.isActive ? "status-success" : "status-danger"}`}>
+                                            {agent.isActive ? "ACTIVE" : "INACTIVE"}
+                                        </span>
+                                    </td>
+                                    <AgentActionDropdown
+                                        agent={agent}
+                                        isActiveDropdown={isDropdownOpen}
+                                        onToggle={(e) => {
+                                            e.stopPropagation();
+                                            setActiveDropdown(isDropdownOpen ? null : agent.id);
+                                        }}
+                                        onToggleStatus={() => void runAction(statusKey, () => toggleAgentStatus(agent.id, !agent.isActive))}
+                                        onDeleteInitiated={() => {
+                                            setActiveDropdown(null);
+                                            setDeletingAgent(agent);
+                                        }}
+                                        isStatusLoading={actionKey === statusKey}
+                                        isDeleteLoading={actionKey === deleteKey}
+                                    />
+                                </tr>
+                            );
+                        }) : (
                             <tr>
-                                <td colSpan={6} className="py-12 text-center text-slate-400">
+                                <td colSpan={7} className="py-12 text-center text-slate-400">
                                     No agent data available.
                                 </td>
                             </tr>
@@ -494,6 +535,18 @@ export default function AgentsPage() {
                     </div>
                 </div>
             </section>
+
+            {deletingAgent && (
+                <AgentDeleteDialog
+                    agent={deletingAgent}
+                    onClose={() => setDeletingAgent(null)}
+                    onConfirm={() => {
+                        const targetAgentId = deletingAgent.id;
+                        setDeletingAgent(null);
+                        void runAction(`delete-${targetAgentId}`, () => deleteAgent(targetAgentId));
+                    }}
+                />
+            )}
         </div>
     );
 }

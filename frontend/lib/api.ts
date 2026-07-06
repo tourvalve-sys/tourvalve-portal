@@ -1572,3 +1572,23 @@ export async function rejectPasswordResetRequest(requestId: string) {
 
     return readJson<{ message: string }>(res);
 }
+
+export async function toggleAgentStatus(agentId: string, isActive: boolean) {
+    const res = await authFetch(`${API_BASE}/api/admin/agents/${agentId}/status`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ isActive }),
+    });
+
+    return readJson<{ message: string; agentId: string; isActive: boolean }>(res);
+}
+
+export async function deleteAgent(agentId: string) {
+    const res = await authFetch(`${API_BASE}/api/admin/agents/${agentId}`, {
+        method: "DELETE",
+    });
+
+    return readJson<{ message: string; agentId: string }>(res);
+}

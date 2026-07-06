@@ -9,5 +9,7 @@ namespace TourValve.Application.Agents
     public interface IAgentService
     {
         Task<Guid> CreateAgentAsync(string email, string password, string role);
+        Task SetAgentStatusAsync(Guid agentId, bool isActive);
+        Task DeleteAgentAsync(Guid agentId);
     }
 }

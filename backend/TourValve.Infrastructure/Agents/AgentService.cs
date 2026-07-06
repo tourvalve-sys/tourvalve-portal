@@ -69,4 +69,37 @@ public class AgentService : IAgentService
 
         return agentId;
     }
+
+    public async Task SetAgentStatusAsync(Guid agentId, bool isActive)
+    {
+        var agent = await _db.Agents.FirstOrDefaultAsync(x => x.Id == agentId);
+        if (agent == null)
+            throw new KeyNotFoundException("Agent not found.");
+
+        agent.IsActive = isActive;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task DeleteAgentAsync(Guid agentId)
+    {
+        var agent = await _db.Agents.FirstOrDefaultAsync(x => x.Id == agentId);
+        if (agent == null)
+            throw new KeyNotFoundException("Agent not found.");
+
+        if (agent.Email == "admin@tourvalve.com")
+            throw new InvalidOperationException("The master administrator account cannot be deleted.");
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        var wallets = await _db.WalletAccounts.Where(w => w.AgentId == agentId).ToListAsync();
+        if (wallets.Any())
+        {
+            _db.WalletAccounts.RemoveRange(wallets);
+        }
+
+        _db.Agents.Remove(agent);
+
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+    }
 }

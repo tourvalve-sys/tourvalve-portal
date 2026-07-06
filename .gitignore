@@ -37,3 +37,6 @@ last-booking-raw*.json
 last-booking-*.xml
 seatmap-*-raw.xml
 mom-birthday.html
+
+#IDE
+.vscode
