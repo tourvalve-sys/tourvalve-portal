@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { createPortal } from "react-dom"; // Import portal API
+import { createPortal } from "react-dom";
 import { AlertTriangle, X } from "lucide-react";
 import { type AgentListItem } from "@/lib/api";
 
@@ -16,6 +16,7 @@ export function AgentDeleteDialog({ agent, onClose, onConfirm }: DeleteDialogPro
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMounted(true);
 
         // Disable scroll on the main document body when the dialog opens
@@ -31,16 +32,14 @@ export function AgentDeleteDialog({ agent, onClose, onConfirm }: DeleteDialogPro
     // Prevent rendering on the server during SSR hydration
     if (!mounted) return null;
 
-    // We teleport this HTML structure out of its nesting tree into document.body
     return createPortal(
         <div
             className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200"
             onClick={onClose}
+        >\n            <div
+            className="w-full max-w-md overflow-hidden rounded-[2rem] border border-slate-100 bg-white p-6 shadow-2xl text-left animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
         >
-            <div
-                className="w-full max-w-md overflow-hidden rounded-[2rem] border border-slate-100 bg-white p-6 shadow-2xl text-left animate-in zoom-in-95 duration-200"
-                onClick={(e) => e.stopPropagation()}
-            >
                 <div className="flex items-start justify-between">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600">
                         <AlertTriangle size={22} />
