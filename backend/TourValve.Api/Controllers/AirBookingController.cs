@@ -12,6 +12,7 @@ using TourValve.Api.Pdf;
 using TourValve.Api.Models;
 using TourValve.Application.Flights.DTO;
 using TourValve.Application.Bookings.Commands;
+using TourValve.Application.Common;
 using TourValve.Application.Wallet;
 using TourValve.Domain;
 using TourValve.Infrastructure.Data;
@@ -36,6 +37,7 @@ public sealed class AirBookingController : ControllerBase
     private readonly INotificationService _notifications;
     private readonly IEmailService _emailService;
     private readonly SmtpOptions _smtpOptions;
+    private readonly AppOptions _appOptions;
     private readonly IMediator _mediator;
     private readonly TourValveDbContext _db;
     private readonly IWalletService _wallet;
@@ -53,7 +55,8 @@ public sealed class AirBookingController : ControllerBase
         TourValveDbContext db,
         IWalletService wallet,
         AirTicketingWorkflowService airTicketingWorkflow,
-        Microsoft.Extensions.Options.IOptions<SmtpOptions> smtpOptions)
+        Microsoft.Extensions.Options.IOptions<SmtpOptions> smtpOptions,
+        Microsoft.Extensions.Options.IOptions<AppOptions> appOptions)
     {
         _airClient = airClient;
         _config = config;
@@ -66,6 +69,7 @@ public sealed class AirBookingController : ControllerBase
         _wallet = wallet;
         _airTicketingWorkflow = airTicketingWorkflow;
         _smtpOptions = smtpOptions.Value;
+        _appOptions = appOptions.Value;
     }
 
     [HttpPost]
@@ -95,6 +99,9 @@ public sealed class AirBookingController : ControllerBase
                 return BadRequest(new { error = "Expired passports are not valid for booking. Update the passenger passport expiry date and try again." });
             }
         }
+
+        if (!PhoneNumberFormatter.IsValidE164(request.ContactPhone))
+            return BadRequest(new { error = "Contact phone number is not in a valid format." });
 
         if (_config.MockMode)
             return BadRequest(new { error = "Live booking is not available in this environment right now." });
@@ -150,6 +157,14 @@ public sealed class AirBookingController : ControllerBase
         }
 
         string reservationRequestXml = string.Empty;
+        // Set as soon as ExtractReservationReferences finds a real locator in a Travelport response,
+        // even if we go on to treat that response as a failure (e.g. a blocking marker like "NO FARES").
+        // Travelport can return an overall-successful AirCreateReservationRsp that still embeds a live
+        // PNR/UniversalRecord alongside Warning-level messages saying the fare couldn't be attached - if
+        // we then throw without recording this locator anywhere durable, that reservation becomes
+        // invisible to the portal even though it genuinely exists at the GDS host. The outer catch below
+        // uses this to flag it for manual admin review instead of silently discarding it.
+        string? orphanedProviderReferenceSummary = null;
 
         try
         {
@@ -188,6 +203,12 @@ public sealed class AirBookingController : ControllerBase
                 ?? refs.AirlineLocator
                 ?? string.Empty;
 
+            if (!string.IsNullOrWhiteSpace(primaryLocator))
+            {
+                orphanedProviderReferenceSummary =
+                    $"UniversalRecordLocator={refs.UniversalRecordLocator ?? "-"}, ProviderLocator={refs.ProviderLocator ?? "-"}, AirlineLocator={refs.AirlineLocator ?? "-"}";
+            }
+
             if (!string.IsNullOrWhiteSpace(reservationIssue))
             {
                 WriteBookingDebugSnapshot("RESERVATION_RESPONSE_BLOCKED", reservationRequestXml, rawResponse, reservationIssue);
@@ -207,58 +228,143 @@ public sealed class AirBookingController : ControllerBase
                 refreshedSupport.ProviderCode,
                 cancellationToken);
 
-            if (walletHoldId.HasValue && portalBooking.Booking is not null)
+            var booking = portalBooking.Booking;
+
+            if (booking is null)
             {
-                await TryCaptureReservationWalletChargeAsync(
-                    portalBooking.Booking,
-                    walletHoldId.Value,
-                    actorId,
-                    cancellationToken);
+                // The Travelport reservation succeeded, but the local booking record failed to save.
+                // We can't safely capture a wallet charge against a booking we can't track, so release
+                // any hold now rather than leaving it dangling indefinitely, and flag this for manual
+                // reconciliation - it will not resolve on its own.
+                if (walletHoldId.HasValue)
+                {
+                    await TryReleaseWalletHoldAsync(walletHoldId.Value, $"{normalizedRequestId}-RESERVE-RELEASE-PORTAL-SYNC-FAILED");
+                    await _notifications.CreateAsync(null, "ADMIN", "WALLET", "Booking sync failed after wallet hold", $"Reservation {portalBooking.BookingReference} (locator {primaryLocator}) was created with Travelport, but the local booking record failed to save. The wallet hold was released; this reservation needs manual reconciliation.", "WARN", "/bookings");
+                }
+
+                await TrySendBookingConfirmationAsync(request, refs, booking, portalBooking.BookingReference);
+                await TrySendAdminBookingNoticeAsync(request, refs, booking, portalBooking.BookingReference);
+
+                return Ok(new AirBookingResponse
+                {
+                    Success = true,
+                    LocatorCode = primaryLocator,
+                    UniversalRecordLocator = refs.UniversalRecordLocator ?? primaryLocator,
+                    ProviderLocator = refs.ProviderLocator ?? primaryLocator,
+                    AirlineLocator = refs.AirlineLocator ?? primaryLocator,
+                    ProviderCode = refreshedSupport.ProviderCode,
+                    BookingWorkflow = refreshedSupport.Workflow,
+                    BookingId = null,
+                    BookingReference = portalBooking.BookingReference,
+                    PortalSyncPending = true,
+                    AutoIssueRequested = false,
+                    TicketIssued = false,
+                    AirlinePortalReady = false,
+                    AirTicketingStatus = string.Empty,
+                    AirTicketingPaymentStatus = string.Empty,
+                    TicketingMessage = walletHoldId.HasValue
+                        ? $"Your reservation (locator {primaryLocator}) was created with the airline, but the booking record failed to save and needs manual reconciliation. Any card/wallet hold has been released - contact support with this locator to complete the booking."
+                        : "Reservation created, but the portal record is still syncing, so ticket purchase could not run automatically. Open the booking ledger once it appears.",
+                    Status = "CONFIRMED",
+                    Message = "Air booking created, but the portal record is still syncing.",
+                    NextActionUrl = "/booking-confirmation",
+                    RawResponse = rawResponse,
+                    IsMock = false
+                });
             }
 
-            await TrySendBookingConfirmationAsync(request, refs, portalBooking.Booking, portalBooking.BookingReference);
-            await TrySendAdminBookingNoticeAsync(request, refs, portalBooking.Booking, portalBooking.BookingReference);
-
-            var ticketingMessage = portalBooking.PortalSyncPending
-                ? "Reservation created, but the portal record is still syncing. Open the booking ledger once it appears, then contact admin for ticket issuance."
-                : "Reservation created successfully. Contact admin for ticket issuance.";
-
-            var booking = portalBooking.Booking;
-            var ticketNumbers = booking is null
-                ? new List<string>()
-                : DeserializeTicketNumbers(booking);
-            var nextActionUrl = booking is null
-                ? "/booking-confirmation"
-                : $"/booking-confirmation?bookingId={Uri.EscapeDataString(booking.Id.ToString())}";
-
-            return Ok(new AirBookingResponse
+            if (walletHoldId.HasValue)
             {
-                Success = true,
-                LocatorCode = primaryLocator,
-                UniversalRecordLocator = refs.UniversalRecordLocator ?? primaryLocator,
-                ProviderLocator = refs.ProviderLocator ?? primaryLocator,
-                AirlineLocator = refs.AirlineLocator ?? primaryLocator,
-                ProviderCode = refreshedSupport.ProviderCode,
-                BookingWorkflow = refreshedSupport.Workflow,
-                BookingId = booking?.Id,
-                BookingReference = portalBooking.BookingReference,
-                PortalSyncPending = portalBooking.PortalSyncPending,
-                AutoIssueRequested = false,
-                TicketIssued = false,
-                AirlinePortalReady = false,
-                AirTicketingStatus = booking?.AirTicketingStatus ?? string.Empty,
-                AirTicketingPaymentStatus = booking?.AirTicketingPaymentStatus ?? string.Empty,
-                TicketingMessage = ticketingMessage,
-                TicketedAt = booking?.TicketedAt,
-                TicketNumbers = ticketNumbers,
-                Status = booking?.Status ?? "CONFIRMED",
-                Message = portalBooking.PortalSyncPending
-                    ? "Air booking created, but the portal record is still syncing."
-                    : "Air booking created successfully. Contact admin for ticket issuance.",
-                NextActionUrl = nextActionUrl,
-                RawResponse = rawResponse,
-                IsMock = false
-            });
+                await TryCaptureReservationWalletChargeAsync(booking, walletHoldId.Value, actorId, cancellationToken);
+            }
+            else
+            {
+                await TrySetCashTicketingDefaultAsync(booking, actorId, cancellationToken);
+            }
+
+            await TrySendBookingConfirmationAsync(request, refs, booking, portalBooking.BookingReference);
+            await TrySendAdminBookingNoticeAsync(request, refs, booking, portalBooking.BookingReference);
+
+            try
+            {
+                var issueResult = await _airTicketingWorkflow.IssueAsync(
+                    booking,
+                    actorId,
+                    actorEmail,
+                    backgroundTriggered: false,
+                    releaseWalletHoldOnFailure: true,
+                    cancellationToken);
+
+                var ticketIssued = issueResult.TicketNumbers.Count > 0;
+                var ticketingFailed = !ticketIssued && string.Equals(
+                    issueResult.WorkflowStatus,
+                    AirTicketingWorkflowService.WorkflowFailed,
+                    StringComparison.OrdinalIgnoreCase);
+
+                string ticketingErrorDetail;
+                string ticketingMessage;
+                string message;
+
+                if (ticketIssued)
+                {
+                    ticketingErrorDetail = string.Empty;
+                    ticketingMessage = $"Ticket numbers: {string.Join(", ", issueResult.TicketNumbers)}.";
+                    message = "Ticket issued successfully.";
+                }
+                else if (ticketingFailed)
+                {
+                    ticketingErrorDetail = booking.AirTicketingLastError;
+                    ticketingMessage = "Ticket purchase failed.";
+                    message = "Reservation confirmed, but ticket purchase failed.";
+                }
+                else
+                {
+                    ticketingErrorDetail = string.Empty;
+                    ticketingMessage = "Ticket confirmation is still in progress; refresh the booking shortly.";
+                    message = "Reservation confirmed. Ticket confirmation is still in progress; refresh the booking shortly.";
+                }
+
+                return Ok(new AirBookingResponse
+                {
+                    Success = true,
+                    LocatorCode = primaryLocator,
+                    UniversalRecordLocator = refs.UniversalRecordLocator ?? primaryLocator,
+                    ProviderLocator = refs.ProviderLocator ?? primaryLocator,
+                    AirlineLocator = booking.AirlineLocator,
+                    ProviderCode = refreshedSupport.ProviderCode,
+                    BookingWorkflow = refreshedSupport.Workflow,
+                    BookingId = booking.Id,
+                    BookingReference = portalBooking.BookingReference,
+                    PortalSyncPending = false,
+                    AutoIssueRequested = true,
+                    TicketIssued = ticketIssued,
+                    AirlinePortalReady = true,
+                    AirTicketingStatus = issueResult.WorkflowStatus,
+                    AirTicketingPaymentStatus = issueResult.PaymentStatus,
+                    TicketingMessage = ticketingMessage,
+                    TicketingErrorDetail = ticketingErrorDetail,
+                    TicketedAt = issueResult.TicketedAt,
+                    TicketNumbers = issueResult.TicketNumbers.ToList(),
+                    Status = issueResult.Status,
+                    Message = message,
+                    NextActionUrl = $"/booking-confirmation?bookingId={Uri.EscapeDataString(booking.Id.ToString())}",
+                    RawResponse = rawResponse,
+                    IsMock = false
+                });
+            }
+            catch (Exception issueEx)
+            {
+                var safeIssueDetail = ExtractTravelportMessage(issueEx);
+                await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Ticket purchase failed", $"Booking {portalBooking.BookingReference}: {safeIssueDetail}", "WARN", $"/bookings?created={Uri.EscapeDataString(portalBooking.BookingReference)}");
+
+                return StatusCode(StatusCodes.Status502BadGateway, new
+                {
+                    error = "The reservation was created, but ticket purchase failed immediately after.",
+                    detail = safeIssueDetail,
+                    bookingId = booking.Id,
+                    bookingReference = portalBooking.BookingReference
+                });
+            }
         }
         catch (Exception ex)
         {
@@ -273,6 +379,16 @@ public sealed class AirBookingController : ControllerBase
             await _audit.WriteAsync(actorId, actorEmail, "BOOKING", "CREATE_FAILED", "AirBooking", "LIVE", request.FlightNumber, detail, "WARN");
             await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Booking failed", $"We could not complete {request.Carrier} {request.FlightNumber}. {detail}", "WARN", "/booking");
             await _notifications.CreateAsync(null, "ADMIN", "TRAVELPORT", "Provider error", $"Booking failed for {request.Carrier} {request.FlightNumber}. {detail}", "WARN", "/bookings");
+
+            if (!string.IsNullOrWhiteSpace(orphanedProviderReferenceSummary))
+            {
+                // Travelport returned a real locator before we treated this response as a failure - that
+                // means a live reservation may exist at the GDS host with no local booking record at all.
+                // Flag it distinctly so it isn't lost once the debug snapshot file gets overwritten by the
+                // next booking attempt.
+                await _audit.WriteAsync(actorId, actorEmail, "BOOKING", "RESERVATION_ORPHANED_AT_PROVIDER", "AirBooking", "LIVE", request.FlightNumber, $"{orphanedProviderReferenceSummary} | {detail}", "WARN");
+                await _notifications.CreateAsync(null, "ADMIN", "TRAVELPORT", "Possible orphaned reservation at provider", $"Booking failed for {request.Carrier} {request.FlightNumber} ({detail}), but Travelport's response included a locator before the failure was detected: {orphanedProviderReferenceSummary}. This may be a live, unticketable reservation at the GDS host with no local booking record - review and cancel it manually if needed.", "WARN", "/bookings");
+            }
 
             return BadRequest(new
             {
@@ -293,15 +409,20 @@ public sealed class AirBookingController : ControllerBase
         // Travelport may reject AirCreateReservationReq without at least one ActionStatus (Error 7228).
         // Use a safe end-of-day ticketing time-limit to keep the record consistent whether we auto-issue
         // immediately or ticket later via workflow.
+        // Must be the agency branch's LOCAL calendar date (Travelport evaluates this against the
+        // branch's timezone, e.g. +08:00) — using DateTime.UtcNow's date here is stale for part of
+        // each day and gets rejected as "'Ticket By' date cannot be in the past."
         var actionStatusXml =
-            $"{Environment.NewLine}  <com:ActionStatus Type=\"TAW\" TicketDate=\"{DateTime.UtcNow:yyyy-MM-dd}T23:59:00.000\" ProviderCode=\"{Escape(providerCode)}\" />";
+            $"{Environment.NewLine}  <com:ActionStatus Type=\"TAW\" TicketDate=\"{GetLocalToday():yyyy-MM-dd}T23:59:00.000\" ProviderCode=\"{Escape(providerCode)}\" />";
+
+        var phoneNumberXml = BuildPhoneNumberXml(request.ContactPhone);
 
         var passengersXml = string.Join(
             Environment.NewLine,
             request.Passengers.Select((passenger, index) => $@"
   <com:BookingTraveler Key=""{Escape(BuildTravelerKey(passenger.TravelerType, index))}"" TravelerType=""{Escape(NormalizeTravelerType(passenger.TravelerType))}"" DOB=""{Escape(DateOrFallback(passenger.DateOfBirth))}"" Gender=""{Escape(passenger.Gender)}"">
     <com:BookingTravelerName First=""{Escape(passenger.FirstName)}"" Last=""{Escape(passenger.LastName)}"" />
-    <com:PhoneNumber Number=""{Escape(request.ContactPhone)}"" />
+    {phoneNumberXml}
     <com:Email EmailID=""{Escape(request.ContactEmail)}"" />
   </com:BookingTraveler>"));
 
@@ -515,9 +636,11 @@ public sealed class AirBookingController : ControllerBase
         {
             await _wallet.ReleaseHoldAsync(holdId, reference);
         }
-        catch
+        catch (Exception ex)
         {
-            // Keep the main provider error as the primary outcome if wallet hold cleanup also fails.
+            // Keep the main provider error as the primary outcome if wallet hold cleanup also fails,
+            // but don't let that failure go completely unnoticed - a stuck hold needs manual follow-up.
+            await _notifications.CreateAsync(null, "ADMIN", "WALLET", "Wallet hold release failed", $"Releasing wallet hold {holdId} ({reference}) failed: {ExtractTravelportMessage(ex)}", "WARN", "/bookings");
         }
     }
 
@@ -567,9 +690,13 @@ public sealed class AirBookingController : ControllerBase
 
             await _db.SaveChangesAsync(cancellationToken);
         }
-        catch
+        catch (Exception captureEx)
         {
-            // Best-effort only. If capture fails, leave the hold ACTIVE to keep funds reserved.
+            // Best-effort only. If capture fails, leave the hold ACTIVE to keep funds reserved, but
+            // make sure this is flagged rather than silently leaving the fare uncaptured.
+            var captureDetail = ExtractTravelportMessage(captureEx);
+            await _notifications.CreateAsync(null, "ADMIN", "WALLET", "Wallet charge capture failed", $"Booking {booking.BookingReference}: capturing wallet hold {walletHoldId} failed and remains as a hold: {captureDetail}", "WARN", "/bookings");
+
             try
             {
                 booking.AirTicketingFormOfPayment = AirTicketingWorkflowService.FormOfPaymentWallet;
@@ -583,9 +710,9 @@ public sealed class AirBookingController : ControllerBase
 
                 await _db.SaveChangesAsync(cancellationToken);
             }
-            catch
+            catch (Exception persistEx)
             {
-                // Ignore persistence errors; provider reservation is the primary outcome.
+                await _notifications.CreateAsync(null, "ADMIN", "WALLET", "Booking payment state not saved", $"Booking {booking.BookingReference}: could not persist the fallback hold-active payment state after a failed capture: {ExtractTravelportMessage(persistEx)}", "WARN", "/bookings");
             }
         }
     }
@@ -604,6 +731,25 @@ public sealed class AirBookingController : ControllerBase
         }
     }
 
+    private async Task TrySetCashTicketingDefaultAsync(Booking booking, Guid actorId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            booking.AirTicketingFormOfPayment = AirTicketingWorkflowService.FormOfPaymentCash;
+            booking.AirTicketingPaymentStatus = AirTicketingWorkflowService.PaymentUnpaid;
+            booking.AirTicketingDate = GetLocalToday();
+            booking.AirTicketingScheduledAt = DateTime.UtcNow;
+            booking.AirTicketingScheduledByAgentId = actorId;
+            booking.AirTicketingLastError = string.Empty;
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // Best-effort only.
+        }
+    }
+
     private static string NormalizeRequestedFormOfPayment(string formOfPayment) =>
         (formOfPayment ?? string.Empty).Trim().ToUpperInvariant() switch
         {
@@ -613,8 +759,6 @@ public sealed class AirBookingController : ControllerBase
             "CASH" => AirTicketingWorkflowService.FormOfPaymentCash,
             _ => AirTicketingWorkflowService.FormOfPaymentWallet
         };
-
-    private static string BuildWorkspacePath(Guid bookingId) => $"/air-ticketing/{bookingId}";
 
     private bool IsReservedAdminUser()
     {
@@ -965,6 +1109,21 @@ public sealed class AirBookingController : ControllerBase
     }
 
     private static string Escape(string value) => SecurityElement.Escape(value) ?? string.Empty;
+
+    private static string BuildPhoneNumberXml(string contactPhone)
+    {
+        var parts = PhoneNumberFormatter.ToTravelportPhoneParts(contactPhone);
+        if (parts is null)
+        {
+            return $@"<com:PhoneNumber Number=""{Escape(contactPhone)}"" />";
+        }
+
+        var areaCodeAttr = parts.Value.AreaCode is null
+            ? string.Empty
+            : $@" AreaCode=""{Escape(parts.Value.AreaCode)}""";
+
+        return $@"<com:PhoneNumber CountryCode=""{Escape(parts.Value.CountryCode)}""{areaCodeAttr} Number=""{Escape(parts.Value.Number)}"" />";
+    }
 
     private async Task<BookingPricingRefreshResult> RefreshPricingForBookingAsync(AirBookingRequest request, string providerCode)
     {
@@ -1497,13 +1656,12 @@ public sealed class AirBookingController : ControllerBase
                 : string.Join(" ", new[] { request.Passengers[0].FirstName, request.Passengers[0].LastName }
                     .Where(part => !string.IsNullOrWhiteSpace(part)));
 
-            var baseUrl = "https://tourvalve.com";
+            var baseUrl = _appOptions.PublicBaseUrl;
             var manageBookingUrl = booking is null
                 ? $"{baseUrl}/bookings"
                 : $"{baseUrl}/booking-confirmation?bookingId={Uri.EscapeDataString(booking.Id.ToString())}";
-            var ticketingWorkspaceUrl = booking is null
-                ? null
-                : $"{baseUrl}/air-ticketing/{Uri.EscapeDataString(booking.Id.ToString())}";
+            // The AirTicketing admin workspace was removed now that ticketing happens synchronously at booking time.
+            string? ticketingWorkspaceUrl = null;
 
             var attachments = BuildBookingEmailAttachments(booking, bookingReference, request, locator, refs);
             await _emailService.SendAsync(
@@ -1528,9 +1686,11 @@ public sealed class AirBookingController : ControllerBase
                     ticketingWorkspaceUrl),
                 attachments);
         }
-        catch
+        catch (Exception ex)
         {
-            // Keep booking success as primary outcome even if email delivery fails.
+            // Keep booking success as primary outcome even if email delivery fails, but flag it -
+            // otherwise the agent is told a confirmation email "has been prepared" that never sent.
+            await _notifications.CreateAsync(null, "ADMIN", "EMAIL", "Booking confirmation email failed", $"Booking {bookingReference}: sending the confirmation email to {request.ContactEmail} failed: {ex.Message}", "WARN", "/bookings");
         }
     }
 
@@ -1546,13 +1706,12 @@ public sealed class AirBookingController : ControllerBase
         try
         {
             var locator = refs.UniversalRecordLocator ?? refs.ProviderLocator ?? refs.AirlineLocator ?? string.Empty;
-            var baseUrl = "https://tourvalve.com";
+            var baseUrl = _appOptions.PublicBaseUrl;
             var manageBookingUrl = booking is null
                 ? $"{baseUrl}/bookings"
                 : $"{baseUrl}/booking-confirmation?bookingId={Uri.EscapeDataString(booking.Id.ToString())}";
-            var ticketingWorkspaceUrl = booking is null
-                ? null
-                : $"{baseUrl}/air-ticketing/{Uri.EscapeDataString(booking.Id.ToString())}";
+            // The AirTicketing admin workspace was removed now that ticketing happens synchronously at booking time.
+            string? ticketingWorkspaceUrl = null;
 
             var travelerDisplayName = request.Passengers.Count == 0
                 ? null
@@ -1582,13 +1741,15 @@ public sealed class AirBookingController : ControllerBase
                     ticketingWorkspaceUrl),
                 attachments);
         }
-        catch
+        catch (Exception ex)
         {
-            // Keep booking success as primary outcome even if admin notice fails.
+            // Keep booking success as primary outcome even if the admin notice email fails; still
+            // flag it in-app since the email channel itself may be down.
+            await _notifications.CreateAsync(null, "ADMIN", "EMAIL", "Admin booking notice email failed", $"Booking {bookingReference}: sending the admin notice email failed: {ex.Message}", "WARN", "/bookings");
         }
     }
 
-    private static IReadOnlyList<EmailAttachment>? BuildBookingEmailAttachments(
+    private IReadOnlyList<EmailAttachment>? BuildBookingEmailAttachments(
         Booking? booking,
         string bookingReference,
         AirBookingRequest request,
@@ -1651,7 +1812,8 @@ public sealed class AirBookingController : ControllerBase
                 ContactPhone: request.ContactPhone,
                 ItinerarySegments: segments,
                 TicketNumbers: Array.Empty<string>(),
-                Ancillaries: preferenceAncillaries);
+                Ancillaries: preferenceAncillaries,
+                PublicDomain: _appOptions.PublicDomain);
 
             var pdfBytes = new BookingItineraryPdfBuilder().Build(booking, model);
             var fileName = $"TourValve Booking - {booking.BookingReference}.pdf";

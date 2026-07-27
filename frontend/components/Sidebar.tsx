@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Briefcase, LayoutGrid, LogOut, PlaneTakeoff, ScrollText, Ticket, Users, Wallet, MoreHorizontal, X } from "lucide-react";
+import { BarChart3, Briefcase, LayoutGrid, LogOut, PlaneTakeoff, ScrollText, Users, Wallet, MoreHorizontal, X } from "lucide-react";
 import { getCurrentUser } from "@/lib/api";
 import { getUserFromToken, removeToken } from "@/lib/auth";
 
@@ -12,21 +12,19 @@ const menu = [
     { name: "Flight Search", path: "/flight-search", icon: PlaneTakeoff },
     { name: "Bookings", path: "/bookings", icon: Briefcase },
     { name: "Wallet", path: "/wallet", icon: Wallet },
-    { name: "Ticket Queue", path: "/ticket-queue", icon: Ticket },
     { name: "Agents", path: "/agents", icon: Users },
     { name: "Audit Trail", path: "/audit-trail", icon: ScrollText },
     { name: "Reports", path: "/reports", icon: BarChart3 },
 ];
 
 const adminOnlyPaths = new Set(["/audit-trail"]);
-const reservedAdminOnlyPaths = new Set(["/ticket-queue", "/reports"]);
+const reservedAdminOnlyPaths = new Set(["/reports"]);
 
 const mobileLabels: Record<string, string> = {
     Dashboard: "Home",
     "Flight Search": "Search",
     Bookings: "Trips",
     Wallet: "Wallet",
-    "Ticket Queue": "Queue",
     Agents: "Agents",
     "Audit Trail": "Audit",
     Reports: "Reports",

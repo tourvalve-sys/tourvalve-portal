@@ -21,6 +21,7 @@ public class AdminAgentsController : ControllerBase
     private readonly IAuditTrailService _audit;
     private readonly INotificationService _notifications;
     private readonly SmtpOptions _smtpOptions;
+    private readonly AppOptions _appOptions;
 
     public AdminAgentsController(
         IAgentService agents,
@@ -28,7 +29,8 @@ public class AdminAgentsController : ControllerBase
         IEmailService emailService,
         IAuditTrailService audit,
         INotificationService notifications,
-        IOptions<SmtpOptions> smtpOptions)
+        IOptions<SmtpOptions> smtpOptions,
+        IOptions<AppOptions> appOptions)
     {
         _agents = agents;
         _db = db;
@@ -36,6 +38,7 @@ public class AdminAgentsController : ControllerBase
         _audit = audit;
         _notifications = notifications;
         _smtpOptions = smtpOptions.Value;
+        _appOptions = appOptions.Value;
     }
 
     public record CreateAgentRequest(string Email, string Password, string Role);
@@ -251,7 +254,7 @@ public class AdminAgentsController : ControllerBase
         await TrySendEmailAsync(
             request.Email,
             "Your TourValve access is approved",
-            EmailTemplates.RegistrationApproved(request.Email));
+            EmailTemplates.RegistrationApproved(request.Email, _appOptions.PublicBaseUrl));
 
         await _audit.WriteAsync(agent.Id, User.Identity?.Name ?? "admin@tourvalve.com", "ACCESS", "REGISTER_APPROVE", "RegistrationApprovalRequest", request.Id.ToString(), request.Email, "Registration approved.");
         await _notifications.CreateAsync(agent.Id, "AGENT", "ACCESS", "Registration approved", "Your TourValve access has been approved.", "SUCCESS", "/login");
@@ -319,7 +322,7 @@ public class AdminAgentsController : ControllerBase
         await TrySendEmailAsync(
             request.Email,
             "Your TourValve temporary password",
-            EmailTemplates.PasswordResetApproved(request.Email, temporaryPassword));
+            EmailTemplates.PasswordResetApproved(request.Email, temporaryPassword, _appOptions.PublicBaseUrl));
 
         await _audit.WriteAsync(agent.Id, User.Identity?.Name ?? "admin@tourvalve.com", "ACCESS", "PASSWORD_RESET_APPROVE", "PasswordResetApprovalRequest", request.Id.ToString(), request.Email, "Password reset approved.");
         await _notifications.CreateAsync(agent.Id, "AGENT", "ACCESS", "Password reset approved", "A temporary password has been issued to your email.", "WARN", "/login");

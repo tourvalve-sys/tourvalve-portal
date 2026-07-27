@@ -72,7 +72,7 @@ public sealed class BookingItineraryPdfBuilder
         return stream.ToArray();
     }
 
-    public static BookingItineraryPdfModel BuildModel(Booking booking, string? universalRecordRetrieveXml, IReadOnlyList<BookingAncillaryOrder> ancillaries)
+    public static BookingItineraryPdfModel BuildModel(Booking booking, string? universalRecordRetrieveXml, IReadOnlyList<BookingAncillaryOrder> ancillaries, string publicDomain)
     {
         var passengers = ExtractPassengerNames(universalRecordRetrieveXml);
         var (email, phone) = ExtractContact(universalRecordRetrieveXml);
@@ -107,7 +107,8 @@ public sealed class BookingItineraryPdfBuilder
             ContactPhone: phone,
             ItinerarySegments: itinerarySegments,
             TicketNumbers: ticketNumbers,
-            Ancillaries: ancillaries);
+            Ancillaries: ancillaries,
+            PublicDomain: publicDomain);
     }
 
     private static void DrawHeader(
@@ -416,7 +417,7 @@ public sealed class BookingItineraryPdfBuilder
         var footerY = PageHeight - 28;
         gfx.DrawLine(PenBorder, 0, footerY, PageWidth, footerY);
 
-        gfx.DrawString("tourvalve.com", font, BrushTextMuted, new XRect(margin, footerY + 8, PageWidth - margin * 2, 12), XStringFormats.TopLeft);
+        gfx.DrawString(model.PublicDomain, font, BrushTextMuted, new XRect(margin, footerY + 8, PageWidth - margin * 2, 12), XStringFormats.TopLeft);
 
         var created = model.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
         gfx.DrawString($"Generated: {created}", font, BrushTextMuted, new XRect(margin, footerY + 8, PageWidth - margin * 2, 12), XStringFormats.TopRight);
@@ -583,4 +584,5 @@ public sealed record BookingItineraryPdfModel(
     string? ContactPhone,
     IReadOnlyList<BookingItinerarySegment> ItinerarySegments,
     IReadOnlyList<string> TicketNumbers,
-    IReadOnlyList<BookingAncillaryOrder> Ancillaries);
+    IReadOnlyList<BookingAncillaryOrder> Ancillaries,
+    string PublicDomain);

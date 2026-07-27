@@ -7,8 +7,6 @@ namespace TourValve.Infrastructure.Travelport.Air;
 
 public class BookingTicketingService
 {
-    private const int RetrieveRetryCount = 4;
-    private static readonly TimeSpan RetrieveRetryDelay = TimeSpan.FromSeconds(2);
     public const string MissingStoredPricingMessage = "This booking does not contain stored fare pricing in Travelport, so it cannot be ticketed. Reprice and rebook the itinerary before issuing the ticket.";
     private const string AirNamespace = "http://www.travelport.com/schema/air_v51_0";
     private const string CommonNamespace = "http://www.travelport.com/schema/common_v51_0";
@@ -53,7 +51,11 @@ public class BookingTicketingService
             ticketNumbers = ExtractTicketNumbers(ticketingResponseXml);
         var refreshedRecordXml = string.Empty;
 
-        for (var attempt = 0; attempt < RetrieveRetryCount && ticketNumbers.Count == 0; attempt += 1)
+        // A single follow-up check is enough to catch tickets that synced immediately. Anything
+        // still missing evidence after this is treated as pending (not an error) and left for the
+        // background worker to resolve later, rather than retried inline here - see
+        // BOOKING_CONFIRMATION_LATENCY_PLAN.md.
+        if (ticketNumbers.Count == 0)
         {
             refreshedRecordXml = await RetrieveTicketingRecordAsync(
                 booking.UniversalRecordLocator,
@@ -63,17 +65,12 @@ public class BookingTicketingService
             hasVerifiedTicketEvidence = hasVerifiedTicketEvidence || ticketNumbers.Count > 0;
             if (ticketNumbers.Count == 0)
                 ticketNumbers = ExtractTicketNumbers(refreshedRecordXml);
-
-            if (ticketNumbers.Count > 0 || attempt == RetrieveRetryCount - 1)
-                break;
-
-            await Task.Delay(RetrieveRetryDelay);
         }
 
         if (!string.IsNullOrWhiteSpace(refreshedRecordXml))
             snapshot = ExtractSnapshot(refreshedRecordXml, booking);
 
-        var documentVerification = await VerifyIssuedDocumentsAsync(booking, snapshot, ticketNumbers, hasVerifiedTicketEvidence);
+        var documentVerification = await VerifyIssuedDocumentsAsync(snapshot, ticketNumbers, hasVerifiedTicketEvidence);
         if (documentVerification.VerifiedTicketNumbers.Count > 0)
         {
             ticketNumbers = documentVerification.VerifiedTicketNumbers.ToList();
@@ -352,21 +349,45 @@ public class BookingTicketingService
         return "The provider did not return any valid e-ticket numbers after ticket issuance. The booking should remain confirmed until live e-ticket numbers are present.";
     }
 
-    public static bool IsTicketingEvidencePending(string? message)
+    /// <summary>
+    /// How long a booking is allowed to sit in "awaiting evidence" before we stop treating it as
+    /// temporary and escalate it to a permanent failure, regardless of the message text. Ticket
+    /// issuance normally resolves within seconds to a few minutes; an account-level problem (e.g.
+    /// an IATA/ARC authorization issue) will otherwise loop here indefinitely.
+    /// </summary>
+    public static readonly TimeSpan EvidencePendingWindow = TimeSpan.FromMinutes(30);
+
+    public static bool IsTicketingEvidencePending(string? message, DateTime? scheduledAt = null)
     {
         if (string.IsNullOrWhiteSpace(message))
             return false;
 
-        // Some failures (e.g. AAT authorization / plating carrier restrictions) are permanent until
-        // Travelport configuration changes. In those cases, a subsequent document retrieve will
-        // also show "has no tickets yet", but waiting will not help.
+        // Some failures are permanent until Travelport/agency configuration changes (account-level
+        // ticketing authority problems, e.g. IATA/ARC setup issues). In those cases a subsequent
+        // document retrieve may also show "has no tickets yet", but waiting will not help.
         if (message.Contains("TICKETING NOT ALLOWED", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("CHECK AAT", StringComparison.OrdinalIgnoreCase))
+            message.Contains("CHECK AAT", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("IATA", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("NOT AUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("AGENT SINE", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("SECURITY VIOLATION", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("PLATING CARRIER", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("TICKETING AUTHORITY", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        return message.Contains("has no tickets yet", StringComparison.OrdinalIgnoreCase);
+        if (!message.Contains("has no tickets yet", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Even a message that looks like a normal "not synced yet" response should stop being
+        // treated as pending once we've waited well past how long ticketing normally takes -
+        // otherwise a permanently-blocked account loops here forever instead of ever surfacing
+        // as a real failure.
+        if (scheduledAt.HasValue && DateTime.UtcNow - scheduledAt.Value > EvidencePendingWindow)
+            return false;
+
+        return true;
     }
 
     public async Task<string> RetrieveDocumentInfoAsync(BookingTicketingSnapshot snapshot, IReadOnlyCollection<string>? ticketNumbers = null)
@@ -477,60 +498,27 @@ public class BookingTicketingService
     }
 
     private async Task<TicketDocumentVerificationResult> VerifyIssuedDocumentsAsync(
-        Booking booking,
         BookingTicketingSnapshot snapshot,
         IReadOnlyCollection<string> ticketNumbers,
         bool allowTicketNumberLookup)
     {
-        var lastResponseXml = string.Empty;
-        var failureMessages = new List<string>();
-        var liveSnapshot = snapshot;
-        var liveCandidates = ticketNumbers
+        var candidates = ticketNumbers
             .Where(number => !string.IsNullOrWhiteSpace(number))
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        for (var attempt = 0; attempt < RetrieveRetryCount; attempt += 1)
+        // A single document check is enough to confirm tickets that are already verifiable. If
+        // nothing comes back, that's treated as pending (not an error) - see
+        // BOOKING_CONFIRMATION_LATENCY_PLAN.md - and left for the background worker to recheck.
+        try
         {
-            try
-            {
-                lastResponseXml = await RetrieveDocumentInfoAsync(
-                    liveSnapshot,
-                    allowTicketNumberLookup ? liveCandidates : null);
-                var verifiedTicketNumbers = ExtractVerifiedTicketNumbers(lastResponseXml);
-                if (verifiedTicketNumbers.Count > 0)
-                    return new TicketDocumentVerificationResult(lastResponseXml, verifiedTicketNumbers);
-            }
-            catch (Exception ex)
-            {
-                failureMessages.Add(ex.Message);
-                lastResponseXml = ex.Message;
-            }
-
-            if (attempt == RetrieveRetryCount - 1)
-                break;
-
-            await Task.Delay(RetrieveRetryDelay);
-
-            var refreshedRecordXml = await RetrieveTicketingRecordAsync(
-                booking.UniversalRecordLocator!,
-                liveSnapshot.ProviderCode,
-                liveSnapshot.ProviderLocator);
-            liveSnapshot = ExtractSnapshot(refreshedRecordXml, booking);
-
-            var verifiedFromRecord = ExtractVerifiedTicketNumbers(refreshedRecordXml);
-            if (verifiedFromRecord.Count > 0)
-                return new TicketDocumentVerificationResult(refreshedRecordXml, verifiedFromRecord);
-
-            var refreshedCandidates = ExtractTicketNumbers(refreshedRecordXml);
-            if (refreshedCandidates.Count > 0)
-                liveCandidates = refreshedCandidates;
+            var responseXml = await RetrieveDocumentInfoAsync(snapshot, allowTicketNumberLookup ? candidates : null);
+            return new TicketDocumentVerificationResult(responseXml, ExtractVerifiedTicketNumbers(responseXml));
         }
-
-        if (failureMessages.Count > 0 && string.IsNullOrWhiteSpace(lastResponseXml))
-            lastResponseXml = string.Join(" ", failureMessages.Distinct(StringComparer.OrdinalIgnoreCase));
-
-        return new TicketDocumentVerificationResult(lastResponseXml, new List<string>());
+        catch (Exception ex)
+        {
+            return new TicketDocumentVerificationResult(ex.Message, new List<string>());
+        }
     }
 
     private static string Escape(string value) =>

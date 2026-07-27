@@ -23,6 +23,7 @@ public sealed class AirBookingResponse
     public string AirTicketingStatus { get; set; } = string.Empty;
     public string AirTicketingPaymentStatus { get; set; } = string.Empty;
     public string TicketingMessage { get; set; } = string.Empty;
+    public string TicketingErrorDetail { get; set; } = string.Empty;
     public DateTime? TicketedAt { get; set; }
     public List<string> TicketNumbers { get; set; } = new();
     public string NextActionUrl { get; set; } = string.Empty;

@@ -23,6 +23,7 @@ public class AuthController : ControllerBase
     private readonly IAuditTrailService _audit;
     private readonly INotificationService _notifications;
     private readonly SmtpOptions _smtpOptions;
+    private readonly AppOptions _appOptions;
 
     public AuthController(
         IJwtTokenService jwt,
@@ -31,7 +32,8 @@ public class AuthController : ControllerBase
         IEmailService emailService,
         IAuditTrailService audit,
         INotificationService notifications,
-        IOptions<SmtpOptions> smtpOptions)
+        IOptions<SmtpOptions> smtpOptions,
+        IOptions<AppOptions> appOptions)
     {
         _jwt = jwt;
         _db = db;
@@ -40,6 +42,7 @@ public class AuthController : ControllerBase
         _audit = audit;
         _notifications = notifications;
         _smtpOptions = smtpOptions.Value;
+        _appOptions = appOptions.Value;
     }
 
     [HttpPost("register")]
@@ -115,7 +118,7 @@ public class AuthController : ControllerBase
             await TrySendEmailAsync(
                 email,
                 "Your TourValve temporary password",
-                EmailTemplates.PasswordResetApproved(email, temporaryPassword));
+                EmailTemplates.PasswordResetApproved(email, temporaryPassword, _appOptions.PublicBaseUrl));
 
             await _audit.WriteAsync(agent.Id, email, "ACCESS", "PASSWORD_RESET_SELF_SERVICE", "Agent", agent.Id.ToString(), email, "Temporary password issued via self-service forgot-password.");
             await _notifications.CreateAsync(agent.Id, "AGENT", "ACCESS", "Password reset", "A temporary password has been emailed to you. Please sign in and change it.", "WARN", "/login");

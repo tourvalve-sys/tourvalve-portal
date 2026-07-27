@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TourValve.Api.Models;
 using TourValve.Application.Bookings.Commands;
+using TourValve.Application.Common;
 using TourValve.Application.Wallet;
 using TourValve.Domain;
 using TourValve.Infrastructure.Atlas;
@@ -31,6 +32,7 @@ public sealed class AtlasBookingController : ControllerBase
     private readonly INotificationService _notifications;
     private readonly IWalletService _wallet;
     private readonly TicketMarkupService _ticketMarkup;
+    private readonly AirTicketingWorkflowService _airTicketingWorkflow;
 
     public AtlasBookingController(
         AtlasApiClient atlas,
@@ -40,7 +42,8 @@ public sealed class AtlasBookingController : ControllerBase
         IAuditTrailService audit,
         INotificationService notifications,
         IWalletService wallet,
-        TicketMarkupService ticketMarkup)
+        TicketMarkupService ticketMarkup,
+        AirTicketingWorkflowService airTicketingWorkflow)
     {
         _atlas = atlas;
         _options = options.Value;
@@ -50,6 +53,7 @@ public sealed class AtlasBookingController : ControllerBase
         _notifications = notifications;
         _wallet = wallet;
         _ticketMarkup = ticketMarkup;
+        _airTicketingWorkflow = airTicketingWorkflow;
     }
 
     [HttpPost]
@@ -87,6 +91,9 @@ public sealed class AtlasBookingController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(request.ContactEmail) || string.IsNullOrWhiteSpace(request.ContactPhone))
             return BadRequest(new { error = "Contact email and phone are required for booking." });
+
+        if (!PhoneNumberFormatter.IsValidE164(request.ContactPhone))
+            return BadRequest(new { error = "Contact phone number is not in a valid format." });
 
         var actorIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(actorIdValue, out var actorId))
@@ -191,8 +198,9 @@ public sealed class AtlasBookingController : ControllerBase
                         {
                             await _wallet.ReleaseHoldAsync(walletHoldId.Value, $"{normalizedRequestId}-RESERVE-RELEASE");
                         }
-                        catch
+                        catch (Exception releaseEx)
                         {
+                            await _notifications.CreateAsync(null, "ADMIN", "WALLET", "Wallet hold release failed", $"Reservation {normalizedRequestId}: order failed and releasing wallet hold {walletHoldId} also failed: {releaseEx.Message}", "WARN", "/bookings");
                         }
                     }
 
@@ -215,8 +223,9 @@ public sealed class AtlasBookingController : ControllerBase
                     {
                         await _wallet.ReleaseHoldAsync(walletHoldId.Value, $"{normalizedRequestId}-RESERVE-RELEASE");
                     }
-                    catch
+                    catch (Exception releaseEx)
                     {
+                        await _notifications.CreateAsync(null, "ADMIN", "WALLET", "Wallet hold release failed", $"Reservation {normalizedRequestId}: order failed and releasing wallet hold {walletHoldId} also failed: {releaseEx.Message}", "WARN", "/bookings");
                     }
                 }
 
@@ -315,7 +324,7 @@ public sealed class AtlasBookingController : ControllerBase
                 BookingWorkflow = "ATLAS_LCC_RESERVATION",
                 AirTicketingStatus = "NOT_STARTED",
                 AirTicketingPaymentStatus = "UNPAID",
-                TicketingMessage = "Reservation created successfully. Contact admin for ticket issuance.",
+                TicketingMessage = "Reservation created, but the booking record didn't save, so ticket purchase could not run automatically. Contact support with your reservation locator.",
                 NextActionUrl = "/booking-confirmation",
                 RawResponse = JsonSerializer.Serialize(order),
                 IsMock = false
@@ -323,41 +332,146 @@ public sealed class AtlasBookingController : ControllerBase
         }
 
         var booking = await _db.Bookings.FindAsync(new object?[] { createResult.BookingId }, cancellationToken);
-        if (walletHoldId.HasValue && booking is not null)
+        if (booking is null)
         {
-            await TryCaptureReservationWalletChargeAsync(
-                booking,
-                walletHoldId.Value,
-                actorId,
-                cancellationToken);
+            await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "RESERVATION_CREATED", "AtlasBooking", "LIVE", request.FlightNumber, refs.UniversalRecordLocator ?? refs.ProviderLocator ?? string.Empty, "INFO");
+
+            return Ok(new AirBookingResponse
+            {
+                Success = true,
+                LocatorCode = refs.UniversalRecordLocator ?? refs.ProviderLocator ?? string.Empty,
+                UniversalRecordLocator = refs.UniversalRecordLocator ?? string.Empty,
+                ProviderLocator = refs.ProviderLocator ?? string.Empty,
+                AirlineLocator = refs.AirlineLocator ?? string.Empty,
+                ProviderCode = "ATLAS",
+                Status = "CONFIRMED",
+                Message = "Reservation created, but the portal record is still syncing.",
+                BookingId = createResult.BookingId,
+                BookingReference = createResult.BookingReference,
+                PortalSyncPending = true,
+                AutoIssueRequested = false,
+                TicketIssued = false,
+                AirlinePortalReady = true,
+                BookingWorkflow = "ATLAS_LCC_RESERVATION",
+                AirTicketingStatus = "NOT_STARTED",
+                AirTicketingPaymentStatus = "UNPAID",
+                TicketingMessage = "Reservation created, but the portal record is still syncing, so ticket purchase could not run automatically. Open the booking ledger once it appears.",
+                NextActionUrl = "/booking-confirmation",
+                RawResponse = JsonSerializer.Serialize(order),
+                IsMock = false
+            });
+        }
+
+        if (walletHoldId.HasValue)
+        {
+            await TryCaptureReservationWalletChargeAsync(booking, walletHoldId.Value, actorId, cancellationToken);
+        }
+        else
+        {
+            await TrySetCashTicketingDefaultAsync(booking, actorId, cancellationToken);
         }
 
         await _audit.WriteAsync(actorId, actorEmail, "ATLAS", "RESERVATION_CREATED", "AtlasBooking", "LIVE", request.FlightNumber, refs.UniversalRecordLocator ?? refs.ProviderLocator ?? string.Empty, "INFO");
 
-        return Ok(new AirBookingResponse
+        try
         {
-            Success = true,
-            LocatorCode = refs.UniversalRecordLocator ?? refs.ProviderLocator ?? string.Empty,
-            UniversalRecordLocator = refs.UniversalRecordLocator ?? string.Empty,
-            ProviderLocator = refs.ProviderLocator ?? string.Empty,
-            AirlineLocator = refs.AirlineLocator ?? string.Empty,
-            ProviderCode = "ATLAS",
-            Status = "CONFIRMED",
-            Message = "Reservation created successfully.",
-            BookingId = createResult.BookingId,
-            BookingReference = createResult.BookingReference,
-            PortalSyncPending = booking == null,
-            AutoIssueRequested = false,
-            TicketIssued = false,
-            AirlinePortalReady = true,
-            BookingWorkflow = "ATLAS_LCC_RESERVATION",
-            AirTicketingStatus = booking?.AirTicketingStatus ?? "NOT_STARTED",
-            AirTicketingPaymentStatus = booking?.AirTicketingPaymentStatus ?? "UNPAID",
-            TicketingMessage = "Reservation created successfully. Contact admin for ticket issuance.",
-            NextActionUrl = booking == null ? "/booking-confirmation" : $"/booking-confirmation?bookingId={booking.Id}",
-            RawResponse = JsonSerializer.Serialize(order),
-            IsMock = false
-        });
+            var issueResult = await _airTicketingWorkflow.IssueAsync(
+                booking,
+                actorId,
+                actorEmail,
+                backgroundTriggered: false,
+                releaseWalletHoldOnFailure: true,
+                cancellationToken);
+
+            var ticketIssued = issueResult.TicketNumbers.Count > 0;
+            var ticketingFailed = !ticketIssued && string.Equals(
+                issueResult.WorkflowStatus,
+                AirTicketingWorkflowService.WorkflowFailed,
+                StringComparison.OrdinalIgnoreCase);
+
+            string ticketingErrorDetail;
+            string ticketingMessage;
+            string message;
+
+            if (ticketIssued)
+            {
+                ticketingErrorDetail = string.Empty;
+                ticketingMessage = $"Ticket numbers: {string.Join(", ", issueResult.TicketNumbers)}.";
+                message = "Ticket issued successfully.";
+            }
+            else if (ticketingFailed)
+            {
+                ticketingErrorDetail = booking.AirTicketingLastError;
+                ticketingMessage = "Ticket purchase failed.";
+                message = "Reservation confirmed, but ticket purchase failed.";
+            }
+            else
+            {
+                ticketingErrorDetail = string.Empty;
+                ticketingMessage = "Ticket confirmation is still in progress; refresh the booking shortly.";
+                message = "Reservation confirmed. Ticket confirmation is still in progress; refresh the booking shortly.";
+            }
+
+            return Ok(new AirBookingResponse
+            {
+                Success = true,
+                LocatorCode = refs.UniversalRecordLocator ?? refs.ProviderLocator ?? string.Empty,
+                UniversalRecordLocator = refs.UniversalRecordLocator ?? string.Empty,
+                ProviderLocator = refs.ProviderLocator ?? string.Empty,
+                AirlineLocator = booking.AirlineLocator,
+                ProviderCode = "ATLAS",
+                Status = issueResult.Status,
+                Message = message,
+                BookingId = booking.Id,
+                BookingReference = createResult.BookingReference,
+                PortalSyncPending = false,
+                AutoIssueRequested = true,
+                TicketIssued = ticketIssued,
+                AirlinePortalReady = true,
+                BookingWorkflow = "ATLAS_LCC_RESERVATION",
+                AirTicketingStatus = issueResult.WorkflowStatus,
+                AirTicketingPaymentStatus = issueResult.PaymentStatus,
+                TicketingMessage = ticketingMessage,
+                TicketingErrorDetail = ticketingErrorDetail,
+                TicketedAt = issueResult.TicketedAt,
+                TicketNumbers = issueResult.TicketNumbers.ToList(),
+                NextActionUrl = $"/booking-confirmation?bookingId={booking.Id}",
+                RawResponse = JsonSerializer.Serialize(order),
+                IsMock = false
+            });
+        }
+        catch (Exception ex)
+        {
+            var safeDetail = ex.Message.Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
+            await _notifications.CreateAsync(actorId, "AGENT", "BOOKING", "Ticket purchase failed", $"Booking {createResult.BookingReference}: {safeDetail}", "WARN", $"/bookings?created={Uri.EscapeDataString(createResult.BookingReference)}");
+
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                error = "The reservation was created, but ticket purchase failed immediately after.",
+                detail = safeDetail,
+                bookingId = booking.Id,
+                bookingReference = createResult.BookingReference
+            });
+        }
+    }
+
+    private async Task TrySetCashTicketingDefaultAsync(Booking booking, Guid actorId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            booking.AirTicketingFormOfPayment = AirTicketingWorkflowService.FormOfPaymentCash;
+            booking.AirTicketingPaymentStatus = AirTicketingWorkflowService.PaymentUnpaid;
+            booking.AirTicketingDate = GetLocalToday();
+            booking.AirTicketingScheduledAt = DateTime.UtcNow;
+            booking.AirTicketingScheduledByAgentId = actorId;
+            booking.AirTicketingLastError = string.Empty;
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // Best-effort only.
+        }
     }
 
     private async Task TryBindTicketingHoldAsync(
@@ -482,7 +596,7 @@ public sealed class AtlasBookingController : ControllerBase
             {
                 Name = contactName,
                 Email = request.ContactEmail,
-                Mobile = request.ContactPhone
+                Mobile = PhoneNumberFormatter.ToAtripTechMobile(request.ContactPhone) ?? request.ContactPhone
             }
         };
     }

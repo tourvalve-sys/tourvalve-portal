@@ -13,6 +13,7 @@ export type BookingConfirmationState = {
     airTicketingStatus?: string;
     airlinePortalReady?: boolean;
     ticketingMessage?: string;
+    ticketingErrorDetail?: string;
     amount: number;
     currency: string;
     carrier: string;

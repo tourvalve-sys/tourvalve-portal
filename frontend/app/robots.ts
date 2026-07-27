@@ -1,6 +1,9 @@
 import type { MetadataRoute } from "next";
+import { getSiteUrl } from "@/lib/authFetch";
 
 export default function robots(): MetadataRoute.Robots {
+    const baseUrl = getSiteUrl();
+
     return {
         rules: [
             {
@@ -8,7 +11,7 @@ export default function robots(): MetadataRoute.Robots {
                 allow: "/",
             },
         ],
-        sitemap: "https://tourvalve.com/sitemap.xml",
-        host: "https://tourvalve.com",
+        sitemap: `${baseUrl}/sitemap.xml`,
+        host: baseUrl,
     };
 }

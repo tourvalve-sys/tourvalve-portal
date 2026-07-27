@@ -31,6 +31,7 @@ public class BookingsController : ControllerBase
     private readonly INotificationService _notifications;
     private readonly IEmailService _emailService;
     private readonly SmtpOptions _smtpOptions;
+    private readonly AppOptions _appOptions;
     private readonly WalletAlertOptions _walletAlertOptions;
     private readonly IWalletService _wallet;
     private readonly AncillaryMarkupService _ancillaryMarkup;
@@ -57,7 +58,8 @@ public class BookingsController : ControllerBase
           BookingTicketingService ticketing,
           AirTicketingWorkflowService airTicketingWorkflow,
           IOptions<WalletAlertOptions> walletAlertOptions,
-          IOptions<SmtpOptions> smtpOptions)
+          IOptions<SmtpOptions> smtpOptions,
+          IOptions<AppOptions> appOptions)
     {
         _mediator = mediator;
         _db = db;
@@ -74,6 +76,7 @@ public class BookingsController : ControllerBase
         _airTicketingWorkflow = airTicketingWorkflow;
         _walletAlertOptions = walletAlertOptions.Value;
         _smtpOptions = smtpOptions.Value;
+        _appOptions = appOptions.Value;
     }
 
     public record ModifyBookingRequest(string Remark);
@@ -91,7 +94,6 @@ public class BookingsController : ControllerBase
     public record AncillaryStatusRequest(string Status, string Notes, string ProviderReference);
     public record SeatMapRequest(string SegmentLabel, string FrequentFlyerProgram, string FrequentFlyerNumber);
     public record IssueTicketRequest(bool Confirm);
-    public record AirTicketingScheduleRequest(string FormOfPayment, DateOnly TicketingDate);
 
     [HttpGet]
     public async Task<IActionResult> List()
@@ -136,6 +138,7 @@ public class BookingsController : ControllerBase
                     x.AirTicketingPaymentStatus,
                     x.AirTicketingDate,
                     x.AirTicketingScheduledAt,
+                    x.AirTicketingLastError,
                     x.TicketVoidedAt,
                     x.Status,
                     x.CreatedAt
@@ -150,52 +153,6 @@ public class BookingsController : ControllerBase
         }
     }
 
-    [HttpGet("pending-ticketing")]
-    public async Task<IActionResult> PendingTicketingQueue()
-    {
-        if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Ticketing queue access is restricted to the TourValve admin." });
-
-        try
-        {
-            var query = _db.Bookings.AsNoTracking()
-                .Where(x =>
-                    x.TicketedAt == null &&
-                    x.Status != "CANCELLED" &&
-                    x.Status != "VOIDED");
-
-            var items = await query
-                .OrderByDescending(x => x.CreatedAt)
-                .Select(x => new
-                {
-                    x.Id,
-                    x.BookingReference,
-                    x.AgentId,
-                    agentEmail = _db.Agents.Where(a => a.Id == x.AgentId).Select(a => a.Email).FirstOrDefault() ?? string.Empty,
-                    x.UniversalRecordLocator,
-                    x.ProviderLocator,
-                    x.AirlineLocator,
-                    x.Carrier,
-                    x.FlightNumber,
-                    x.From,
-                    x.To,
-                    x.DepartureTime,
-                    x.ArrivalTime,
-                    amount = x.BaseAmount,
-                    x.AirTicketingStatus,
-                    x.AirTicketingPaymentStatus,
-                    x.Status,
-                    x.CreatedAt
-                })
-                .ToListAsync();
-
-            return Ok(items);
-        }
-        catch (Exception ex) when (IsSchemaNotReady(ex))
-        {
-            return Ok(Array.Empty<object>());
-        }
-    }
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> Detail(Guid id)
@@ -326,6 +283,7 @@ public class BookingsController : ControllerBase
         {
             var xml = await _records.RetrieveAsync(booking.UniversalRecordLocator);
             BookingAncillaryOfferCatalog? catalog = null;
+            var liveOffersFailed = false;
 
             try
             {
@@ -334,6 +292,7 @@ public class BookingsController : ControllerBase
             catch
             {
                 catalog = null;
+                liveOffersFailed = true;
             }
 
             if (catalog is null || !catalog.HasLivePricedOffers)
@@ -343,6 +302,10 @@ public class BookingsController : ControllerBase
                 if (catalog is null)
                 {
                     catalog = parsedCatalog;
+                    if (liveOffersFailed && string.IsNullOrWhiteSpace(catalog.Message))
+                    {
+                        catalog.Message = "Live pricing is temporarily unavailable; showing fare-rule based estimates instead.";
+                    }
                 }
                 else if (!catalog.HasLivePricedOffers && parsedCatalog.HasLivePricedOffers)
                 {
@@ -606,19 +569,23 @@ public class BookingsController : ControllerBase
         }
         catch (Exception ex)
         {
+            var errorMessage = ExtractTravelportMessage(ex);
+
             if (holdId.HasValue)
             {
                 try
                 {
                     await _wallet.ReleaseHoldAsync(holdId.Value, $"ANCILLARY-{order.Id}-RELEASE");
                 }
-                catch
+                catch (Exception releaseEx)
                 {
+                    errorMessage += " Additionally, the wallet hold for this request could not be released and needs manual follow-up.";
+                    await _notifications.CreateAsync(null, "ADMIN", "WALLET", "Wallet hold release failed", $"Booking {booking.BookingReference}, ancillary order {order.Id}: releasing wallet hold {holdId} failed: {releaseEx.Message}", "WARN", "/bookings");
                 }
             }
 
             order.Status = "FAILED";
-            order.ErrorMessage = ExtractTravelportMessage(ex);
+            order.ErrorMessage = errorMessage;
             order.ProcessedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
 
@@ -705,105 +672,54 @@ public class BookingsController : ControllerBase
         {
             await _audit.WriteAsync(requesterAgentId, actorEmail, "BOOKING", "CREATE", "Booking", result.BookingId.ToString(), result.BookingReference, "Booking record created.");
         }
-        catch
+        catch (Exception auditEx)
         {
-            // Keep the booking creation response successful even if non-critical audit persistence fails.
+            // Keep the booking creation response successful even if non-critical audit persistence
+            // fails, but fall back to a notification so this degraded state isn't fully invisible.
+            try
+            {
+                await _notifications.CreateAsync(null, "ADMIN", "BOOKING", "Audit trail write failed", $"Booking {result.BookingReference}: could not write the CREATE audit entry: {auditEx.Message}", "WARN", "/bookings");
+            }
+            catch
+            {
+            }
         }
 
         try
         {
             await _notifications.CreateAsync(requesterAgentId, "AGENT", "BOOKING", "Booking confirmed", $"Booking {result.BookingReference} is now recorded in the portal.", "SUCCESS", "/bookings");
         }
-        catch
+        catch (Exception notifyEx)
         {
-            // Notification delivery should not block a confirmed booking from reaching the frontend.
+            // Notification delivery should not block a confirmed booking from reaching the frontend,
+            // but fall back to the audit trail so a broken notification pipeline is still visible.
+            try
+            {
+                await _audit.WriteAsync(requesterAgentId, actorEmail, "BOOKING", "NOTIFY_FAILED", "Booking", result.BookingId.ToString(), result.BookingReference, notifyEx.Message, "WARN");
+            }
+            catch
+            {
+            }
         }
 
         try
         {
             await CreateWalletAlertIfNeeded(requesterAgentId.Value);
         }
-        catch
+        catch (Exception alertEx)
         {
-            // Wallet alert generation is best-effort after booking creation.
+            // Wallet alert generation is best-effort after booking creation, but still worth a trace
+            // so silently-broken low-balance alerting doesn't go unnoticed indefinitely.
+            try
+            {
+                await _audit.WriteAsync(requesterAgentId, actorEmail, "WALLET", "ALERT_GENERATION_FAILED", "Agent", requesterAgentId.Value.ToString(), string.Empty, alertEx.Message, "WARN");
+            }
+            catch
+            {
+            }
         }
 
         return Ok(result);
-    }
-
-    [HttpPost("{id:guid}/notify-ticketing")]
-    public async Task<IActionResult> NotifyTicketing(Guid id)
-    {
-        var booking = await GetAuthorizedBookingAsync(id);
-        if (booking == null)
-            return NotFound(new { error = "Booking not found." });
-
-        var requesterAgentId = GetRequesterAgentId();
-        if (requesterAgentId == null)
-            return Unauthorized();
-
-        var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
-        var adminInbox = string.IsNullOrWhiteSpace(_smtpOptions.AdminInboxEmail)
-            ? "tourvalve@gmail.com"
-            : _smtpOptions.AdminInboxEmail.Trim();
-
-        var subject = "Pending Ticket Issuance (Urgent)";
-        var body = EmailTemplates.PendingTicketIssuance(
-            actorEmail,
-            booking.BookingReference,
-            booking.Carrier,
-            booking.FlightNumber,
-            booking.From,
-            booking.To,
-            booking.DepartureTime,
-            booking.ArrivalTime,
-            booking.AirlineLocator,
-            booking.BaseAmount,
-            "MYR",
-            $"https://tourvalve.com/air-ticketing/{Uri.EscapeDataString(booking.Id.ToString())}");
-
-        try
-        {
-            await _emailService.SendAsync(adminInbox, subject, body);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(502, new { error = "Failed to notify admin via email.", detail = ex.Message });
-        }
-
-        try
-        {
-            await _notifications.CreateAsync(
-                null,
-                "ADMIN",
-                "TICKETING",
-                "Pending ticket issuance",
-                $"Booking {booking.BookingReference} requires ticket issuance. Requested by {actorEmail}.",
-                "WARN",
-                $"/air-ticketing/{booking.Id}");
-        }
-        catch
-        {
-            // Best-effort only; email is the primary notification channel.
-        }
-
-        try
-        {
-            await _audit.WriteAsync(
-                requesterAgentId,
-                actorEmail,
-                "BOOKING",
-                "TICKETING_NOTIFY_ADMIN",
-                "Booking",
-                booking.Id.ToString(),
-                booking.BookingReference,
-                "Agent requested admin ticket issuance.");
-        }
-        catch
-        {
-        }
-
-        return Ok(new { message = "Admin has been notified successfully." });
     }
 
     [HttpPost("{id:guid}/retrieve")]
@@ -843,6 +759,7 @@ public class BookingsController : ControllerBase
             {
                 var xml = await _records.CancelAsync(booking.UniversalRecordLocator);
 
+                string? walletReleaseWarning = null;
                 if (booking.AirTicketingWalletHoldId.HasValue)
                 {
                     try
@@ -853,9 +770,12 @@ public class BookingsController : ControllerBase
                         booking.AirTicketingWalletHoldId = null;
                         booking.AirTicketingPaymentStatus = AirTicketingWorkflowService.PaymentVoided;
                     }
-                    catch
+                    catch (Exception releaseEx)
                     {
-                        // Keep cancellation success as the primary outcome even if wallet hold release fails.
+                        // Keep cancellation success as the primary outcome even if wallet hold release
+                        // fails, but don't hide it - the customer's funds may still be held.
+                        walletReleaseWarning = "The booking was cancelled, but releasing the associated wallet hold failed. This needs manual follow-up.";
+                        await _notifications.CreateAsync(null, "ADMIN", "WALLET", "Wallet hold release failed on cancel", $"Booking {booking.BookingReference}: cancelling succeeded but releasing wallet hold {booking.AirTicketingWalletHoldId} failed: {releaseEx.Message}", "WARN", "/bookings");
                     }
                 }
 
@@ -870,7 +790,8 @@ public class BookingsController : ControllerBase
                 return Ok(new
                 {
                     message = "Booking cancelled successfully.",
-                    rawResponse = xml
+                    rawResponse = xml,
+                    walletReleaseWarning
                 });
             });
     }
@@ -993,44 +914,6 @@ public class BookingsController : ControllerBase
         }
     }
 
-    [HttpPost("{id:guid}/air-ticketing/schedule")]
-    public async Task<IActionResult> ScheduleAirTicketing(Guid id, [FromBody] AirTicketingScheduleRequest request)
-    {
-        if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Ticketing workflow controls are restricted to the TourValve admin." });
-
-        var booking = await GetAuthorizedBookingAsync(id);
-        if (booking == null)
-            return NotFound(new { error = "Booking not found." });
-
-        try
-        {
-            var result = await _airTicketingWorkflow.ScheduleAsync(
-                booking,
-                request.FormOfPayment,
-                request.TicketingDate,
-                GetRequesterAgentId(),
-                User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
-                User.IsInRole("ADMIN"));
-
-            return Ok(new
-            {
-                message = "AirTicketing workflow saved.",
-                airTicketingStatus = result.Status,
-                airTicketingFormOfPayment = result.FormOfPayment,
-                airTicketingPaymentStatus = result.PaymentStatus,
-                airTicketingDate = result.TicketingDate,
-                airTicketingScheduledAt = result.ScheduledAt,
-                airTicketingWalletHoldId = result.WalletHoldId,
-                providerCode = result.ProviderCode
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
     [HttpPost("{id:guid}/air-ticketing/cancel")]
     public async Task<IActionResult> CancelAirTicketing(Guid id, [FromBody] IssueTicketRequest request)
     {
@@ -1126,6 +1009,10 @@ public class BookingsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = "The ticket void request could not be completed right now.", detail = ExtractTravelportMessage(ex) });
+        }
     }
 
     [HttpGet("{id:guid}/document")]
@@ -1181,9 +1068,17 @@ public class BookingsController : ControllerBase
                     await _db.SaveChangesAsync();
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Best-effort only; document export should still succeed.
+            // Best-effort only; document export should still succeed, but leave a trace so it's
+            // possible to tell later that this PDF may reflect stale locator/status data.
+            try
+            {
+                await _audit.WriteAsync(GetRequesterAgentId(), User.FindFirstValue(ClaimTypes.Email) ?? string.Empty, "BOOKING", "DOCUMENT_REFRESH_FAILED", "Booking", booking.Id.ToString(), booking.BookingReference, ex.Message, "WARN");
+            }
+            catch
+            {
+            }
         }
 
         var ancillaries = await _db.BookingAncillaryOrders
@@ -1192,7 +1087,7 @@ public class BookingsController : ControllerBase
             .OrderByDescending(x => x.RequestedAt)
             .ToListAsync();
 
-        var model = BookingItineraryPdfBuilder.BuildModel(booking, retrieveXml, ancillaries);
+        var model = BookingItineraryPdfBuilder.BuildModel(booking, retrieveXml, ancillaries, _appOptions.PublicDomain);
         var pdfBytes = new BookingItineraryPdfBuilder().Build(booking, model);
         var fileName = $"booking-{booking.BookingReference}.pdf";
         return File(pdfBytes, "application/pdf", fileName);
@@ -1344,9 +1239,17 @@ public class BookingsController : ControllerBase
             if (hasChanges)
                 await _db.SaveChangesAsync();
         }
-        catch
+        catch (Exception ex)
         {
-            // Keep the booking detail available even if a live locator refresh cannot be completed right now.
+            // Keep the booking detail available even if a live locator refresh cannot be completed
+            // right now, but leave a trace so it's possible to tell this data may be stale.
+            try
+            {
+                await _audit.WriteAsync(null, string.Empty, "BOOKING", "LIVE_REFRESH_FAILED", "Booking", booking.Id.ToString(), booking.BookingReference, ex.Message, "WARN");
+            }
+            catch
+            {
+            }
         }
     }
 

@@ -12,6 +12,7 @@ import {
     X,
 } from "lucide-react";
 import {
+    ApiError,
     bookAtlasFlight,
     bookFlight,
     getFlightSeatMap,
@@ -27,6 +28,14 @@ import {
 } from "@/lib/bookingConfirmation";
 import { getUserFromToken } from "@/lib/auth";
 import { useBooking } from "../context/BookingContext";
+import {
+    DEFAULT_PHONE_COUNTRY,
+    formatPhoneAsYouType,
+    getPhoneCountryOptions,
+    isValidPhone,
+    toE164,
+    type CountryCode,
+} from "@/lib/phone";
 
 type PassengerForm = {
     firstName: string;
@@ -396,6 +405,8 @@ export default function BookingPage() {
     const [passengers, setPassengers] = useState<PassengerForm[]>([]);
     const [contactEmail, setContactEmail] = useState("");
     const [contactPhone, setContactPhone] = useState("");
+    const [contactPhoneCountry, setContactPhoneCountry] = useState<CountryCode>(DEFAULT_PHONE_COUNTRY);
+    const phoneCountryOptions = useMemo(() => getPhoneCountryOptions(), []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [servicePreferences, setServicePreferences] = useState<ServicePreferences>({
@@ -771,6 +782,7 @@ export default function BookingPage() {
         airTicketingStatus: reservation.airTicketingStatus || "",
         airlinePortalReady: reservation.airlinePortalReady,
         ticketingMessage: reservation.ticketingMessage || reservation.message,
+        ticketingErrorDetail: reservation.ticketingErrorDetail || "",
         amount: estimatedReservationTotal,
         currency: selectedFlight?.currency ?? "MYR",
         carrier: selectedFlight?.carrier ?? "",
@@ -903,6 +915,17 @@ export default function BookingPage() {
             return;
         }
 
+        if (!isValidPhone(contactPhone, contactPhoneCountry)) {
+            setError("Enter a valid phone number for the selected country.");
+            return;
+        }
+
+        const normalizedContactPhone = toE164(contactPhone, contactPhoneCountry);
+        if (!normalizedContactPhone) {
+            setError("Enter a valid phone number for the selected country.");
+            return;
+        }
+
         if (passengers.some((passenger) => !passenger.firstName || !passenger.lastName || !passenger.passportNumber || !passenger.passportExpiryDate || !passenger.dateOfBirth)) {
             setError("Complete all passenger details before booking.");
             return;
@@ -946,7 +969,7 @@ export default function BookingPage() {
                 airPricingSolutionXml: selectedFlight.airPricingSolutionXml,
                 airPricingContextXml: selectedFlight.airPricingContextXml,
                 contactEmail: contactEmail.trim(),
-                contactPhone: contactPhone.trim(),
+                contactPhone: normalizedContactPhone,
                 autoIssueTicket: false,
                 formOfPayment: "TOURVALVE_WALLET",
                 itinerarySegments: itinerarySegments.map((segment) => ({
@@ -972,7 +995,18 @@ export default function BookingPage() {
             router.push(reservation.nextActionUrl || fallbackNextStep);
             return;
         } catch (value: unknown) {
-            setError(getErrorMessage(value));
+            const baseMessage = getErrorMessage(value);
+            if (value instanceof ApiError && value.payload && typeof value.payload === "object") {
+                const payload = value.payload as { bookingId?: string; bookingReference?: string };
+                if (payload.bookingId || payload.bookingReference) {
+                    const reference = payload.bookingReference || payload.bookingId;
+                    setError(`${baseMessage} Your reservation (reference ${reference}) was already created - do not book this flight again. Check the Bookings section for its current status.`);
+                } else {
+                    setError(baseMessage);
+                }
+            } else {
+                setError(baseMessage);
+            }
         } finally {
             setLoading(false);
         }
@@ -1461,12 +1495,31 @@ export default function BookingPage() {
                                 value={contactEmail}
                                 onChange={(event) => setContactEmail(event.target.value)}
                             />
-                            <input
-                                placeholder="Phone Number"
-                                className="rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
-                                value={contactPhone}
-                                onChange={(event) => setContactPhone(event.target.value)}
-                            />
+                            <div className="flex min-w-0 gap-2">
+                                <select
+                                    aria-label="Phone country code"
+                                    className="w-32 shrink-0 truncate rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
+                                    value={contactPhoneCountry}
+                                    onChange={(event) => {
+                                        const nextCountry = event.target.value as CountryCode;
+                                        setContactPhoneCountry(nextCountry);
+                                        setContactPhone((current) => formatPhoneAsYouType(current, nextCountry));
+                                    }}
+                                >
+                                    {phoneCountryOptions.map((option) => (
+                                        <option key={option.country} value={option.country}>
+                                            {option.label} (+{option.callingCode})
+                                        </option>
+                                    ))}
+                                </select>
+                                <input
+                                    placeholder="Phone Number"
+                                    type="tel"
+                                    className="min-w-0 flex-1 rounded-2xl border border-[rgba(50,93,147,0.14)] bg-white/88 p-3"
+                                    value={contactPhone}
+                                    onChange={(event) => setContactPhone(formatPhoneAsYouType(event.target.value, contactPhoneCountry))}
+                                />
+                            </div>
                         </div>
                     </div>
 

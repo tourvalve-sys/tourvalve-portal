@@ -11,6 +11,11 @@ public sealed class AtlasOptions
     [Required]
     public string BaseUrl { get; set; } = "https://sandbox.atriptech.com";
 
+    // Production AtripTech serves search.do from a different host than every other operation.
+    // Leave unset in sandbox/dev (where a single host serves everything) - search calls fall
+    // back to BaseUrl when this is blank.
+    public string? SearchBaseUrl { get; set; }
+
     [Required]
     public string ClientId { get; set; } = string.Empty;
 

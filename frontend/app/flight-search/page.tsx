@@ -43,6 +43,7 @@ import {
     type AtlasAncillaryProductElement,
     type AtlasPrebookAncillariesResponse,
     type FlightResult,
+    type FlightSearchResponse,
     type FlightSeatMapResponse,
     type PrebookAncillaryOfferCatalog,
 } from "@/lib/api";
@@ -251,8 +252,6 @@ type ActiveAirportField =
     | { mode: "multi"; field: "from" | "to"; index: number }
     | null;
 
-type SearchMode = "lowfare" | "availability";
-
 const FLIGHT_SEARCH_STATE_KEY = "flightSearchState";
 const FLIGHT_SEARCH_STATE_VERSION = 3;
 const RESULTS_TTL_MS = 15 * 60 * 1000;
@@ -269,12 +268,10 @@ const PRICING_LOADING_CAPTIONS = [
 
 type FlightSearchUiState = {
     tripType: "oneway" | "return" | "multicity";
-    contentSource: "travelport" | "atlas";
     searchNotice: string;
     hasSearched: boolean;
     lastSearchedKey: string | null;
     pricingErrors: Record<string, string>;
-    searchMode: SearchMode;
     filters: FilterState;
     form: {
         from: string;
@@ -328,8 +325,6 @@ const createDefaultMultiCitySegments = () => ([
 
 const createDefaultFlightSearchUiState = (): FlightSearchUiState => ({
     tripType: "oneway",
-    contentSource: "travelport",
-    searchMode: "lowfare",
     hasSearched: false,
     searchNotice: "",
     lastSearchedKey: null,
@@ -812,8 +807,6 @@ function sanitizeFlightResult(flight: FlightResult): FlightResult {
 
 function buildSearchSignature(args: {
     tripType: "oneway" | "return" | "multicity";
-    contentSource: "travelport" | "atlas";
-    searchMode: SearchMode;
     form: ReturnType<typeof createDefaultForm>;
     multiCitySegments: Array<{
         from: string;
@@ -823,8 +816,6 @@ function buildSearchSignature(args: {
 }) {
     return JSON.stringify({
         tripType: args.tripType,
-        contentSource: args.contentSource,
-        searchMode: args.searchMode,
         cabin: args.form.cabin,
         adults: args.form.adults,
         child: args.form.child,
@@ -856,8 +847,6 @@ function sanitizePersistedFlightSearchUiState(value: unknown): FlightSearchUiSta
 
     if (
         (candidate.tripType !== "oneway" && candidate.tripType !== "return" && candidate.tripType !== "multicity") ||
-        (candidate.contentSource !== undefined && candidate.contentSource !== "travelport" && candidate.contentSource !== "atlas") ||
-        (candidate.searchMode !== "lowfare" && candidate.searchMode !== "availability") ||
         typeof candidate.searchNotice !== "string" ||
         typeof candidate.hasSearched !== "boolean" ||
         (candidate.lastSearchedKey !== null &&
@@ -900,8 +889,6 @@ function sanitizePersistedFlightSearchUiState(value: unknown): FlightSearchUiSta
 
     return {
         tripType: candidate.tripType,
-        contentSource: candidate.contentSource === "atlas" ? "atlas" : "travelport",
-        searchMode: candidate.searchMode,
         searchNotice: candidate.searchNotice,
         hasSearched: candidate.hasSearched,
         lastSearchedKey: typeof candidate.lastSearchedKey === "string" ? candidate.lastSearchedKey : null,
@@ -969,7 +956,6 @@ function sanitizeInMemoryFlightSearchState(value: unknown): SanitizedFlightSearc
     const candidate = value as {
         results?: unknown;
         tripType?: unknown;
-        searchMode?: unknown;
         hasSearched?: unknown;
         searchNotice?: unknown;
         lastSearchedKey?: unknown;
@@ -1009,9 +995,6 @@ export default function FlightSearch() {
     const [tripType, setTripType] = useState<"oneway" | "return" | "multicity">(
         restoredState?.tripType ?? "oneway"
     );
-    const [contentSource, setContentSource] = useState<"travelport" | "atlas">(
-        restoredState?.contentSource ?? "travelport"
-    );
     const [results, setResults] = useState<FlightResult[]>(
         sanitizedContextState?.results ?? []
     );
@@ -1023,7 +1006,6 @@ export default function FlightSearch() {
     const [activeField, setActiveField] = useState<ActiveAirportField>(null);
     const [pricingFlightId, setPricingFlightId] = useState<string | null>(null);
     const [pricingErrors, setPricingErrors] = useState<Record<string, string>>(restoredState?.pricingErrors ?? {});
-    const [searchMode, setSearchMode] = useState<SearchMode>(restoredState?.searchMode ?? "lowfare");
     const [filters, setFilters] = useState<FilterState>(restoredState?.filters ?? createDefaultFilters());
     const [prebookFlightId, setPrebookFlightId] = useState<string | null>(null);
     const [expandedFlightId, setExpandedFlightId] = useState<string | null>(null);
@@ -1049,7 +1031,6 @@ export default function FlightSearch() {
     const [prebookAtlasAncillaryLoading, setPrebookAtlasAncillaryLoading] = useState(false);
     const [prebookAtlasAncillaryError, setPrebookAtlasAncillaryError] = useState("");
     const [prebookPaidAncillaries, setPrebookPaidAncillaries] = useState<PrebookPaidAncillarySelection[]>([]);
-    const searchModeRef = useRef<SearchMode>(restoredState?.searchMode ?? "lowfare");
     const resultsSectionRef = useRef<HTMLDivElement | null>(null);
     const firstResultCardRef = useRef<HTMLDivElement | null>(null);
     const prebookSeatMapSectionRef = useRef<HTMLDivElement | null>(null);
@@ -1078,7 +1059,6 @@ export default function FlightSearch() {
         const defaults = createDefaultFlightSearchUiState();
 
         setTripType(defaults.tripType);
-        setContentSource(defaults.contentSource);
         setResults([]);
         setLoading(false);
         setError("");
@@ -1090,8 +1070,6 @@ export default function FlightSearch() {
         setResultsExpiryModalOpen(false);
         setPricingFlightId(null);
         setPricingErrors(defaults.pricingErrors);
-        searchModeRef.current = defaults.searchMode;
-        setSearchMode(defaults.searchMode);
         setFilters(defaults.filters);
         setForm(defaults.form);
         setMultiCitySegments(defaults.multiCitySegments);
@@ -1114,25 +1092,18 @@ export default function FlightSearch() {
     }, []);
 
     useEffect(() => {
-        searchModeRef.current = searchMode;
-    }, [searchMode]);
-
-    useEffect(() => {
         setFlightSearchState({
             tripType,
-            contentSource,
             results,
             searchNotice,
             hasSearched,
             lastSearchedKey,
             pricingErrors,
-            searchMode,
             filters,
             form,
             multiCitySegments,
         });
     }, [
-        contentSource,
         filters,
         form,
         hasSearched,
@@ -1140,7 +1111,6 @@ export default function FlightSearch() {
         multiCitySegments,
         pricingErrors,
         results,
-        searchMode,
         searchNotice,
         setFlightSearchState,
         tripType,
@@ -1158,12 +1128,10 @@ export default function FlightSearch() {
                     version: FLIGHT_SEARCH_STATE_VERSION,
                     ui: {
                         tripType,
-                        contentSource,
                         searchNotice,
                         hasSearched,
                         lastSearchedKey,
                         pricingErrors,
-                        searchMode,
                         filters,
                         form,
                         multiCitySegments,
@@ -1174,14 +1142,12 @@ export default function FlightSearch() {
             sessionStorage.removeItem(FLIGHT_SEARCH_STATE_KEY);
         }
     }, [
-        contentSource,
         filters,
         form,
         hasSearched,
         lastSearchedKey,
         multiCitySegments,
         pricingErrors,
-        searchMode,
         searchNotice,
         tripType,
     ]);
@@ -1190,12 +1156,10 @@ export default function FlightSearch() {
         () =>
             buildSearchSignature({
                 tripType,
-                contentSource,
-                searchMode,
                 form,
                 multiCitySegments,
             }),
-        [contentSource, form, multiCitySegments, searchMode, tripType]
+        [form, multiCitySegments, tripType]
     );
 
     const prebookFlight = useMemo(
@@ -1585,31 +1549,6 @@ export default function FlightSearch() {
     const getErrorMessage = (value: unknown) =>
         scrubProviderMentions(value instanceof Error ? value.message : "Flight search failed");
 
-    const selectSearchMode = (mode: SearchMode) => {
-        if (contentSource === "atlas" && mode === "availability") {
-            return;
-        }
-        searchModeRef.current = mode;
-        setSearchMode(mode);
-        setSearchNotice("");
-        setError("");
-    };
-
-    const selectContentSource = (source: "travelport" | "atlas") => {
-        setContentSource(source);
-        setSearchNotice("");
-        setError("");
-
-        if (source === "atlas") {
-            searchModeRef.current = "lowfare";
-            setSearchMode("lowfare");
-
-            if (tripType === "multicity") {
-                setTripType("oneway");
-            }
-        }
-    };
-
     const closePrebookStudio = () => {
         setPrebookFlightId(null);
         setPrebookSeatMap(null);
@@ -1997,16 +1936,8 @@ export default function FlightSearch() {
     };
 
     const handleSearch = async () => {
-        if (contentSource === "atlas" && tripType === "multicity") {
-            setError("Low-cost carrier shopping currently supports one-way and return searches only.");
-            return;
-        }
-
-        const activeSearchMode = contentSource === "atlas" ? "lowfare" : searchModeRef.current;
         const requestSearchKey = buildSearchSignature({
             tripType,
-            contentSource,
-            searchMode: activeSearchMode,
             form,
             multiCitySegments,
         });
@@ -2076,10 +2007,8 @@ export default function FlightSearch() {
             setActiveField(null);
             pendingResultsScrollRef.current = true;
 
-            const searchFn = contentSource === "atlas" ? searchAtlasFlights : searchFlights;
-            const searchResponse = await searchFn({
+            const searchPayload = {
                 ...form,
-                searchMode: activeSearchMode,
                 from: tripType === "multicity" ? multiCitySegments[0]?.from.toUpperCase() ?? "" : form.from.toUpperCase(),
                 to: tripType === "multicity" ? multiCitySegments[0]?.to.toUpperCase() ?? "" : form.to.toUpperCase(),
                 departDate: tripType === "multicity" ? multiCitySegments[0]?.departDate ?? "" : form.departDate,
@@ -2091,10 +2020,31 @@ export default function FlightSearch() {
                         departDate: segment.departDate,
                     }))
                     : [],
-            });
+            };
 
-            setResults(searchResponse.flights.map((flight) => sanitizeFlightResult(flight)));
-            setSearchNotice(searchResponse.diagnosticMessage ?? "");
+            const canSearchAtlas = tripType !== "multicity";
+            const searchCalls = [searchFlights(searchPayload)];
+            if (canSearchAtlas) {
+                searchCalls.push(searchAtlasFlights(searchPayload));
+            }
+
+            const outcomes = await Promise.allSettled(searchCalls);
+            const fulfilled = outcomes.filter(
+                (outcome): outcome is PromiseFulfilledResult<FlightSearchResponse> => outcome.status === "fulfilled"
+            );
+
+            if (fulfilled.length === 0) {
+                throw (outcomes[0] as PromiseRejectedResult).reason;
+            }
+
+            const mergedFlights = fulfilled.flatMap((outcome) => outcome.value.flights);
+            const mergedNotice = fulfilled
+                .map((outcome) => outcome.value.diagnosticMessage)
+                .filter((message): message is string => Boolean(message && message.trim()))
+                .join(" ");
+
+            setResults(mergedFlights.map((flight) => sanitizeFlightResult(flight)));
+            setSearchNotice(mergedNotice);
             setResultsExpiresAt(Date.now() + RESULTS_TTL_MS);
         } catch (value: unknown) {
             setError(getErrorMessage(value));
@@ -2689,7 +2639,6 @@ export default function FlightSearch() {
         };
     }, [mobileFiltersOpen]);
 
-    const isAvailabilitySearch = searchMode === "availability";
     const showPageLoader = loading || pricingFlightId !== null;
     const loaderLabel = loading
         ? "We are getting the best results for you"
@@ -3100,85 +3049,6 @@ export default function FlightSearch() {
                         </div>
                     </div>
 
-                        <div id="flight-search-form" className="mb-5 rounded-[1.4rem] border border-[rgba(89,64,46,0.1)] bg-[rgba(255,255,255,0.7)] px-4 py-4 sm:rounded-[1.6rem]">
-                        <div className="mb-4">
-                            <div className="subtle-kicker">Inventory Source</div>
-                            <div className="mt-1 text-sm leading-6 text-slate-600">
-                                Switch between full-service (GDS) content and low-cost carrier (LCC) content.
-                            </div>
-                            <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                <button
-                                    type="button"
-                                    onClick={() => selectContentSource("travelport")}
-                                    className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
-                                        contentSource === "travelport"
-                                            ? "border-[rgba(176,122,67,0.45)] bg-[rgba(176,122,67,0.14)] shadow-[0_18px_30px_rgba(122,82,45,0.12)]"
-                                            : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
-                                    }`}
-                                >
-                                    <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">Full service (GDS)</div>
-                                    <div className="mt-2 text-sm leading-6 text-slate-600">
-                                        Full shopping + availability diagnostics + hosted ticketing workflow.
-                                    </div>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => selectContentSource("atlas")}
-                                    className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
-                                        contentSource === "atlas"
-                                            ? "border-[rgba(45,120,92,0.28)] bg-[rgba(232,245,237,0.88)] shadow-[0_18px_30px_rgba(45,120,92,0.1)]"
-                                            : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
-                                    }`}
-                                >
-                                    <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Low-cost (LCC)</div>
-                                    <div className="mt-2 text-sm leading-6 text-slate-600">
-                                        Low-cost carrier inventory. Reservation-first flow; ticketing happens later.
-                                    </div>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                            <div>
-                                <div className="subtle-kicker">Search Source</div>
-                                <div className="mt-1 text-sm leading-6 text-slate-600">
-                                    Choose bookable low fares or explicit air-availability schedules that agents can price manually.
-                                </div>
-                            </div>
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2">
-                            <button
-                                type="button"
-                                onClick={() => selectSearchMode("lowfare")}
-                                className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
-                                    searchMode === "lowfare"
-                                        ? "border-[rgba(176,122,67,0.45)] bg-[rgba(176,122,67,0.14)] shadow-[0_18px_30px_rgba(122,82,45,0.12)]"
-                                        : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
-                                }`}
-                            >
-                                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">Low Fare</div>
-                                <div className="mt-2 text-sm leading-6 text-slate-600">
-                                    Show priced, bookable results first. Best for normal selling flow.
-                                </div>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => selectSearchMode("availability")}
-                                disabled={contentSource === "atlas"}
-                                className={`rounded-[1.25rem] border px-4 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                                    searchMode === "availability"
-                                        ? "border-[rgba(45,120,92,0.28)] bg-[rgba(232,245,237,0.88)] shadow-[0_18px_30px_rgba(45,120,92,0.1)]"
-                                        : "border-[rgba(89,64,46,0.1)] bg-white/80 hover:bg-[rgba(255,255,255,0.95)]"
-                                }`}
-                            >
-                                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Air Availability</div>
-                                <div className="mt-2 text-sm leading-6 text-slate-600">
-                                    Schedule-only content for manual pricing when low fares are missing.
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-
                     {error && (
                         <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                             <span>{error}</span>
@@ -3353,7 +3223,6 @@ export default function FlightSearch() {
                                 }
 
                                 const isBookable = Boolean(flight.airPricingSolutionXml && flight.price > 0);
-                                const isAvailabilityCard = isAvailabilitySearch && !isBookable;
                                 const isPricing = pricingFlightId === flight.id;
                                 const {
                                     itinerarySegments,
@@ -3489,12 +3358,10 @@ export default function FlightSearch() {
                                                             className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] shadow-[0_10px_24px_rgba(31,42,68,0.06)] ring-1 ring-inset ${
                                                                 isBookable
                                                                     ? "bg-[rgba(225,246,236,0.92)] text-[var(--success)] ring-[rgba(45,120,92,0.18)]"
-                                                                    : isAvailabilityCard
-                                                                        ? "bg-[rgba(241,248,255,0.92)] text-[#174498] ring-[rgba(23,68,152,0.18)]"
-                                                                        : "bg-[rgba(255,247,236,0.92)] text-[var(--accent-strong)] ring-[rgba(176,122,67,0.22)]"
+                                                                    : "bg-[rgba(255,247,236,0.92)] text-[var(--accent-strong)] ring-[rgba(176,122,67,0.22)]"
                                                             }`}
                                                         >
-                                                            {isBookable ? "Ready to book" : isAvailabilityCard ? "Availability" : "Needs pricing"}
+                                                            {isBookable ? "Ready to book" : "Needs pricing"}
                                                         </span>
                                                         <span className="inline-flex items-center rounded-full border border-[rgba(89,64,46,0.12)] bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink)] shadow-[0_10px_24px_rgba(31,42,68,0.04)]">
                                                             {form.cabin}
@@ -3835,7 +3702,7 @@ export default function FlightSearch() {
                                                             </div>
                                                         ) : (
                                                             <div className="mt-2 text-2xl font-semibold tracking-tight text-[var(--accent-strong)]">
-                                                                {isAvailabilityCard ? "Price needed" : "Fare unavailable"}
+                                                                Fare unavailable
                                                             </div>
                                                         )}
                                                         <div className="mt-1 text-sm text-slate-500">
@@ -3845,9 +3712,7 @@ export default function FlightSearch() {
                                                                         ? "Pick a return option, then continue to booking."
                                                                         : "Select this outbound to see return flight options."
                                                                     : "Select to continue with pricing confirmation and booking."
-                                                                : isAvailabilityCard
-                                                                    ? "Price this schedule into a bookable fare."
-                                                                    : "Try another itinerary or run pricing again."}
+                                                                : "Try another itinerary or run pricing again."}
                                                         </div>
                                                         {!isBookable && pricingError ? (
                                                             <div className="mt-2 text-xs leading-5 text-red-600">
@@ -3897,9 +3762,7 @@ export default function FlightSearch() {
                                                                             ? "Continue"
                                                                             : "Choose return"
                                                                         : "Select"
-                                                                    : isAvailabilityCard
-                                                                        ? "Price & Book"
-                                                                        : "Price Flight"}
+                                                                    : "Price Flight"}
                                                         </button>
                                                     </div>
                                                 </div>
@@ -4136,9 +3999,7 @@ export default function FlightSearch() {
                                                                         <div className="mt-3 text-sm leading-7 text-slate-600">
                                                                             {isBookable
                                                                                 ? "This itinerary is already priced and can be selected immediately."
-                                                                                : isAvailabilityCard
-                                                                                    ? "This itinerary comes from air-availability and must be priced before booking."
-                                                                                    : "Pricing is required again before booking can continue."}
+                                                                                : "Pricing is required again before booking can continue."}
                                                                         </div>
                                                                     </div>
                                                                 </div>

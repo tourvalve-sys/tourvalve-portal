@@ -31,20 +31,19 @@ builder.Services.AddControllers();
 // ==============================
 // CORS (Frontend Connection)
 // ==============================
+// Prefer a CORS_ALLOWED_ORIGINS env var (comma-separated) so the allowed origins can be changed
+// per environment without a code change/redeploy; fall back to Cors:AllowedOrigins in config.
+var corsAllowedOriginsEnv = Environment.GetEnvironmentVariable("CORS_ALLOWED_ORIGINS");
+var allowedOrigins = !string.IsNullOrWhiteSpace(corsAllowedOriginsEnv)
+    ? corsAllowedOriginsEnv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    : builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend",
         policy =>
         {
-            policy.WithOrigins(
-                    "http://localhost:3000",
-                    "https://localhost:3000",
-                    "http://101.99.84.242",
-                    "https://101.99.84.242",
-                    "http://tourvalve.com",
-                    "https://tourvalve.com",
-                    "http://www.tourvalve.com",
-                    "https://www.tourvalve.com")
+            policy.WithOrigins(allowedOrigins)
                   .AllowAnyHeader()
                   .AllowAnyMethod();
         });
@@ -112,7 +111,21 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
-builder.Services.Configure<BillplzOptions>(builder.Configuration.GetSection("Billplz"));
+builder.Services.Configure<AppOptions>(builder.Configuration.GetSection("App"));
+builder.Services.AddOptions<BillplzOptions>()
+    .Bind(builder.Configuration.GetSection("Billplz"))
+    .PostConfigure<IOptions<AppOptions>>((billplz, appOptions) =>
+    {
+        var publicBaseUrl = appOptions.Value.PublicBaseUrl?.TrimEnd('/') ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(publicBaseUrl))
+            return;
+
+        if (string.IsNullOrWhiteSpace(billplz.CallbackUrl))
+            billplz.CallbackUrl = $"{publicBaseUrl}/api/payments/billplz/callback";
+
+        if (string.IsNullOrWhiteSpace(billplz.RedirectUrl))
+            billplz.RedirectUrl = $"{publicBaseUrl}/wallet?billplz=return";
+    });
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.Configure<WalletAlertOptions>(builder.Configuration.GetSection("WalletAlerts"));
 builder.Services.Configure<TicketMarkupOptions>(builder.Configuration.GetSection("TicketMarkup"));
@@ -128,14 +141,12 @@ builder.Services.AddScoped<TicketMarkupService>();
 builder.Services.AddScoped<AncillaryMarkupService>();
 builder.Services.AddHttpClient<AtlasApiClient>((sp, client) =>
 {
-    var options = sp.GetRequiredService<IOptions<AtlasOptions>>().Value;
-
+    // AtlasApiClient resolves the base URL per-request (search.do vs. everything else can
+    // point at different hosts in production), so no BaseAddress is set here.
     client.Timeout = TimeSpan.FromSeconds(60);
-
-    if (!string.IsNullOrWhiteSpace(options.BaseUrl))
-        client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
 });
 builder.Services.AddScoped<AtlasTicketingService>();
+builder.Services.AddScoped<AtlasTicketingStrategy>();
 
 // ==============================
 // Database
@@ -198,11 +209,11 @@ builder.Services.AddScoped<AirTicketingWorkflowService>();
 builder.Services.AddScoped<TravelportTerminalService>();
 builder.Services.AddScoped<AncillaryOfferService>();
 builder.Services.AddScoped<UniversalRecordService>();
-var autoIssueEnabled = builder.Configuration.GetValue<bool>("AirTicketing:AutoIssueEnabled");
-if (autoIssueEnabled)
-{
-    builder.Services.AddHostedService<AirTicketingWorker>();
-}
+// Booking now purchases (reserves + tickets) synchronously in the booking request itself.
+// This worker is a crash-recovery safety net for bookings that didn't finish ticketing inline
+// (e.g. the request was interrupted, or a GDS booking is still awaiting document evidence) —
+// it is not a scheduling feature, so it always runs.
+builder.Services.AddHostedService<AirTicketingWorker>();
 
 // ==============================
 // CRITICAL FIX — PORT BINDING

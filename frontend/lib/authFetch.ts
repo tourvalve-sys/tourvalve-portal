@@ -63,6 +63,34 @@ export function getApiBase() {
     return normalizeConfiguredBase(configuredSiteUrl);
 }
 
+/**
+ * The canonical public site URL (e.g. for sitemap/robots/canonical tags), sourced from
+ * NEXT_PUBLIC_SITE_URL / SITE_URL. Unlike getApiBase(), this is meant for server-rendered
+ * metadata files that never have access to `window`, so it has no hardcoded production domain
+ * fallback - only a browser-origin fallback and a dev-only placeholder.
+ */
+export function getSiteUrl() {
+    const configuredSiteUrl =
+        process.env.NEXT_PUBLIC_SITE_URL ??
+        process.env.SITE_URL ??
+        "";
+
+    const normalized = normalizeConfiguredBase(configuredSiteUrl);
+    if (normalized) {
+        return normalized;
+    }
+
+    if (typeof window !== "undefined") {
+        return window.location.origin;
+    }
+
+    if (process.env.NODE_ENV === "development") {
+        return "http://localhost:3000";
+    }
+
+    return "";
+}
+
 function buildSameOriginFallback(url: string) {
     if (typeof window === "undefined") {
         return null;

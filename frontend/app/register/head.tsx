@@ -1,3 +1,5 @@
+import { getSiteUrl } from "@/lib/authFetch";
+
 export default function Head() {
     return (
         <>
@@ -6,7 +8,7 @@ export default function Head() {
                 name="description"
                 content="Register for TourValve B2B Portal to request agent access for B2B flight booking, reservation handling, and controlled wallet operations."
             />
-            <link rel="canonical" href="https://tourvalve.com/register" />
+            <link rel="canonical" href={`${getSiteUrl()}/register`} />
         </>
     );
 }

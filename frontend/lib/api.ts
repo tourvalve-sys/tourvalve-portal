@@ -361,6 +361,7 @@ export type AirBookingResponse = {
     airTicketingStatus: string;
     airTicketingPaymentStatus: string;
     ticketingMessage: string;
+    ticketingErrorDetail?: string;
     ticketedAt?: string | null;
     ticketNumbers: string[];
     nextActionUrl: string;
@@ -477,27 +478,6 @@ export type BookingRecord = {
     airTicketingWalletHoldId?: string | null;
     airTicketingLastError?: string;
     ticketVoidedAt?: string | null;
-    status: string;
-    createdAt: string;
-};
-
-export type PendingTicketingQueueItem = {
-    id: string;
-    bookingReference: string;
-    agentId: string;
-    agentEmail: string;
-    universalRecordLocator: string;
-    providerLocator: string;
-    airlineLocator: string;
-    carrier: string;
-    flightNumber: string;
-    from: string;
-    to: string;
-    departureTime: string;
-    arrivalTime: string;
-    amount: number;
-    airTicketingStatus?: string;
-    airTicketingPaymentStatus?: string;
     status: string;
     createdAt: string;
 };
@@ -644,17 +624,6 @@ export type IssueBookingTicketResponse = {
     paymentWarning?: string | null;
     rawResponse: string;
     refreshedRecord?: string | null;
-};
-
-export type AirTicketingScheduleResponse = {
-    message: string;
-    airTicketingStatus: string;
-    airTicketingFormOfPayment: string;
-    airTicketingPaymentStatus: string;
-    airTicketingDate: string | null;
-    airTicketingScheduledAt: string | null;
-    airTicketingWalletHoldId: string | null;
-    providerCode: string;
 };
 
 export type AirTicketingCancelResponse = {
@@ -833,6 +802,20 @@ export type AuditTrailItem = {
     createdAt: string;
 };
 
+// Carries the full error response payload (e.g. bookingId/bookingReference on a "reservation
+// created, but ticket purchase failed" 502) alongside the friendly message, so callers that need
+// more context than a plain string don't lose it - a plain `Error` would discard everything but
+// the message.
+export class ApiError extends Error {
+    payload: unknown;
+
+    constructor(message: string, payload: unknown) {
+        super(message);
+        this.name = "ApiError";
+        this.payload = payload;
+    }
+}
+
 async function readJson<T>(res: Response): Promise<T> {
     const raw = await res.text();
     let data: unknown = null;
@@ -846,7 +829,7 @@ async function readJson<T>(res: Response): Promise<T> {
     if (!res.ok) {
         const payload = data as { error?: string; message?: string; detail?: string } | null;
         const xmlError = extractXmlError(raw);
-        throw new Error(
+        throw new ApiError(
             normalizeFriendlyError(
                 xmlError ||
                 payload?.detail ||
@@ -854,7 +837,8 @@ async function readJson<T>(res: Response): Promise<T> {
                 payload?.message ||
                 raw ||
                 "Request failed"
-            )
+            ),
+            data
         );
     }
 
@@ -1281,11 +1265,6 @@ export async function getBookings(): Promise<BookingRecord[]> {
     return readJson<BookingRecord[]>(res);
 }
 
-export async function getPendingTicketingQueue(): Promise<PendingTicketingQueueItem[]> {
-    const res = await authFetch(`${API_BASE}/api/bookings/pending-ticketing`);
-    return readJson<PendingTicketingQueueItem[]>(res);
-}
-
 export async function getBookingDetail(bookingId: string): Promise<BookingDetail> {
     const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}`);
     return readJson<BookingDetail>(res);
@@ -1305,7 +1284,7 @@ export async function cancelBooking(bookingId: string, reason: string) {
         body: JSON.stringify({ reason }),
     });
 
-    return readJson<{ message: string; rawResponse: string }>(res);
+    return readJson<{ message: string; rawResponse: string; walletReleaseWarning?: string | null }>(res);
 }
 
 export async function modifyBooking(bookingId: string, remark: string) {
@@ -1333,27 +1312,6 @@ export async function issueBookingTicket(bookingId: string): Promise<IssueBookin
     });
 
     return readJson<IssueBookingTicketResponse>(res);
-}
-
-export async function notifyBookingTicketing(bookingId: string): Promise<{ message: string }> {
-    const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/notify-ticketing`, {
-        method: "POST",
-    });
-
-    return readJson<{ message: string }>(res);
-}
-
-export async function scheduleBookingAirTicketing(
-    bookingId: string,
-    formOfPayment: string,
-    ticketingDate: string
-): Promise<AirTicketingScheduleResponse> {
-    const res = await authFetch(`${API_BASE}/api/bookings/${bookingId}/air-ticketing/schedule`, {
-        method: "POST",
-        body: JSON.stringify({ formOfPayment, ticketingDate }),
-    });
-
-    return readJson<AirTicketingScheduleResponse>(res);
 }
 
 export async function cancelBookingAirTicketing(bookingId: string): Promise<AirTicketingCancelResponse> {

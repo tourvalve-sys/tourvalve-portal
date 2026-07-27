@@ -5,6 +5,7 @@ using TourValve.Domain;
 using TourValve.Infrastructure.Atlas;
 using TourValve.Infrastructure.Data;
 using TourValve.Infrastructure.Services;
+using TourValve.Infrastructure.Ticketing;
 
 namespace TourValve.Infrastructure.Travelport.Air;
 
@@ -31,7 +32,7 @@ public class AirTicketingWorkflowService
     private readonly TourValveDbContext _db;
     private readonly BookingTicketingService _ticketing;
     private readonly UniversalRecordService _records;
-    private readonly AtlasTicketingService _atlasTicketing;
+    private readonly IAirTicketingStrategy _atlasStrategy;
     private readonly IWalletService _wallet;
     private readonly IAuditTrailService _audit;
     private readonly INotificationService _notifications;
@@ -40,7 +41,7 @@ public class AirTicketingWorkflowService
         TourValveDbContext db,
         BookingTicketingService ticketing,
         UniversalRecordService records,
-        AtlasTicketingService atlasTicketing,
+        AtlasTicketingStrategy atlasStrategy,
         IWalletService wallet,
         IAuditTrailService audit,
         INotificationService notifications)
@@ -48,11 +49,14 @@ public class AirTicketingWorkflowService
         _db = db;
         _ticketing = ticketing;
         _records = records;
-        _atlasTicketing = atlasTicketing;
+        _atlasStrategy = atlasStrategy;
         _wallet = wallet;
         _audit = audit;
         _notifications = notifications;
     }
+
+    private static bool IsAtlas(Booking booking) =>
+        string.Equals(booking.ProviderCode, "ATLAS", StringComparison.OrdinalIgnoreCase);
 
     public async Task<AirTicketingScheduleResult> ScheduleAsync(
         Booking booking,
@@ -159,15 +163,22 @@ public class AirTicketingWorkflowService
 
         if (string.Equals(booking.AirTicketingStatus, WorkflowAwaitingEvidence, StringComparison.OrdinalIgnoreCase) ||
             (string.Equals(booking.AirTicketingStatus, WorkflowFailed, StringComparison.OrdinalIgnoreCase) &&
-             BookingTicketingService.IsTicketingEvidencePending(booking.AirTicketingLastError)))
+             BookingTicketingService.IsTicketingEvidencePending(booking.AirTicketingLastError, booking.AirTicketingScheduledAt)))
         {
             booking.AirTicketingStatus = WorkflowAwaitingEvidence;
-            return await RefreshTicketEvidenceAsync(
-                booking,
-                actorId,
-                actorEmail,
-                backgroundTriggered,
-                cancellationToken);
+            return IsAtlas(booking)
+                ? await RefreshAtlasTicketEvidenceAsync(
+                    booking,
+                    actorId,
+                    actorEmail,
+                    backgroundTriggered,
+                    cancellationToken)
+                : await RefreshTicketEvidenceAsync(
+                    booking,
+                    actorId,
+                    actorEmail,
+                    backgroundTriggered,
+                    cancellationToken);
         }
 
         booking.AirTicketingStatus = WorkflowInProgress;
@@ -178,7 +189,13 @@ public class AirTicketingWorkflowService
 
         try
         {
-            await RefreshProviderDetailsIfNeededAsync(booking, cancellationToken);
+            var isAtlas = IsAtlas(booking);
+            if (!isAtlas)
+            {
+                // Atlas bookings resolve their own reservation details via orderNo; they never
+                // hold a Travelport Universal Record, so this refresh only applies to GDS bookings.
+                await RefreshProviderDetailsIfNeededAsync(booking, cancellationToken);
+            }
 
             var requiresWalletHold = booking.AirTicketingFormOfPayment == FormOfPaymentWallet &&
                 !string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase);
@@ -191,15 +208,12 @@ public class AirTicketingWorkflowService
                 booking.AirTicketingWalletHoldId = holdId;
             }
 
-            if (string.Equals(booking.ProviderCode, "ATLAS", StringComparison.OrdinalIgnoreCase))
+            if (isAtlas)
             {
                 var atlasIssuedAt = DateTime.UtcNow;
-                var atlasIssue = await _atlasTicketing.IssueAsync(booking, cancellationToken);
+                var atlasIssue = await _atlasStrategy.IssueAsync(booking, cancellationToken);
 
-                booking.TicketingResponseXml = atlasIssue.OrderDetailsJson;
-
-                if (atlasIssue.TicketNumbers.Count == 0)
-                    throw new InvalidOperationException("Atlas did not return any valid e-ticket numbers yet. Refresh order details and try again.");
+                booking.TicketingResponseXml = atlasIssue.RawResponse;
 
                 var atlasPaymentWarning = string.Empty;
                 if (booking.AirTicketingFormOfPayment == FormOfPaymentWallet &&
@@ -220,8 +234,51 @@ public class AirTicketingWorkflowService
                     }
                 }
 
-                if (!string.IsNullOrWhiteSpace(atlasIssue.AirlinePnr))
-                    booking.AirlineLocator = atlasIssue.AirlinePnr;
+                if (!string.IsNullOrWhiteSpace(atlasIssue.AirlineLocator))
+                    booking.AirlineLocator = atlasIssue.AirlineLocator;
+
+                if (atlasIssue.TicketNumbers.Count == 0)
+                {
+                    // Payment succeeded but Atlas hasn't confirmed the ticket yet - this is the
+                    // expected/normal outcome now that we no longer poll inline for it (see
+                    // BOOKING_CONFIRMATION_LATENCY_PLAN.md). Leave it pending for the background
+                    // worker to recheck without ever resubmitting payment.
+                    booking.Status = "CONFIRMED";
+                    booking.AirTicketingStatus = WorkflowAwaitingEvidence;
+                    booking.AirTicketingLastError = string.IsNullOrWhiteSpace(atlasPaymentWarning)
+                        ? "Atlas has not confirmed ticket issuance yet."
+                        : atlasPaymentWarning;
+
+                    await _db.SaveChangesAsync(cancellationToken);
+
+                    var pendingAtlasActorEmail = NormalizeActorEmail(actorEmail);
+                    await _audit.WriteAsync(
+                        actorId,
+                        pendingAtlasActorEmail,
+                        "BOOKING",
+                        backgroundTriggered ? "AIR_TICKETING_AUTO_EVIDENCE_PENDING" : "AIR_TICKETING_EVIDENCE_PENDING",
+                        "Booking",
+                        booking.Id.ToString(),
+                        booking.BookingReference,
+                        booking.AirTicketingLastError,
+                        "INFO");
+
+                    await NotifyAsync(
+                        booking,
+                        "Ticketing pending",
+                        $"Booking {booking.BookingReference}: {booking.AirTicketingLastError}",
+                        "INFO");
+
+                    return new AirTicketingIssueResult(
+                        Array.Empty<string>(),
+                        null,
+                        booking.Status,
+                        booking.AirTicketingStatus,
+                        booking.AirTicketingPaymentStatus,
+                        atlasIssue.SecondaryResponse ?? string.Empty,
+                        atlasIssue.RawResponse,
+                        atlasPaymentWarning);
+                }
 
                 booking.TicketNumbersJson = JsonSerializer.Serialize(atlasIssue.TicketNumbers);
                 booking.TicketedAt = atlasIssuedAt;
@@ -240,9 +297,7 @@ public class AirTicketingWorkflowService
                     "Booking",
                     booking.Id.ToString(),
                     booking.BookingReference,
-                    atlasIssue.TicketNumbers.Count > 0
-                        ? $"Atlas ticketed: {string.Join(", ", atlasIssue.TicketNumbers)}"
-                        : "Atlas ticketed.");
+                    $"Atlas ticketed: {string.Join(", ", atlasIssue.TicketNumbers)}");
 
                 await NotifyAsync(
                     booking,
@@ -256,8 +311,8 @@ public class AirTicketingWorkflowService
                     booking.Status,
                     booking.AirTicketingStatus,
                     booking.AirTicketingPaymentStatus,
-                    atlasIssue.PayResponseJson,
-                    atlasIssue.OrderDetailsJson,
+                    atlasIssue.SecondaryResponse ?? string.Empty,
+                    atlasIssue.RawResponse,
                     atlasPaymentWarning);
             }
 
@@ -277,7 +332,7 @@ public class AirTicketingWorkflowService
                     result.DocumentRetrieveXml,
                     booking.TicketingResponseXml);
 
-                if (BookingTicketingService.IsTicketingEvidencePending(failureDetail))
+                if (BookingTicketingService.IsTicketingEvidencePending(failureDetail, booking.AirTicketingScheduledAt))
                 {
                     booking.Status = "CONFIRMED";
                     booking.AirTicketingStatus = WorkflowAwaitingEvidence;
@@ -537,7 +592,12 @@ public class AirTicketingWorkflowService
         if (string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Paid tickets cannot be voided from this workflow.");
 
-        await RefreshProviderDetailsIfNeededAsync(booking, cancellationToken);
+        var isAtlas = IsAtlas(booking);
+        if (!isAtlas)
+        {
+            // Atlas bookings never hold a Travelport Universal Record, so this refresh only applies to GDS bookings.
+            await RefreshProviderDetailsIfNeededAsync(booking, cancellationToken);
+        }
 
         var ticketNumbers = DeserializeTicketNumbers(booking);
         if (ticketNumbers.Count == 0)
@@ -545,12 +605,23 @@ public class AirTicketingWorkflowService
 
         try
         {
-            var result = await _ticketing.VoidAsync(booking, ticketNumbers);
-            ApplySnapshot(booking, result.Snapshot);
+            string responseXml;
+            if (isAtlas)
+            {
+                var atlasResult = await _atlasStrategy.VoidAsync(booking, cancellationToken);
+                responseXml = atlasResult.RawResponse;
+            }
+            else
+            {
+                var result = await _ticketing.VoidAsync(booking, ticketNumbers);
+                ApplySnapshot(booking, result.Snapshot);
+                responseXml = result.ResponseXml;
+            }
+
             await ReleaseActiveHoldIfAnyAsync(booking, $"{booking.BookingReference}-AT-VOID", cancellationToken);
 
             booking.TicketVoidedAt = DateTime.UtcNow;
-            booking.TicketVoidResponseXml = result.ResponseXml;
+            booking.TicketVoidResponseXml = responseXml;
             booking.Status = "VOIDED";
             booking.AirTicketingStatus = WorkflowVoided;
             booking.AirTicketingPaymentStatus = PaymentVoided;
@@ -580,7 +651,7 @@ public class AirTicketingWorkflowService
                 booking.TicketVoidedAt,
                 booking.AirTicketingStatus,
                 booking.AirTicketingPaymentStatus,
-                result.ResponseXml);
+                responseXml);
         }
         catch (Exception ex)
         {
@@ -829,15 +900,43 @@ public class AirTicketingWorkflowService
         }
 
         booking.Status = "CONFIRMED";
-        booking.AirTicketingStatus = WorkflowAwaitingEvidence;
         booking.TicketingResponseXml = !string.IsNullOrWhiteSpace(documentRetrieveXml) ? documentRetrieveXml : retrieveXml;
-
         booking.AirTicketingLastError = BookingTicketingService.ExtractTicketingFailureDetail(
             booking.AirTicketingLastError,
             retrieveXml,
             documentRetrieveXml);
 
+        // Ticket issuance normally resolves within minutes. If we've been polling for evidence
+        // well past that window with still nothing to show, stop reporting this as "pending" -
+        // that just hides a permanent failure (e.g. an account-level ticketing authority problem)
+        // behind a hopeful "still processing" status forever.
+        var evidenceWindowExceeded = booking.AirTicketingScheduledAt.HasValue &&
+            DateTime.UtcNow - booking.AirTicketingScheduledAt.Value > BookingTicketingService.EvidencePendingWindow;
+
+        booking.AirTicketingStatus = evidenceWindowExceeded ? WorkflowFailed : WorkflowAwaitingEvidence;
+
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (evidenceWindowExceeded)
+        {
+            var timedOutActorEmail = NormalizeActorEmail(actorEmail);
+            await _audit.WriteAsync(
+                actorId,
+                timedOutActorEmail,
+                "BOOKING",
+                backgroundTriggered ? "AIR_TICKETING_AUTO_EVIDENCE_TIMEOUT" : "AIR_TICKETING_EVIDENCE_TIMEOUT",
+                "Booking",
+                booking.Id.ToString(),
+                booking.BookingReference,
+                booking.AirTicketingLastError,
+                "WARN");
+
+            await NotifyAsync(
+                booking,
+                "Ticket purchase failed",
+                $"Booking {booking.BookingReference} could not be ticketed: {booking.AirTicketingLastError}",
+                "WARN");
+        }
 
         return new AirTicketingIssueResult(
             Array.Empty<string>(),
@@ -846,6 +945,126 @@ public class AirTicketingWorkflowService
             booking.AirTicketingStatus,
             booking.AirTicketingPaymentStatus,
             retrieveXml,
+            null,
+            string.Empty);
+    }
+
+    /// <summary>
+    /// Atlas counterpart to RefreshTicketEvidenceAsync: re-checks ticket status for an
+    /// already-paid Atlas order without resubmitting payment. See
+    /// BOOKING_CONFIRMATION_LATENCY_PLAN.md.
+    /// </summary>
+    private async Task<AirTicketingIssueResult> RefreshAtlasTicketEvidenceAsync(
+        Booking booking,
+        Guid? actorId,
+        string actorEmail,
+        bool backgroundTriggered,
+        CancellationToken cancellationToken)
+    {
+        var atlasCheck = await _atlasStrategy.CheckPendingIssueAsync(booking, cancellationToken);
+        booking.TicketingResponseXml = atlasCheck.RawResponse;
+
+        if (!string.IsNullOrWhiteSpace(atlasCheck.AirlineLocator))
+            booking.AirlineLocator = atlasCheck.AirlineLocator;
+
+        if (atlasCheck.TicketNumbers.Count > 0)
+        {
+            booking.TicketNumbersJson = JsonSerializer.Serialize(atlasCheck.TicketNumbers);
+            booking.TicketedAt ??= DateTime.UtcNow;
+            booking.Status = "TICKETED";
+            booking.AirTicketingStatus = WorkflowIssued;
+            booking.AirTicketingLastError = string.Empty;
+
+            var paymentWarning = string.Empty;
+            if (booking.AirTicketingFormOfPayment == FormOfPaymentWallet &&
+                booking.AirTicketingWalletHoldId.HasValue &&
+                !string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    await _wallet.CaptureHoldAsync(
+                        booking.AirTicketingWalletHoldId.Value,
+                        $"{booking.BookingReference}-AT-CAPTURE");
+                    booking.AirTicketingPaymentStatus = PaymentPaid;
+                }
+                catch (Exception ex)
+                {
+                    paymentWarning = ExtractTravelportMessage(ex);
+                    booking.AirTicketingPaymentStatus = PaymentHoldActive;
+                }
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            var normalizedActorEmail = NormalizeActorEmail(actorEmail);
+            await _audit.WriteAsync(
+                actorId,
+                normalizedActorEmail,
+                "BOOKING",
+                backgroundTriggered ? "AIR_TICKETING_AUTO_EVIDENCE_CONFIRMED" : "AIR_TICKETING_EVIDENCE_CONFIRMED",
+                "Booking",
+                booking.Id.ToString(),
+                booking.BookingReference,
+                $"Atlas ticket evidence confirmed for booking {booking.BookingReference}. {string.Join(", ", atlasCheck.TicketNumbers)}",
+                string.IsNullOrWhiteSpace(paymentWarning) ? "SUCCESS" : "WARN");
+
+            await NotifyAsync(
+                booking,
+                "Ticket issued",
+                $"Booking {booking.BookingReference} has been ticketed. Ticket numbers: {string.Join(", ", atlasCheck.TicketNumbers)}.",
+                string.IsNullOrWhiteSpace(paymentWarning) ? "SUCCESS" : "WARN");
+
+            return new AirTicketingIssueResult(
+                atlasCheck.TicketNumbers,
+                booking.TicketedAt,
+                booking.Status,
+                booking.AirTicketingStatus,
+                booking.AirTicketingPaymentStatus,
+                atlasCheck.RawResponse,
+                null,
+                paymentWarning);
+        }
+
+        booking.Status = "CONFIRMED";
+        booking.AirTicketingLastError = "Atlas has not confirmed ticket issuance yet.";
+
+        // Same timeout rule as the Travelport path: don't report "pending" forever if Atlas never
+        // confirms the ticket within a reasonable window.
+        var evidenceWindowExceeded = booking.AirTicketingScheduledAt.HasValue &&
+            DateTime.UtcNow - booking.AirTicketingScheduledAt.Value > BookingTicketingService.EvidencePendingWindow;
+
+        booking.AirTicketingStatus = evidenceWindowExceeded ? WorkflowFailed : WorkflowAwaitingEvidence;
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        if (evidenceWindowExceeded)
+        {
+            var timedOutActorEmail = NormalizeActorEmail(actorEmail);
+            await _audit.WriteAsync(
+                actorId,
+                timedOutActorEmail,
+                "BOOKING",
+                backgroundTriggered ? "AIR_TICKETING_AUTO_EVIDENCE_TIMEOUT" : "AIR_TICKETING_EVIDENCE_TIMEOUT",
+                "Booking",
+                booking.Id.ToString(),
+                booking.BookingReference,
+                booking.AirTicketingLastError,
+                "WARN");
+
+            await NotifyAsync(
+                booking,
+                "Ticket purchase failed",
+                $"Booking {booking.BookingReference} could not be ticketed: {booking.AirTicketingLastError}",
+                "WARN");
+        }
+
+        return new AirTicketingIssueResult(
+            Array.Empty<string>(),
+            null,
+            booking.Status,
+            booking.AirTicketingStatus,
+            booking.AirTicketingPaymentStatus,
+            atlasCheck.RawResponse,
             null,
             string.Empty);
     }
@@ -920,7 +1139,7 @@ public class AirTicketingWorkflowService
         }
     }
 
-    private static string BuildWorkspacePath(Guid bookingId) => $"/air-ticketing/{bookingId}";
+    private static string BuildWorkspacePath(Guid bookingId) => $"/bookings?bookingId={bookingId}";
 
     private static string NormalizeActorEmail(string actorEmail) =>
         string.IsNullOrWhiteSpace(actorEmail) ? SystemActorEmail : actorEmail.Trim();

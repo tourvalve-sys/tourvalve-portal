@@ -27,7 +27,7 @@ public sealed class AtlasApiClient
     }
 
     public async Task<AtlasSearchResponse> SearchAsync(AtlasSearchRequest request, CancellationToken cancellationToken)
-        => await SendAsync<AtlasSearchRequest, AtlasSearchResponse>("/search.do", request, cancellationToken);
+        => await SendAsync<AtlasSearchRequest, AtlasSearchResponse>("/search.do", request, cancellationToken, isSearchOperation: true);
 
     public async Task<AtlasVerifyResponse> VerifyAsync(AtlasVerifyRequest request, CancellationToken cancellationToken)
         => await SendAsync<AtlasVerifyRequest, AtlasVerifyResponse>("/verify.do", request, cancellationToken);
@@ -49,15 +49,26 @@ public sealed class AtlasApiClient
         CancellationToken cancellationToken)
         => await SendAsync<AtlasQueryOrderDetailsRequest, AtlasQueryOrderDetailsResponse>("/queryOrderDetails.do", request, cancellationToken);
 
+    public async Task<AtlasVoidQuotationResponse> VoidQuotationAsync(AtlasVoidQuotationRequest request, CancellationToken cancellationToken)
+        => await SendAsync<AtlasVoidQuotationRequest, AtlasVoidQuotationResponse>("/voidQuotation.do", request, cancellationToken);
+
+    public async Task<AtlasVoidResponse> VoidAsync(AtlasVoidRequest request, CancellationToken cancellationToken)
+        => await SendAsync<AtlasVoidRequest, AtlasVoidResponse>("/void.do", request, cancellationToken);
+
+    public async Task<AtlasQueryVoidOrdersResponse> QueryVoidOrdersAsync(AtlasQueryVoidOrdersRequest request, CancellationToken cancellationToken)
+        => await SendAsync<AtlasQueryVoidOrdersRequest, AtlasQueryVoidOrdersResponse>("/queryVoidOrders.do", request, cancellationToken);
+
     private async Task<TResponse> SendAsync<TRequest, TResponse>(
         string path,
         TRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isSearchOperation = false)
         where TResponse : AtlasBaseResponse
     {
         EnsureConfigured();
 
-        using var message = new HttpRequestMessage(HttpMethod.Post, path);
+        var requestUri = ResolveBaseUrl(isSearchOperation).TrimEnd('/') + path;
+        using var message = new HttpRequestMessage(HttpMethod.Post, requestUri);
         message.Headers.TryAddWithoutValidation("Accept", "application/json");
         message.Headers.TryAddWithoutValidation("Accept-Encoding", "gzip");
         message.Headers.TryAddWithoutValidation("x-atlas-client-id", _options.ClientId);
@@ -91,6 +102,14 @@ public sealed class AtlasApiClient
             throw new AtlasApiException($"Atlas API error {parsed.Status} for {path}: {parsed.Msg ?? "Unknown error"}", responseBody: body);
 
         return parsed;
+    }
+
+    private string ResolveBaseUrl(bool isSearchOperation)
+    {
+        if (isSearchOperation && !string.IsNullOrWhiteSpace(_options.SearchBaseUrl))
+            return _options.SearchBaseUrl;
+
+        return _options.BaseUrl;
     }
 
     private void EnsureConfigured()

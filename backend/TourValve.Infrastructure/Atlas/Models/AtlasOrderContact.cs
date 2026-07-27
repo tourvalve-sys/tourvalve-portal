@@ -10,7 +10,8 @@ public sealed class AtlasOrderContact
     [JsonPropertyName("email")]
     public string Email { get; set; } = string.Empty;
 
-    // Prefer E.164 with country code when possible.
+    // AtripTech's Create Order API requires "XXXX(4-digit zero-padded calling code)-XXXXXXXX(number)",
+    // e.g. "0060-123456789" for Malaysia — see PhoneNumberFormatter.ToAtripTechMobile.
     [JsonPropertyName("mobile")]
     public string Mobile { get; set; } = string.Empty;
 

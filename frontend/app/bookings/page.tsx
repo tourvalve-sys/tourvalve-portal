@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, Download, FileText, MapPinned, ReceiptText, ShieldCheck, Ticket } from "lucide-react";
+import BookingOutcomeBanner, { deriveBookingOutcome } from "@/components/BookingOutcomeBanner";
 import {
     cancelBooking,
     createBookingAncillaryOrder,
@@ -11,6 +12,7 @@ import {
     getBookingDetail,
     getBookingDocument,
     getBookings,
+    issueBookingTicket,
     modifyBooking,
     quoteBookingAncillary,
     retrieveBookingRecord,
@@ -179,7 +181,10 @@ function BookingsPageContent() {
         try {
             setServiceAction("cancel");
             setError("");
-            await cancelBooking(selectedBookingId, cancelReason || "Cancelled from portal");
+            const result = await cancelBooking(selectedBookingId, cancelReason || "Cancelled from portal");
+            if (result.walletReleaseWarning) {
+                setError(result.walletReleaseWarning);
+            }
             setCancelReason("");
             await loadBookings();
             const detail = await getBookingDetail(selectedBookingId);
@@ -213,7 +218,7 @@ function BookingsPageContent() {
         }
     };
 
-    const handleIssueTicket = (bookingIdOverride?: string) => {
+    const handleIssueTicket = async (bookingIdOverride?: string) => {
         if (!isReservedAdmin) {
             setError("Ticket issuance is restricted. Contact admin@tourvalve.com for ticket issuance.");
             return;
@@ -221,7 +226,21 @@ function BookingsPageContent() {
 
         const bookingId = bookingIdOverride ?? selectedBookingId;
         if (!bookingId) return;
-        window.open(`/air-ticketing/${bookingId}`, "_blank", "noopener,noreferrer");
+
+        try {
+            setServiceAction("issue-ticket");
+            setError("");
+            await issueBookingTicket(bookingId);
+            await loadBookings();
+            if (selectedBookingId === bookingId) {
+                const detail = await getBookingDetail(bookingId);
+                setSelectedBooking(detail);
+            }
+        } catch (value: unknown) {
+            setError(value instanceof Error ? value.message : "Failed to issue ticket");
+        } finally {
+            setServiceAction("");
+        }
     };
 
     const reloadAncillaries = async (bookingId: string) => {
@@ -435,7 +454,15 @@ function BookingsPageContent() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {bookings.map((booking, index) => (
+                                {bookings.map((booking, index) => {
+                                    const bookingOutcome = deriveBookingOutcome({
+                                        status: booking.status,
+                                        airTicketingStatus: booking.airTicketingStatus,
+                                        ticketNumbers: booking.ticketNumbers,
+                                    });
+                                    const bookingHasTicketingError = bookingOutcome === "RESERVED_TICKETING_FAILED";
+
+                                    return (
                                     <tr
                                         key={booking.id}
                                         onClick={() => setSelectedBookingId(booking.id)}
@@ -457,25 +484,39 @@ function BookingsPageContent() {
                                         </td>
                                         <td>{booking.from} to {booking.to}</td>
                                         <td>
-                                            <span className={`status-pill ${booking.status === "CONFIRMED" ? "status-success" : booking.status === "CANCELLED" ? "status-danger" : ""}`}>
+                                            <span
+                                                className={`status-pill ${
+                                                    bookingHasTicketingError
+                                                        ? "status-danger"
+                                                        : booking.status === "CONFIRMED"
+                                                            ? "status-success"
+                                                            : booking.status === "CANCELLED"
+                                                                ? "status-danger"
+                                                                : ""
+                                                }`}
+                                            >
                                                 {booking.status}
                                             </span>
+                                            {bookingHasTicketingError ? (
+                                                <div className="mt-1 text-xs font-semibold text-red-700">Ticketing failed</div>
+                                            ) : null}
                                         </td>
                                         <td className="text-right font-semibold text-[var(--ink)]">
                                             MYR {booking.amount.toFixed(2)}
                                         </td>
                                         <td className="text-right">
                                             <div className="flex justify-end gap-2">
-                                                {isReservedAdmin ? (
+                                                {isReservedAdmin && booking.status !== "TICKETED" ? (
                                                     <button
                                                         onClick={(event) => {
                                                             event.stopPropagation();
-                                                            handleIssueTicket(booking.id);
+                                                            void handleIssueTicket(booking.id);
                                                         }}
-                                                        className="gold-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold"
+                                                        disabled={serviceAction === "issue-ticket"}
+                                                        className="gold-button inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
                                                     >
                                                         <Ticket size={16} />
-                                                        {booking.status === "TICKETED" ? "Open AirTicketing" : "Issue Ticket"}
+                                                        {serviceAction === "issue-ticket" ? "Retrying..." : "Retry Ticketing"}
                                                     </button>
                                                 ) : null}
                                                 <button
@@ -492,7 +533,8 @@ function BookingsPageContent() {
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                         </div>
@@ -545,18 +587,26 @@ function BookingsPageContent() {
                             </div>
 
                             <div className="soft-panel rounded-[1.5rem] p-4">
-                                <div className="subtle-kicker">Ticketing</div>
-                                <div className="mt-2 text-sm leading-7 text-slate-500">
-                                    {isReservedAdmin
-                                        ? "Open the dedicated AirTicketing workspace to choose payment type, save the ticketing date, issue now, or void unpaid tickets after issuance."
-                                        : "Ticket issuance is handled by the TourValve admin. Contact admin@tourvalve.com for ticketing support."}
-                                </div>
-                                {isReservedAdmin ? (
+                                <div className="subtle-kicker mb-2">Ticketing</div>
+                                <BookingOutcomeBanner
+                                    status={selectedBooking.status}
+                                    airTicketingStatus={selectedBooking.airTicketingStatus}
+                                    ticketNumbers={selectedBooking.ticketNumbers}
+                                    airTicketingLastError={selectedBooking.airTicketingLastError}
+                                    variant="compact"
+                                />
+                                {!isReservedAdmin && selectedBooking.status !== "TICKETED" ? (
+                                    <div className="mt-2 text-sm leading-7 text-slate-500">
+                                        Ticket issuance is handled by the TourValve admin. Contact admin@tourvalve.com for ticketing support.
+                                    </div>
+                                ) : null}
+                                {isReservedAdmin && selectedBooking.status !== "TICKETED" ? (
                                     <button
-                                        onClick={() => handleIssueTicket()}
-                                        className="gold-button mt-3 w-full rounded-2xl px-4 py-3 text-sm font-semibold"
+                                        onClick={() => void handleIssueTicket()}
+                                        disabled={serviceAction === "issue-ticket"}
+                                        className="gold-button mt-3 w-full rounded-2xl px-4 py-3 text-sm font-semibold disabled:opacity-60"
                                     >
-                                        {selectedBooking.status === "TICKETED" ? "Open AirTicketing" : "Issue Ticket"}
+                                        {serviceAction === "issue-ticket" ? "Retrying..." : "Retry Ticketing"}
                                     </button>
                                 ) : null}
                             </div>
