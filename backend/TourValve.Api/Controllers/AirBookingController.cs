@@ -545,7 +545,7 @@ public sealed class AirBookingController : ControllerBase
             .FirstOrDefaultAsync(x => x.AgentId == actorId && x.IsActive, cancellationToken);
 
         if (walletAccount == null)
-            throw new InvalidOperationException("No active TourValve wallet was found for this account.");
+            throw new InvalidOperationException($"No active {_appOptions.DisplayName} wallet was found for this account.");
 
         return await _wallet.CreateHoldForUserAsync(
             walletAccount.Id,
@@ -1666,8 +1666,9 @@ public sealed class AirBookingController : ControllerBase
             var attachments = BuildBookingEmailAttachments(booking, bookingReference, request, locator, refs);
             await _emailService.SendAsync(
                 request.ContactEmail,
-                "Your TourValve booking confirmation",
+                $"Your {_appOptions.DisplayName} booking confirmation",
                 EmailTemplates.BookingConfirmed(
+                    _appOptions.DisplayName,
                     request.ContactEmail,
                     travelerDisplayName,
                     locator,
@@ -1721,8 +1722,9 @@ public sealed class AirBookingController : ControllerBase
             var attachments = BuildBookingEmailAttachments(booking, bookingReference, request, locator, refs);
             await _emailService.SendAsync(
                 _smtpOptions.AdminInboxEmail,
-                "TourValve live booking confirmed",
+                $"{_appOptions.DisplayName} live booking confirmed",
                 EmailTemplates.BookingConfirmed(
+                    _appOptions.DisplayName,
                     request.ContactEmail,
                     travelerDisplayName,
                     locator,
@@ -1816,7 +1818,7 @@ public sealed class AirBookingController : ControllerBase
                 PublicDomain: _appOptions.PublicDomain);
 
             var pdfBytes = new BookingItineraryPdfBuilder().Build(booking, model);
-            var fileName = $"TourValve Booking - {booking.BookingReference}.pdf";
+            var fileName = $"{_appOptions.DisplayName} Booking - {booking.BookingReference}.pdf";
 
             return new List<EmailAttachment>
             {
@@ -2028,7 +2030,7 @@ public sealed class AirBookingController : ControllerBase
 
         if (raw.Contains("supplier-direct payment", StringComparison.OrdinalIgnoreCase) ||
             raw.Contains("ACH", StringComparison.OrdinalIgnoreCase) && raw.Contains("payment", StringComparison.OrdinalIgnoreCase))
-            return "This itinerary needs supplier-direct payment handling, so it cannot complete the TourValve wallet auto-ticketing flow yet.";
+            return "This itinerary needs supplier-direct payment handling, so it cannot complete the wallet auto-ticketing flow yet.";
 
         if (raw.Contains("NO FARES", StringComparison.OrdinalIgnoreCase))
             return "The provider could not keep a live fare attached to this itinerary during reservation creation. Search again and choose a newly priced fare before booking.";
@@ -2036,7 +2038,7 @@ public sealed class AirBookingController : ControllerBase
         if (raw.Contains("SECURED SELL NOT AVAILABLE", StringComparison.OrdinalIgnoreCase) ||
             raw.Contains("UNABLE TO SELL", StringComparison.OrdinalIgnoreCase) ||
             raw.Contains("SELL CHECK FAILED", StringComparison.OrdinalIgnoreCase))
-            return "The carrier did not return a secure-sell reservation for this itinerary, so TourValve stopped before creating a broken booking. Search again or choose another fare.";
+            return "The carrier did not return a secure-sell reservation for this itinerary, so the portal stopped before creating a broken booking. Search again or choose another fare.";
 
         if (raw.Contains("NO VALIDATING CARRIER", StringComparison.OrdinalIgnoreCase))
             return "The provider could not assign a validating carrier to this itinerary, so the reservation cannot complete from the portal right now. Search again or choose another fare.";

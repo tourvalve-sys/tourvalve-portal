@@ -138,8 +138,8 @@ public class AdminAgentsController : ControllerBase
     {
         await TrySendEmailAsync(
             _smtpOptions.AdminInboxEmail,
-            "TourValve SMTP test",
-            EmailTemplates.RegistrationRequestAdmin("tourvalve@gmail.com", "Malaysia", "+60 test"));
+            $"{_appOptions.DisplayName} SMTP test",
+            EmailTemplates.RegistrationRequestAdmin(_appOptions.DisplayName, "tourvalve@gmail.com", "Malaysia", "+60 test"));
 
         await _audit.WriteAsync(null, User.Identity?.Name ?? "admin@tourvalve.com", "SMTP", "TEST", "SMTP", "SELF", _smtpOptions.AdminInboxEmail, "SMTP test email triggered.");
         await _notifications.CreateAsync(null, "ADMIN", "SMTP", "SMTP test sent", $"A test email was attempted to {_smtpOptions.AdminInboxEmail}.", "INFO", "/agents");
@@ -253,11 +253,11 @@ public class AdminAgentsController : ControllerBase
 
         await TrySendEmailAsync(
             request.Email,
-            "Your TourValve access is approved",
-            EmailTemplates.RegistrationApproved(request.Email, _appOptions.PublicBaseUrl));
+            $"Your {_appOptions.DisplayName} access is approved",
+            EmailTemplates.RegistrationApproved(_appOptions.DisplayName, request.Email, _appOptions.PublicBaseUrl));
 
         await _audit.WriteAsync(agent.Id, User.Identity?.Name ?? "admin@tourvalve.com", "ACCESS", "REGISTER_APPROVE", "RegistrationApprovalRequest", request.Id.ToString(), request.Email, "Registration approved.");
-        await _notifications.CreateAsync(agent.Id, "AGENT", "ACCESS", "Registration approved", "Your TourValve access has been approved.", "SUCCESS", "/login");
+        await _notifications.CreateAsync(agent.Id, "AGENT", "ACCESS", "Registration approved", $"Your {_appOptions.DisplayName} access has been approved.", "SUCCESS", "/login");
 
         return Ok(new
         {
@@ -285,8 +285,8 @@ public class AdminAgentsController : ControllerBase
 
         await TrySendEmailAsync(
             request.Email,
-            "Your TourValve registration update",
-            EmailTemplates.RegistrationRejected(request.Email));
+            $"Your {_appOptions.DisplayName} registration update",
+            EmailTemplates.RegistrationRejected(_appOptions.DisplayName, request.Email));
 
         await _audit.WriteAsync(null, User.Identity?.Name ?? "admin@tourvalve.com", "ACCESS", "REGISTER_REJECT", "RegistrationApprovalRequest", request.Id.ToString(), request.Email, "Registration rejected.");
         await _notifications.CreateAsync(null, "ADMIN", "ACCESS", "Registration rejected", $"Registration request for {request.Email} was rejected.", "INFO", "/agents");
@@ -321,8 +321,8 @@ public class AdminAgentsController : ControllerBase
 
         await TrySendEmailAsync(
             request.Email,
-            "Your TourValve temporary password",
-            EmailTemplates.PasswordResetApproved(request.Email, temporaryPassword, _appOptions.PublicBaseUrl));
+            $"Your {_appOptions.DisplayName} temporary password",
+            EmailTemplates.PasswordResetApproved(_appOptions.DisplayName, request.Email, temporaryPassword, _appOptions.PublicBaseUrl));
 
         await _audit.WriteAsync(agent.Id, User.Identity?.Name ?? "admin@tourvalve.com", "ACCESS", "PASSWORD_RESET_APPROVE", "PasswordResetApprovalRequest", request.Id.ToString(), request.Email, "Password reset approved.");
         await _notifications.CreateAsync(agent.Id, "AGENT", "ACCESS", "Password reset approved", "A temporary password has been issued to your email.", "WARN", "/login");
@@ -353,8 +353,8 @@ public class AdminAgentsController : ControllerBase
 
         await TrySendEmailAsync(
             request.Email,
-            "Your TourValve password reset update",
-            EmailTemplates.PasswordResetRejected(request.Email));
+            $"Your {_appOptions.DisplayName} password reset update",
+            EmailTemplates.PasswordResetRejected(_appOptions.DisplayName, request.Email));
 
         await _audit.WriteAsync(null, User.Identity?.Name ?? "admin@tourvalve.com", "ACCESS", "PASSWORD_RESET_REJECT", "PasswordResetApprovalRequest", request.Id.ToString(), request.Email, "Password reset rejected.");
         await _notifications.CreateAsync(null, "ADMIN", "ACCESS", "Password reset rejected", $"Password reset request for {request.Email} was rejected.", "INFO", "/agents");

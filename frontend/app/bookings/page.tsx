@@ -25,6 +25,7 @@ import {
     type BookingRetrieveResponse,
 } from "@/lib/api";
 import { getUserFromToken } from "@/lib/auth";
+import { getAppName } from "@/lib/branding";
 
 function BookingsPageContent() {
     const router = useRouter();
@@ -597,7 +598,7 @@ function BookingsPageContent() {
                                 />
                                 {!isReservedAdmin && selectedBooking.status !== "TICKETED" ? (
                                     <div className="mt-2 text-sm leading-7 text-slate-500">
-                                        Ticket issuance is handled by the TourValve admin. Contact admin@tourvalve.com for ticketing support.
+                                        Ticket issuance is handled by the {getAppName()} admin. Contact admin@tourvalve.com for ticketing support.
                                     </div>
                                 ) : null}
                                 {isReservedAdmin && selectedBooking.status !== "TICKETED" ? (

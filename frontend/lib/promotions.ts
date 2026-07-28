@@ -1,3 +1,5 @@
+import { getAppName } from "@/lib/branding";
+
 export type PromoSlide = {
     eyebrow: string;
     title: string;
@@ -25,7 +27,7 @@ export const dashboardPromoSlides: PromoSlide[] = [
         eyebrow: "Seasonal Push",
         title: "Turn every dashboard visit into a campaign moment.",
         description:
-            "Use full-width posters for MATTA fairs, agency bundles, or carrier promotions without leaving the TourValve workspace.",
+            `Use full-width posters for MATTA fairs, agency bundles, or carrier promotions without leaving the ${getAppName()} workspace.`,
         image: "/images/dashboard/banner2.png",
         ctaLabel: "View Bookings",
         ctaHref: "/bookings",

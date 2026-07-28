@@ -1,5 +1,6 @@
 import type { FlightResult } from "@/lib/api";
 import { scrubProviderMentions } from "@/lib/scrubProviderMentions";
+import { getAppName } from "@/lib/branding";
 
 const HOST_PROVIDERS = new Set(["1G", "1V", "1P"]);
 const SUPPLIER_DIRECT_PROVIDERS = new Set(["ACH", "RCH"]);
@@ -151,7 +152,7 @@ function buildFallbackNotice(
     }
 
     if (requiresSupplierPayment) {
-        return "This itinerary uses airline-direct content, so TourValve cannot auto-ticket it through wallet checkout yet. Please choose a hosted fare for instant portal issuance.";
+        return `This itinerary uses airline-direct content, so ${getAppName()} cannot auto-ticket it through wallet checkout yet. Please choose a hosted fare for instant portal issuance.`;
     }
 
     if (!providerIsHosted) {
@@ -162,5 +163,5 @@ function buildFallbackNotice(
         return "This itinerary is returning a non-ticketable status, so it cannot be reserved safely from the portal. Please search again or choose another fare.";
     }
 
-    return scrubProviderMentions("This itinerary is not ready for the TourValve portal checkout flow yet. Search again or choose another fare.");
+    return scrubProviderMentions("This itinerary is not ready for the portal checkout flow yet. Search again or choose another fare.");
 }

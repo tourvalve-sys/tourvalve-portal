@@ -1,5 +1,7 @@
 "use client";
 
+import { getAppName } from "@/lib/branding";
+
 const POLICY_LINKS = [
     { href: "/terms-and-conditions", label: "Terms & Conditions" },
     { href: "/refund-policy", label: "Refund Policy" },
@@ -12,7 +14,7 @@ export default function SiteFooter() {
             <div className="soft-panel rounded-[1.75rem] px-5 py-5 sm:px-7">
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>
-                        <div className="font-display text-lg text-[var(--ink)]">TourValve</div>
+                        <div className="font-display text-lg text-[var(--ink)]">{getAppName()}</div>
                         <div className="mt-1 max-w-md text-sm text-slate-600">
                             B2B flight search, reservation, ticketing, and servicing workspace.
                         </div>

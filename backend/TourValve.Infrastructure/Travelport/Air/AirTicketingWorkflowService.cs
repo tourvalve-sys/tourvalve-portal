@@ -36,6 +36,7 @@ public class AirTicketingWorkflowService
     private readonly IWalletService _wallet;
     private readonly IAuditTrailService _audit;
     private readonly INotificationService _notifications;
+    private readonly AppOptions _appOptions;
 
     public AirTicketingWorkflowService(
         TourValveDbContext db,
@@ -44,7 +45,8 @@ public class AirTicketingWorkflowService
         AtlasTicketingStrategy atlasStrategy,
         IWalletService wallet,
         IAuditTrailService audit,
-        INotificationService notifications)
+        INotificationService notifications,
+        Microsoft.Extensions.Options.IOptions<AppOptions> appOptions)
     {
         _db = db;
         _ticketing = ticketing;
@@ -53,6 +55,7 @@ public class AirTicketingWorkflowService
         _wallet = wallet;
         _audit = audit;
         _notifications = notifications;
+        _appOptions = appOptions.Value;
     }
 
     private static bool IsAtlas(Booking booking) =>
@@ -88,7 +91,7 @@ public class AirTicketingWorkflowService
                 .FirstOrDefaultAsync(x => x.AgentId == booking.AgentId && x.IsActive, cancellationToken);
 
             if (walletAccount == null)
-                throw new InvalidOperationException("The booking owner does not have an active TourValve wallet.");
+                throw new InvalidOperationException($"The booking owner does not have an active {_appOptions.DisplayName} wallet.");
 
             walletHoldId = await EnsureActiveHoldAsync(
                 booking,
@@ -103,7 +106,7 @@ public class AirTicketingWorkflowService
         {
             if (string.Equals(booking.AirTicketingPaymentStatus, PaymentPaid, StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException("This booking is already settled via TourValve Wallet. Keep the workflow form of payment as TOURVALVE WALLET.");
+                throw new InvalidOperationException($"This booking is already settled via {_appOptions.DisplayName} Wallet. Keep the workflow form of payment as TOURVALVE WALLET.");
             }
 
             await ReleaseActiveHoldIfAnyAsync(booking, $"{booking.BookingReference}-AT-CASH", cancellationToken);
@@ -203,7 +206,7 @@ public class AirTicketingWorkflowService
             {
                 var holdId = await ResolveActiveHoldIdAsync(booking, cancellationToken);
                 if (!holdId.HasValue)
-                    throw new InvalidOperationException("The saved TourValve wallet hold is missing or no longer active.");
+                    throw new InvalidOperationException($"The saved {_appOptions.DisplayName} wallet hold is missing or no longer active.");
 
                 booking.AirTicketingWalletHoldId = holdId;
             }
@@ -1110,9 +1113,9 @@ public class AirTicketingWorkflowService
             _ => throw new InvalidOperationException("Form of payment must be CASH or TOURVALVE WALLET.")
         };
 
-    private static string DisplayFormOfPayment(string formOfPayment) =>
+    private string DisplayFormOfPayment(string formOfPayment) =>
         string.Equals(formOfPayment, FormOfPaymentWallet, StringComparison.OrdinalIgnoreCase)
-            ? "TourValve Wallet"
+            ? $"{_appOptions.DisplayName} Wallet"
             : "Cash";
 
     private static void ValidateTicketingDate(DateOnly ticketingDate)

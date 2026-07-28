@@ -33,6 +33,7 @@ public sealed class AtlasBookingController : ControllerBase
     private readonly IWalletService _wallet;
     private readonly TicketMarkupService _ticketMarkup;
     private readonly AirTicketingWorkflowService _airTicketingWorkflow;
+    private readonly AppOptions _appOptions;
 
     public AtlasBookingController(
         AtlasApiClient atlas,
@@ -43,7 +44,8 @@ public sealed class AtlasBookingController : ControllerBase
         INotificationService notifications,
         IWalletService wallet,
         TicketMarkupService ticketMarkup,
-        AirTicketingWorkflowService airTicketingWorkflow)
+        AirTicketingWorkflowService airTicketingWorkflow,
+        Microsoft.Extensions.Options.IOptions<AppOptions> appOptions)
     {
         _atlas = atlas;
         _options = options.Value;
@@ -54,6 +56,7 @@ public sealed class AtlasBookingController : ControllerBase
         _wallet = wallet;
         _ticketMarkup = ticketMarkup;
         _airTicketingWorkflow = airTicketingWorkflow;
+        _appOptions = appOptions.Value;
     }
 
     [HttpPost]
@@ -157,7 +160,7 @@ public sealed class AtlasBookingController : ControllerBase
                     .FirstOrDefaultAsync(cancellationToken);
 
                 if (!walletAccountId.HasValue)
-                    throw new InvalidOperationException("No active TourValve wallet was found for this account.");
+                    throw new InvalidOperationException($"No active {_appOptions.DisplayName} wallet was found for this account.");
 
                 walletHoldId = await _wallet.CreateHoldForUserAsync(
                     walletAccountId.Value,

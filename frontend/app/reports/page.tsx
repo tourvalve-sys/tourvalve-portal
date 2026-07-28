@@ -4,6 +4,7 @@ import { Component, type ReactNode, useEffect, useState } from "react";
 import { AlertTriangle, BarChart3, CircleDollarSign, Download, Gauge, ShieldCheck, XCircle } from "lucide-react";
 import BookingChart from "@/components/BookingChart";
 import { exportAgentPerformance, exportAncillaryReport, exportReportsOverview, getCurrentUser, getReportsOverview, type CurrentUser, type ReportsOverview } from "@/lib/api";
+import { getAppName } from "@/lib/branding";
 
 class ChartErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
     constructor(props: { children: ReactNode }) {
@@ -84,7 +85,7 @@ export default function ReportsPage() {
             <div className="premium-panel rounded-[2rem] p-8 text-center fade-in">
                 <div className="font-display text-4xl text-[var(--ink)]">Reports</div>
                 <p className="mt-4 text-sm leading-7 text-slate-500">
-                    Reports are available only to the TourValve admin.
+                    Reports are available only to the {getAppName()} admin.
                 </p>
             </div>
         );

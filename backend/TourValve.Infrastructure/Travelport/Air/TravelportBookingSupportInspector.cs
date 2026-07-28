@@ -75,7 +75,7 @@ public static class TravelportBookingSupportInspector
                 false,
                 true,
                 false,
-                "This itinerary uses supplier-direct payment content, so it cannot go through TourValve wallet auto-ticketing yet. Choose a GDS-hosted fare or service this carrier manually through the supplier payment workflow.");
+                "This itinerary uses supplier-direct payment content, so it cannot go through wallet auto-ticketing yet. Choose a GDS-hosted fare or service this carrier manually through the supplier payment workflow.");
         }
 
         if (!providerIsHosted)

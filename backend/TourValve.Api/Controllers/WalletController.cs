@@ -20,19 +20,22 @@ public class WalletController : ControllerBase
     private readonly IAuditTrailService _audit;
     private readonly INotificationService _notifications;
     private readonly WalletAlertOptions _walletAlertOptions;
+    private readonly AppOptions _appOptions;
 
     public WalletController(
         IWalletService wallet,
         TourValveDbContext db,
         IAuditTrailService audit,
         INotificationService notifications,
-        IOptions<WalletAlertOptions> walletAlertOptions)
+        IOptions<WalletAlertOptions> walletAlertOptions,
+        IOptions<AppOptions> appOptions)
     {
         _wallet = wallet;
         _db = db;
         _audit = audit;
         _notifications = notifications;
         _walletAlertOptions = walletAlertOptions.Value;
+        _appOptions = appOptions.Value;
     }
 
     public record TopUpRequest(Guid WalletAccountId, decimal Amount, string Reference);
@@ -539,7 +542,7 @@ public class WalletController : ControllerBase
                 lines.AddRange(transactions.Select(x =>
                     $"{x.CreatedAt:yyyy-MM-dd HH:mm} | {x.Type} | {x.Reference} | MYR {x.Amount:0.00}"));
 
-                var pdfBytes = BuildSimplePdf("TourValve Wallet Statement", lines);
+                var pdfBytes = BuildSimplePdf($"{_appOptions.DisplayName} Wallet Statement", lines);
                 return File(pdfBytes, "application/pdf", $"wallet-statement-{targetWalletId}.pdf");
             }
 

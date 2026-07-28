@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Bell } from "lucide-react";
 import { getCurrentUser, getNotifications, markAllNotificationsRead, markNotificationRead, type CurrentUser, type NotificationItem } from "@/lib/api";
+import { getAppName } from "@/lib/branding";
 import ThemeToggle from "./ThemeToggle";
 
 const titles: Record<string, string> = {
@@ -51,7 +52,7 @@ export default function Topbar() {
             });
     }, []);
 
-    const title = titles[pathname] ?? "TourValve";
+    const title = titles[pathname] ?? getAppName();
     const subtitle = subtitles[pathname] ?? "Connected travel operations";
     const initial = user?.email?.charAt(0).toUpperCase() ?? "U";
 
@@ -72,7 +73,7 @@ export default function Topbar() {
     return (
         <div className="soft-panel sticky top-3 z-20 mx-3 mt-3 flex flex-col gap-3 rounded-[1.35rem] px-4 py-3 sm:mx-4 sm:mt-4 sm:rounded-[1.5rem] sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-                <div className="subtle-kicker mb-1.5 hidden sm:block">TourValve Workspace</div>
+                <div className="subtle-kicker mb-1.5 hidden sm:block">{getAppName()} Workspace</div>
                 <div className="font-display text-[1.55rem] leading-none text-[var(--ink)] sm:text-[1.85rem] md:text-3xl">{title}</div>
                 <div className="mt-1 hidden text-sm text-slate-500 sm:block">{subtitle}</div>
             </div>
@@ -151,7 +152,7 @@ export default function Topbar() {
 
                 <div className="topbar-user-chip flex min-w-0 items-center gap-2 rounded-[1rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,242,232,0.82))] px-2.5 py-2 sm:rounded-[1.2rem] sm:px-3">
                     <div className="hidden text-right sm:block">
-                        <div className="max-w-[8rem] truncate text-sm font-semibold text-[var(--ink)] sm:max-w-[11rem] md:max-w-none">{user?.email ?? "TourValve User"}</div>
+                        <div className="max-w-[8rem] truncate text-sm font-semibold text-[var(--ink)] sm:max-w-[11rem] md:max-w-none">{user?.email ?? `${getAppName()} User`}</div>
                         <div className="text-xs text-slate-400">{user?.role ?? "User"}</div>
                     </div>
 

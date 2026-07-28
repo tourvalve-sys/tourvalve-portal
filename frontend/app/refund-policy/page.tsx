@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getAppName } from "@/lib/branding";
 
 export const dynamic = "force-static";
 
@@ -7,6 +8,7 @@ export const metadata: Metadata = {
 };
 
 export default function RefundPolicyPage() {
+    const appName = getAppName();
     return (
         <div className="mx-auto w-full max-w-5xl px-3 py-6 sm:px-4 md:px-6">
             <div className="premium-panel rounded-[2rem] p-6 shadow sm:p-8">
@@ -16,8 +18,8 @@ export default function RefundPolicyPage() {
 
                 <div className="mt-6 space-y-6 text-sm leading-7 text-slate-700">
                     <p>
-                        This Refund Policy explains how refunds are handled for bookings made through TourValve.
-                        <strong> TourValve is a B2B platform</strong> intended for travel agencies and business users.
+                        This Refund Policy explains how refunds are handled for bookings made through {appName}.
+                        <strong> {appName} is a B2B platform</strong> intended for travel agencies and business users.
                     </p>
 
                     <h2 className="text-base font-semibold text-[var(--ink)]">1. Supplier Fare Rules Apply</h2>

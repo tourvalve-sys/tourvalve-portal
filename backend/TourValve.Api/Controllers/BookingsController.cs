@@ -875,7 +875,7 @@ public class BookingsController : ControllerBase
     public async Task<IActionResult> IssueTicket(Guid id, [FromBody] IssueTicketRequest request)
     {
         if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Ticket issuance is restricted to the TourValve admin." });
+            return StatusCode(403, new { error = $"Ticket issuance is restricted to the {_appOptions.DisplayName} admin." });
 
         var booking = await GetAuthorizedBookingAsync(id);
         if (booking == null)
@@ -918,7 +918,7 @@ public class BookingsController : ControllerBase
     public async Task<IActionResult> CancelAirTicketing(Guid id, [FromBody] IssueTicketRequest request)
     {
         if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Ticketing workflow controls are restricted to the TourValve admin." });
+            return StatusCode(403, new { error = $"Ticketing workflow controls are restricted to the {_appOptions.DisplayName} admin." });
 
         var booking = await GetAuthorizedBookingAsync(id);
         if (booking == null)
@@ -951,7 +951,7 @@ public class BookingsController : ControllerBase
     public async Task<IActionResult> MarkAirTicketingPaid(Guid id)
     {
         if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Ticketing workflow controls are restricted to the TourValve admin." });
+            return StatusCode(403, new { error = $"Ticketing workflow controls are restricted to the {_appOptions.DisplayName} admin." });
 
         var booking = await GetAuthorizedBookingAsync(id);
         if (booking == null)
@@ -980,7 +980,7 @@ public class BookingsController : ControllerBase
     public async Task<IActionResult> VoidAirTicket(Guid id, [FromBody] IssueTicketRequest request)
     {
         if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Ticketing workflow controls are restricted to the TourValve admin." });
+            return StatusCode(403, new { error = $"Ticketing workflow controls are restricted to the {_appOptions.DisplayName} admin." });
 
         var booking = await GetAuthorizedBookingAsync(id);
         if (booking == null)
@@ -1608,11 +1608,11 @@ public class BookingsController : ControllerBase
             string.Equals(booking.AirTicketingStatus, AirTicketingWorkflowService.WorkflowIssued, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static byte[] BuildSimpleBookingPdf(TourValve.Domain.Booking booking)
+    private byte[] BuildSimpleBookingPdf(TourValve.Domain.Booking booking)
     {
         var lines = new[]
         {
-            "TourValve Booking Document",
+            $"{_appOptions.DisplayName} Booking Document",
             "",
             $"Booking Reference: {booking.BookingReference}",
             $"Status: {booking.Status}",
@@ -1628,7 +1628,7 @@ public class BookingsController : ControllerBase
             "",
             $"Created: {booking.CreatedAt:yyyy-MM-dd HH:mm}",
             "",
-            "This document is generated from the live booking record stored in TourValve."
+            $"This document is generated from the live booking record stored in {_appOptions.DisplayName}."
         };
 
         var content = new StringBuilder();

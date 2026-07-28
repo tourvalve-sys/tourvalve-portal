@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getAppName } from "@/lib/branding";
 
 export const dynamic = "force-static";
 
@@ -7,6 +8,7 @@ export const metadata: Metadata = {
 };
 
 export default function TermsAndConditionsPage() {
+    const appName = getAppName();
     return (
         <div className="mx-auto w-full max-w-5xl px-3 py-6 sm:px-4 md:px-6">
             <div className="premium-panel rounded-[2rem] p-6 shadow sm:p-8">
@@ -18,7 +20,7 @@ export default function TermsAndConditionsPage() {
 
                 <div className="mt-6 space-y-6 text-sm leading-7 text-slate-700">
                     <p>
-                        These Terms &amp; Conditions (&quot;Terms&quot;) govern your access to and use of the TourValve platform
+                        These Terms &amp; Conditions (&quot;Terms&quot;) govern your access to and use of the {appName} platform
                         (the &quot;Platform&quot;, &quot;we&quot;, &quot;us&quot;, &quot;our&quot;), including flight search,
                         reservation creation, ticketing workflows, payments, and post-booking servicing features.
                     </p>
@@ -95,7 +97,7 @@ export default function TermsAndConditionsPage() {
                     <h2 className="text-base font-semibold text-[var(--ink)]">9. Disclaimers &amp; Limitation of Liability</h2>
                     <p>
                         The Platform is provided on an &quot;as is&quot; and &quot;as available&quot; basis. To the fullest extent permitted
-                        by law, TourValve is not liable for indirect, incidental, consequential, or punitive damages arising from the use of the
+                        by law, {appName} is not liable for indirect, incidental, consequential, or punitive damages arising from the use of the
                         Platform or supplier actions.
                     </p>
 

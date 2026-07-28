@@ -2,6 +2,7 @@ import Script from "next/script";
 import "./globals.css";
 import type { Metadata } from "next";
 import AppShell from "./app-shell";
+import { getAppName } from "@/lib/branding";
 
 const chunkRecoveryScript = `
 (() => {
@@ -131,14 +132,16 @@ const themeBootstrapScript = `
 })();
 `;
 
+const appName = getAppName();
+
 export const metadata: Metadata = {
     title: {
-        default: "TourValve Portal",
-        template: "%s · TourValve",
+        default: `${appName} Portal`,
+        template: `%s · ${appName}`,
     },
-    applicationName: "TourValve",
+    applicationName: appName,
     description:
-        "TourValve workspace for agent login, flight search, booking, ticketing, wallet settlement, and reporting.",
+        `${appName} workspace for agent login, flight search, booking, ticketing, wallet settlement, and reporting.`,
 };
 
 export default function RootLayout({

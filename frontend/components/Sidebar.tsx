@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { BarChart3, Briefcase, LayoutGrid, LogOut, PlaneTakeoff, ScrollText, Users, Wallet, MoreHorizontal, X } from "lucide-react";
 import { getCurrentUser } from "@/lib/api";
 import { getUserFromToken, removeToken } from "@/lib/auth";
+import { getAppName } from "@/lib/branding";
 
 const menu = [
     { name: "Dashboard", path: "/dashboard", icon: LayoutGrid },
@@ -76,7 +77,7 @@ export default function Sidebar() {
             {/* Desktop Sidebar */}
             <aside className="hidden premium-panel mx-4 mt-4 w-auto shrink-0 flex-col rounded-[2rem] p-4 xl:sticky xl:top-4 xl:mx-0 xl:ml-4 xl:mr-0 xl:mt-4 xl:flex xl:max-h-[calc(100vh-2rem)] xl:w-[280px] xl:self-start">
                 <div className="rounded-[1.75rem] bg-[linear-gradient(160deg,#0f3b72,#0c58b6_52%,#2b8cff)] px-5 py-6 text-white shadow-[0_22px_40px_rgba(12,54,112,0.28)]">
-                    <div className="font-display text-3xl">TourValve</div>
+                    <div className="font-display text-3xl">{getAppName()}</div>
                     <p className="mt-3 text-sm leading-6 text-white/70">
                         Search, price, book, and service live air content from one connected workspace.
                     </p>
@@ -132,7 +133,7 @@ export default function Sidebar() {
                 <div className="mx-3 mt-3 rounded-[1.35rem] bg-[linear-gradient(160deg,#17304d,#102136)] px-4 py-3.5 text-white shadow-[0_18px_34px_rgba(16,33,54,0.24)]">
                     <div className="flex items-end justify-between gap-3">
                         <div>
-                            <div className="font-display text-[1.65rem] leading-none">TourValve</div>
+                            <div className="font-display text-[1.65rem] leading-none">{getAppName()}</div>
                         </div>
                         <div className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
                             Online

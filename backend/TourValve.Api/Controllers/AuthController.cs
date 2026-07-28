@@ -54,8 +54,8 @@ public class AuthController : ControllerBase
 
             await TrySendEmailAsync(
                 _smtpOptions.AdminInboxEmail,
-                "TourValve registration approval needed",
-                EmailTemplates.RegistrationRequestAdmin(request.Email, request.CountryOfOrigin, request.PhoneNumber));
+                $"{_appOptions.DisplayName} registration approval needed",
+                EmailTemplates.RegistrationRequestAdmin(_appOptions.DisplayName, request.Email, request.CountryOfOrigin, request.PhoneNumber));
 
             await _audit.WriteAsync(null, request.Email.Trim().ToLower(), "ACCESS", "REGISTER_REQUEST", "RegistrationApprovalRequest", id.ToString(), request.Email, "Registration approval requested.");
             await _notifications.CreateAsync(null, "ADMIN", "ACCESS", "Approval pending", $"A new registration request from {request.Email.Trim().ToLower()} is waiting for admin approval.", "WARN", "/agents");
@@ -117,8 +117,8 @@ public class AuthController : ControllerBase
 
             await TrySendEmailAsync(
                 email,
-                "Your TourValve temporary password",
-                EmailTemplates.PasswordResetApproved(email, temporaryPassword, _appOptions.PublicBaseUrl));
+                $"Your {_appOptions.DisplayName} temporary password",
+                EmailTemplates.PasswordResetApproved(_appOptions.DisplayName, email, temporaryPassword, _appOptions.PublicBaseUrl));
 
             await _audit.WriteAsync(agent.Id, email, "ACCESS", "PASSWORD_RESET_SELF_SERVICE", "Agent", agent.Id.ToString(), email, "Temporary password issued via self-service forgot-password.");
             await _notifications.CreateAsync(agent.Id, "AGENT", "ACCESS", "Password reset", "A temporary password has been emailed to you. Please sign in and change it.", "WARN", "/login");

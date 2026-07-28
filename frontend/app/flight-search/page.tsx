@@ -1911,7 +1911,7 @@ export default function FlightSearch() {
 
     const continueToBookingWithSelections = (flight: FlightResult) => {
         if (!flight.supportsPortalCheckout) {
-            setError(flight.bookingNotice || "This itinerary is not ready for the TourValve portal checkout flow yet. Search again or choose another fare.");
+            setError(flight.bookingNotice || "This itinerary is not ready for the portal checkout flow yet. Search again or choose another fare.");
             closePrebookStudio();
             return;
         }

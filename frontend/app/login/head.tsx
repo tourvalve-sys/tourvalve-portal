@@ -1,12 +1,14 @@
 import { getSiteUrl } from "@/lib/authFetch";
+import { getAppName } from "@/lib/branding";
 
 export default function Head() {
+    const appName = getAppName();
     return (
         <>
-            <title>TourValve B2B Portal | Login</title>
+            <title>{appName} B2B Portal | Login</title>
             <meta
                 name="description"
-                content="Login to TourValve B2B Portal to manage live reservations, agent wallets, approvals, and booking performance."
+                content={`Login to ${appName} B2B Portal to manage live reservations, agent wallets, approvals, and booking performance.`}
             />
             <link rel="canonical" href={`${getSiteUrl()}/login`} />
         </>

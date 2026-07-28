@@ -1,17 +1,19 @@
 import type { Metadata } from "next";
+import { getAppName } from "@/lib/branding";
 
 export const metadata: Metadata = {
     title: "Maintenance",
 };
 
 export default function MaintenancePage() {
+    const appName = getAppName();
     return (
         <section className="mx-auto flex min-h-[calc(100vh-8rem)] max-w-6xl items-center px-4 py-10 sm:px-6">
             <div className="grid w-full gap-8 lg:grid-cols-[minmax(0,1.2fr)_360px]">
                 <div className="premium-panel classic-grid overflow-hidden rounded-[2rem] p-8 sm:p-10">
                     <div className="subtle-kicker">System Notice</div>
                     <h1 className="mt-4 max-w-3xl font-display text-5xl leading-none text-[var(--ink)] sm:text-6xl">
-                        TourValve is under maintenance.
+                        {appName} is under maintenance.
                     </h1>
                     <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600 sm:text-lg">
                         We are carrying out a scheduled software update to keep the portal stable, secure,
@@ -45,7 +47,7 @@ export default function MaintenancePage() {
                             <div className="subtle-kicker">Action</div>
                             <div className="mt-3 text-lg font-semibold text-[var(--ink)]">Please check back soon</div>
                             <p className="mt-2 text-sm leading-6 text-slate-500">
-                                Refresh the page after maintenance ends or contact your TourValve administrator for updates.
+                                Refresh the page after maintenance ends or contact your {appName} administrator for updates.
                             </p>
                         </div>
                     </div>

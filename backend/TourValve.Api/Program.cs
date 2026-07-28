@@ -110,12 +110,21 @@ builder.Services.AddAuthorization();
 // ==============================
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
 builder.Services.Configure<AppOptions>(builder.Configuration.GetSection("App"));
+builder.Services.AddOptions<SmtpOptions>()
+    .Bind(builder.Configuration.GetSection("Smtp"))
+    .PostConfigure<IOptions<AppOptions>>((smtp, appOptions) =>
+    {
+        if (string.IsNullOrWhiteSpace(smtp.FromName))
+            smtp.FromName = appOptions.Value.DisplayName;
+    });
 builder.Services.AddOptions<BillplzOptions>()
     .Bind(builder.Configuration.GetSection("Billplz"))
     .PostConfigure<IOptions<AppOptions>>((billplz, appOptions) =>
     {
+        if (string.IsNullOrWhiteSpace(billplz.DescriptionPrefix))
+            billplz.DescriptionPrefix = $"{appOptions.Value.DisplayName} Wallet Top Up";
+
         var publicBaseUrl = appOptions.Value.PublicBaseUrl?.TrimEnd('/') ?? string.Empty;
         if (string.IsNullOrWhiteSpace(publicBaseUrl))
             return;

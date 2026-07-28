@@ -4,8 +4,9 @@ namespace TourValve.Infrastructure.Services;
 
 public static class EmailTemplates
 {
-    public static string RegistrationRequestAdmin(string email, string countryOfOrigin, string phoneNumber)
+    public static string RegistrationRequestAdmin(string displayName, string email, string countryOfOrigin, string phoneNumber)
         => Wrap(
+            displayName,
             "New registration request",
             "New registration request awaiting admin review.",
             $@"
@@ -15,10 +16,11 @@ public static class EmailTemplates
   <li><strong>Country of origin:</strong> {Encode(countryOfOrigin)}</li>
   <li><strong>Phone number:</strong> {Encode(phoneNumber)}</li>
 </ul>
-<p>Please review it inside the TourValve admin portal under the agents approval queue.</p>");
+<p>Please review it inside the {Encode(displayName)} admin portal under the agents approval queue.</p>");
 
-    public static string PasswordResetRequestAdmin(string email)
+    public static string PasswordResetRequestAdmin(string displayName, string email)
         => Wrap(
+            displayName,
             "New password reset request",
             "New password reset request awaiting admin review.",
             $@"
@@ -26,47 +28,52 @@ public static class EmailTemplates
 <ul>
   <li><strong>Email:</strong> {Encode(email)}</li>
 </ul>
-<p>Please review it inside the TourValve admin portal under the agents approval queue.</p>");
+<p>Please review it inside the {Encode(displayName)} admin portal under the agents approval queue.</p>");
 
-    public static string RegistrationApproved(string email, string baseUrl)
+    public static string RegistrationApproved(string displayName, string email, string baseUrl)
         => Wrap(
-            "Your TourValve access is approved",
-            "Your TourValve access is approved. Sign in to start booking.",
+            displayName,
+            $"Your {displayName} access is approved",
+            $"Your {displayName} access is approved. Sign in to start booking.",
             $@"
 <p>Hello {Encode(email)},</p>
-<p>Your registration has been approved. You may now <a href=""{Encode(baseUrl)}/login"">sign in</a> to the TourValve portal.</p>
-<p>Please keep your login details ready and contact TourValve admin if you need help with onboarding or wallet activation.</p>");
+<p>Your registration has been approved. You may now <a href=""{Encode(baseUrl)}/login"">sign in</a> to the {Encode(displayName)} portal.</p>
+<p>Please keep your login details ready and contact {Encode(displayName)} admin if you need help with onboarding or wallet activation.</p>");
 
-    public static string RegistrationRejected(string email)
+    public static string RegistrationRejected(string displayName, string email)
         => Wrap(
-            "Your TourValve registration update",
-            "Your TourValve registration request was not approved.",
+            displayName,
+            $"Your {displayName} registration update",
+            $"Your {displayName} registration request was not approved.",
             $@"
 <p>Hello {Encode(email)},</p>
 <p>Your registration request was not approved at this time.</p>
-<p>Please contact TourValve admin if you would like the application to be reviewed again.</p>");
+<p>Please contact {Encode(displayName)} admin if you would like the application to be reviewed again.</p>");
 
-    public static string PasswordResetApproved(string email, string temporaryPassword, string baseUrl)
+    public static string PasswordResetApproved(string displayName, string email, string temporaryPassword, string baseUrl)
         => Wrap(
-            "Your TourValve temporary password",
-            "A temporary password has been issued. Sign in to your TourValve account to regain access.",
+            displayName,
+            $"Your {displayName} temporary password",
+            $"A temporary password has been issued. Sign in to your {displayName} account to regain access.",
             $@"
 <p>Hello {Encode(email)},</p>
 <p>A temporary password has been issued for your account.</p>
 <p><strong>Temporary password:</strong> {Encode(temporaryPassword)}</p>
 <p>Please <a href=""{Encode(baseUrl)}/login"">sign in</a> using the temporary password.</p>
-<p>If you did not request this change, contact TourValve admin immediately.</p>");
+<p>If you did not request this change, contact {Encode(displayName)} admin immediately.</p>");
 
-    public static string PasswordResetRejected(string email)
+    public static string PasswordResetRejected(string displayName, string email)
         => Wrap(
-            "Your TourValve password reset update",
-            "Your TourValve password reset request was not approved.",
+            displayName,
+            $"Your {displayName} password reset update",
+            $"Your {displayName} password reset request was not approved.",
             $@"
 <p>Hello {Encode(email)},</p>
 <p>Your password reset request was not approved at this time.</p>
-<p>Please contact TourValve admin if you need help restoring access.</p>");
+<p>Please contact {Encode(displayName)} admin if you need help restoring access.</p>");
 
     public static string BookingConfirmed(
+        string displayName,
         string email,
         string? travelerDisplayName,
         string locatorCode,
@@ -86,12 +93,14 @@ public static class EmailTemplates
     {
         var preheader = ticketIssued
             ? "Your booking is ticketed. Your itinerary PDF is attached."
-            : "Your reservation is confirmed. Contact TourValve admin for ticket issuance.";
+            : $"Your reservation is confirmed. Contact {displayName} admin for ticket issuance.";
 
         return Wrap(
-            "Your TourValve booking confirmation",
+            displayName,
+            $"Your {displayName} booking confirmation",
             preheader,
             BuildBookingConfirmedBody(
+                displayName,
                 email,
                 travelerDisplayName,
                 locatorCode,
@@ -111,6 +120,7 @@ public static class EmailTemplates
     }
 
     public static string PendingTicketIssuance(
+        string displayName,
         string agentEmail,
         string bookingReference,
         string carrier,
@@ -129,7 +139,7 @@ public static class EmailTemplates
         var arrival = arrivalUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'");
 
         var body = $@"
-<p>A TourValve reservation is pending ticket issuance and requires admin follow-up.</p>
+<p>A {Encode(displayName)} reservation is pending ticket issuance and requires admin follow-up.</p>
 <p style=""margin:0 0 18px;""><strong>Requested by:</strong> {Encode(agentEmail)}</p>
 
 {BuildCtas(ticketingWorkspaceUrl, "Open AirTicketing workspace", null, string.Empty)}
@@ -172,10 +182,11 @@ public static class EmailTemplates
   Subject: Pending Ticket Issuance (Urgent). Please issue the ticket as soon as possible or respond to the requesting agent.
 </p>";
 
-        return Wrap("Pending Ticket Issuance (Urgent)", preheader, body);
+        return Wrap(displayName, "Pending Ticket Issuance (Urgent)", preheader, body);
     }
 
     private static string BuildBookingConfirmedBody(
+        string displayName,
         string email,
         string? travelerDisplayName,
         string locatorCode,
@@ -200,7 +211,7 @@ public static class EmailTemplates
         var statusTitle = ticketIssued ? "Your flight booking is ticketed" : "Your flight reservation is confirmed";
         var statusSubtitle = ticketIssued
             ? "Ticket evidence is available for airline servicing."
-            : "Ticket issuance is handled by the TourValve admin. Contact admin@tourvalve.com for ticket issuance.";
+            : $"Ticket issuance is handled by the {displayName} admin. Contact admin@tourvalve.com for ticket issuance.";
 
         var primaryCtaUrl = ticketIssued ? manageBookingUrl : manageBookingUrl;
         var primaryCtaLabel = ticketIssued ? "Manage booking" : "View booking";
@@ -263,7 +274,7 @@ public static class EmailTemplates
 </div>
 
 <p style=""margin:18px 0 0;color:#64748b;font-size:13px;line-height:1.7;"">
-  Your TourValve booking PDF is attached for your records and servicing follow-up.
+  Your {Encode(displayName)} booking PDF is attached for your records and servicing follow-up.
 </p>";
     }
 
@@ -286,7 +297,7 @@ public static class EmailTemplates
 </div>";
     }
 
-    private static string Wrap(string title, string preheader, string body)
+    private static string Wrap(string displayName, string title, string preheader, string body)
     {
         var safePreheader = string.IsNullOrWhiteSpace(preheader) ? title : preheader;
 
@@ -297,7 +308,7 @@ public static class EmailTemplates
 <div style=""display:none;max-height:0px;overflow:hidden;mso-hide:all;"">&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>
 <div style=""font-family:Segoe UI,Arial,sans-serif;max-width:680px;margin:0 auto;padding:24px;background:#f8f4ec;color:#1f2a44;"">
   <div style=""background:#ffffff;border-radius:24px;padding:32px;box-shadow:0 12px 32px rgba(31,42,68,0.08);"">
-    <div style=""font-size:12px;letter-spacing:0.24em;text-transform:uppercase;color:#9a6a3a;margin-bottom:12px;"">TourValve</div>
+    <div style=""font-size:12px;letter-spacing:0.24em;text-transform:uppercase;color:#9a6a3a;margin-bottom:12px;"">{Encode(displayName)}</div>
     <h1 style=""margin:0 0 18px;font-size:28px;font-weight:600;color:#1f2a44;"">{Encode(title)}</h1>
     <div style=""font-size:15px;line-height:1.8;color:#475569;"">
       {body}

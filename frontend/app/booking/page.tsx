@@ -27,6 +27,7 @@ import {
     type BookingConfirmationState,
 } from "@/lib/bookingConfirmation";
 import { getUserFromToken } from "@/lib/auth";
+import { getAppName } from "@/lib/branding";
 import { useBooking } from "../context/BookingContext";
 import {
     DEFAULT_PHONE_COUNTRY,
@@ -99,7 +100,7 @@ const BOOKING_PREPARE_CAPTIONS = [
 ];
 const BOOKING_CONFIRM_CAPTIONS = [
     "Preparing the live reservation request.",
-    "Creating the PNR and syncing the booking record inside TourValve.",
+    `Creating the PNR and syncing the booking record inside ${getAppName()}.`,
     "Preparing your reservation confirmation and ticketing workspace.",
 ];
 const FARE_CATEGORY_ACK_PREFIX = "tourvalveFareCategoryAck:";
@@ -551,7 +552,7 @@ export default function BookingPage() {
             return "";
         }
 
-        return selectedFlight.bookingNotice || "This itinerary is not ready for the TourValve portal checkout flow yet. Search again or choose another fare.";
+        return selectedFlight.bookingNotice || "This itinerary is not ready for the portal checkout flow yet. Search again or choose another fare.";
     }, [selectedFlight]);
     const normalizedSeatRows = useMemo(
         () => normalizeSeatRows(seatMap),
@@ -1314,7 +1315,7 @@ export default function BookingPage() {
                         <div className="subtle-kicker mb-1">Cancellations & changes</div>
                         <h2 className="text-xl font-semibold text-[var(--ink)]">Cancellations & changes</h2>
                         <p className="mt-2 text-sm leading-7 text-slate-500">
-                            Display airline-provided fare flexibility. If no policy is returned, capture a TourValve policy override below.
+                            Display airline-provided fare flexibility. If no policy is returned, capture a {getAppName()} policy override below.
                         </p>
 
                         <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -1366,7 +1367,7 @@ export default function BookingPage() {
                         {!selectedFlight.cancellationPolicy && !selectedFlight.changePolicy ? (
                             <div className="mt-5 rounded-[1.5rem] bg-[rgba(255,247,236,0.7)] p-4">
                                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-strong)]">
-                                    TourValve policy override
+                                    {getAppName()} policy override
                                 </div>
                                 <div className="mt-2 text-sm text-slate-600">
                                     No airline policy was returned for this fare. Set an override to display in the reservation review.

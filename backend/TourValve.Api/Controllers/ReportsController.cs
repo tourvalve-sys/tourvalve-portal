@@ -5,6 +5,7 @@ using Npgsql;
 using System.Security.Claims;
 using System.Text;
 using TourValve.Infrastructure.Data;
+using TourValve.Infrastructure.Services;
 
 namespace TourValve.Api.Controllers;
 
@@ -61,16 +62,19 @@ public class ReportsController : ControllerBase
         List<AgentPerformanceRow> TopAgents,
         List<AncillaryTypeRow> AncillaryMix);
 
-    public ReportsController(TourValveDbContext db)
+    private readonly AppOptions _appOptions;
+
+    public ReportsController(TourValveDbContext db, Microsoft.Extensions.Options.IOptions<AppOptions> appOptions)
     {
         _db = db;
+        _appOptions = appOptions.Value;
     }
 
     [HttpGet("overview")]
     public async Task<IActionResult> Overview()
     {
         if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Reports access is restricted to the TourValve admin." });
+            return StatusCode(403, new { error = $"Reports access is restricted to the {_appOptions.DisplayName} admin." });
 
         try
         {
@@ -128,7 +132,7 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> ExportBookings([FromQuery] string format = "csv")
     {
         if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Reports access is restricted to the TourValve admin." });
+            return StatusCode(403, new { error = $"Reports access is restricted to the {_appOptions.DisplayName} admin." });
 
         var bookingRows = await GetAuthorizedBookingRowsAsync();
         return BuildExportFile(
@@ -147,7 +151,7 @@ public class ReportsController : ControllerBase
                 x.Status,
                 $"MYR {x.Amount:0.00}"
             }),
-            "TourValve Bookings Export",
+            $"{_appOptions.DisplayName} Bookings Export",
             bookingRows.Select(x => $"{x.BookingReference} | {x.Carrier} {x.FlightNumber} | {x.From}->{x.To} | {x.Status} | MYR {x.Amount:0.00}"));
     }
 
@@ -155,7 +159,7 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> ExportAgentPerformance([FromQuery] string format = "csv")
     {
         if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Reports access is restricted to the TourValve admin." });
+            return StatusCode(403, new { error = $"Reports access is restricted to the {_appOptions.DisplayName} admin." });
 
         var overview = await BuildOverviewPayloadAsync();
         return BuildExportFile(
@@ -168,7 +172,7 @@ public class ReportsController : ControllerBase
                 x.Bookings.ToString(),
                 $"MYR {x.Revenue:0.00}"
             }),
-            "TourValve Agent Performance Export",
+            $"{_appOptions.DisplayName} Agent Performance Export",
             overview.AgentPerformance.Select(x => $"{x.Email} | {x.Bookings} bookings | MYR {x.Revenue:0.00}"));
     }
 
@@ -176,7 +180,7 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> ExportOverview([FromQuery] string format = "csv")
     {
         if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Reports access is restricted to the TourValve admin." });
+            return StatusCode(403, new { error = $"Reports access is restricted to the {_appOptions.DisplayName} admin." });
 
         var overview = await BuildOverviewPayloadAsync();
         var rows = new[]
@@ -202,7 +206,7 @@ public class ReportsController : ControllerBase
             "reports-overview-export",
             new[] { "Metric", "Value" },
             rows,
-            "TourValve Executive Overview Export",
+            $"{_appOptions.DisplayName} Executive Overview Export",
             rows.Select(x => $"{x[0]}: {x[1]}"));
     }
 
@@ -210,7 +214,7 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> ExportAncillaries([FromQuery] string format = "csv")
     {
         if (!IsReservedAdminUser())
-            return StatusCode(403, new { error = "Reports access is restricted to the TourValve admin." });
+            return StatusCode(403, new { error = $"Reports access is restricted to the {_appOptions.DisplayName} admin." });
 
         var ancillaryRows = await GetAuthorizedAncillaryRowsAsync();
         return BuildExportFile(
@@ -230,7 +234,7 @@ public class ReportsController : ControllerBase
                 $"{x.Currency} {x.TotalAmount:0.00}",
                 x.RequestedAt.ToString("yyyy-MM-dd HH:mm")
             }),
-            "TourValve Ancillary Orders Export",
+            $"{_appOptions.DisplayName} Ancillary Orders Export",
             ancillaryRows.Select(x => $"{x.BookingReference} | {x.AgentEmail} | {x.Type} | {x.Status} | {x.Currency} {x.TotalAmount:0.00}"));
     }
 
