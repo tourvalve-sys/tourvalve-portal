@@ -1,5 +1,12 @@
 # Server Setup & Deployment Guide (Ubuntu)
 
+> **This file is a generic/aspirational reference, not what's actually running.**
+> For routine deploys and the real, verified state of the production server
+> (service names, ports, domains, database, and known issues), see
+> [DEPLOYMENT.md](DEPLOYMENT.md) instead. This file is only useful as a rough
+> starting point for provisioning a *new* box from scratch — verify every
+> step against the real server rather than following it literally.
+
 Project root on server: `/var/www/tourvalve-portal`
 
 ---

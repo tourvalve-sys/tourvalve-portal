@@ -2,6 +2,13 @@
 
 This runbook covers simple database backups for the live TourValve VPS.
 
+> **Known issue:** as of the last audit, backups on the production server
+> have been silently failing every day since ~2026-04-16 — `ops/backup-postgres.sh`
+> lost its executable bit, so the scheduled job can't run at all. See
+> [DEPLOYMENT.md's Known Issues section](../DEPLOYMENT.md#known-issues) for
+> the root cause and fix. Don't assume backups are current until that's
+> confirmed fixed.
+
 ## Files
 
 - Script: `ops/backup-postgres.sh`
@@ -78,13 +85,28 @@ Start the backend again:
 systemctl start tourvalve-backend
 ```
 
-## Optional daily cron
+## Daily schedule
 
-Example root cron entry for a 3:15 AM backup:
+The production server does not use cron for this at all (no cron package is
+even installed) — scheduling is done via a **systemd timer**, `tourvalve-postgres-backup.timer`,
+which fires `tourvalve-postgres-backup.service` (a oneshot unit running this
+script as root) daily at 03:15. Check its state with:
+
+```bash
+systemctl status tourvalve-postgres-backup.timer
+systemctl status tourvalve-postgres-backup.service
+journalctl -u tourvalve-postgres-backup.service -n 50 --no-pager
+```
+
+If you're setting this up on a new box and prefer cron instead, an equivalent
+entry would be:
 
 ```cron
 15 3 * * * /var/www/tourvalve-portal/ops/backup-postgres.sh >> /var/log/tourvalve-backup.log 2>&1
 ```
+
+but that is **not** what production actually runs — match whichever
+mechanism is already in place on the box you're working on.
 
 ## Notes
 
