@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Briefcase, LayoutGrid, LogOut, PlaneTakeoff, ScrollText, Users, Wallet, MoreHorizontal, X } from "lucide-react";
+import { BarChart3, Briefcase, LayoutGrid, LogOut, PlaneTakeoff, Percent, ScrollText, Users, Wallet, MoreHorizontal, X } from "lucide-react";
 import { getCurrentUser } from "@/lib/api";
 import { getUserFromToken, removeToken } from "@/lib/auth";
 import { getAppName } from "@/lib/branding";
@@ -16,10 +16,11 @@ const menu = [
     { name: "Agents", path: "/agents", icon: Users },
     { name: "Audit Trail", path: "/audit-trail", icon: ScrollText },
     { name: "Reports", path: "/reports", icon: BarChart3 },
+    { name: "Markup Settings", path: "/markup-settings", icon: Percent },
 ];
 
 const adminOnlyPaths = new Set(["/audit-trail"]);
-const reservedAdminOnlyPaths = new Set(["/reports"]);
+const reservedAdminOnlyPaths = new Set(["/reports", "/markup-settings"]);
 
 const mobileLabels: Record<string, string> = {
     Dashboard: "Home",
@@ -29,6 +30,7 @@ const mobileLabels: Record<string, string> = {
     Agents: "Agents",
     "Audit Trail": "Audit",
     Reports: "Reports",
+    "Markup Settings": "Markup",
 };
 
 export default function Sidebar() {

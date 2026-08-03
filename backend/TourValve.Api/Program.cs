@@ -137,8 +137,6 @@ builder.Services.AddOptions<BillplzOptions>()
     });
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.Configure<WalletAlertOptions>(builder.Configuration.GetSection("WalletAlerts"));
-builder.Services.Configure<TicketMarkupOptions>(builder.Configuration.GetSection("TicketMarkup"));
-builder.Services.Configure<AncillaryMarkupOptions>(builder.Configuration.GetSection("AncillaryMarkup"));
 builder.Services.Configure<AtlasOptions>(builder.Configuration.GetSection(AtlasOptions.SectionName));
 builder.Services.AddScoped<IAuditTrailService, AuditTrailService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
@@ -146,6 +144,8 @@ builder.Services.AddHttpClient<IBillplzTopUpService, BillplzTopUpService>(client
 {
     client.Timeout = TimeSpan.FromSeconds(30);
 });
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<IMarkupSettingsProvider, MarkupSettingsProvider>();
 builder.Services.AddScoped<TicketMarkupService>();
 builder.Services.AddScoped<AncillaryMarkupService>();
 builder.Services.AddHttpClient<AtlasApiClient>((sp, client) =>

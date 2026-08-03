@@ -167,9 +167,11 @@ public class FlightsController : ControllerBase
             });
         }
 
+        var markedUpFlights = await Task.WhenAll(flights.Select(flight => _markup.ApplyForRole(flight, includeMarkup)));
+
         return Ok(new
         {
-            flights = flights.Select(flight => _markup.ApplyForRole(flight, includeMarkup)).ToList(),
+            flights = markedUpFlights.ToList(),
             diagnosticMessage = string.Empty
         });
     }
@@ -230,7 +232,7 @@ public class FlightsController : ControllerBase
                 priced.AirSegmentXmls.Add(req.AirSegmentXml);
         }
 
-        return Ok(_markup.ApplyForRole(priced, includeMarkup));
+        return Ok(await _markup.ApplyForRole(priced, includeMarkup));
     }
 
     [HttpPost("seat-map")]
@@ -263,7 +265,8 @@ public class FlightsController : ControllerBase
         if (debugRaw)
             return Content(response, "application/xml");
 
-        return Ok(ParseSeatMapResponse(response, includeMarkup));
+        var ancillaryMarkupSettings = await _ancillaryMarkup.GetSettingsAsync();
+        return Ok(ParseSeatMapResponse(response, includeMarkup, ancillaryMarkupSettings));
     }
 
     [HttpPost("prebook-ancillary-offers")]
@@ -310,7 +313,7 @@ public class FlightsController : ControllerBase
         var catalog = ParsePrebookOfferAvailabilityResponse(response, segmentLabels);
         if (includeMarkup)
         {
-            ApplyAgentAncillaryMarkup(catalog);
+            await ApplyAgentAncillaryMarkup(catalog);
         }
 
         return Ok(catalog);
@@ -1164,7 +1167,7 @@ public class FlightsController : ControllerBase
             var priced = await TryPriceAvailabilityFlightAsync(flight, req, includeMarkup);
             availabilityFlights.Add(priced is not null
                 ? MergePricedAvailabilityFlight(priced, flight)
-                : _markup.ApplyForRole(flight, includeMarkup));
+                : await _markup.ApplyForRole(flight, includeMarkup));
         }
 
         return availabilityFlights;
@@ -1249,7 +1252,7 @@ public class FlightsController : ControllerBase
                     priced.AirSegmentXmls.Add(req.AirSegmentXml);
             }
 
-            return _markup.ApplyForRole(priced, includeMarkup);
+            return await _markup.ApplyForRole(priced, includeMarkup);
         }
         catch
         {
@@ -1354,7 +1357,7 @@ public class FlightsController : ControllerBase
         string ServiceSubCode,
         string Source);
 
-    private object ParseSeatMapResponse(string xml, bool includeMarkup)
+    private object ParseSeatMapResponse(string xml, bool includeMarkup, TourValve.Domain.MarkupSettings ancillaryMarkupSettings)
     {
         var doc = XDocument.Parse(xml);
 
@@ -1437,7 +1440,7 @@ public class FlightsController : ControllerBase
                                 !string.Equals(facility.Attribute("Type")?.Value, "Aisle", StringComparison.OrdinalIgnoreCase)
                             )
                         ))
-                    .Select(facility => MapSeatFacility(facility, optionalServices, row.Attribute("Number")?.Value ?? string.Empty, includeMarkup))
+                    .Select(facility => MapSeatFacility(facility, optionalServices, row.Attribute("Number")?.Value ?? string.Empty, includeMarkup, ancillaryMarkupSettings))
                     .Where(seat => !string.IsNullOrWhiteSpace(seat.Code))
                     .ToList()
             })
@@ -1450,7 +1453,7 @@ public class FlightsController : ControllerBase
                 .Select(facility => new
                 {
                     rowNumber = ExtractSeatRowNumber(facility),
-                    seat = MapSeatFacility(facility, optionalServices, ExtractSeatRowNumber(facility), includeMarkup)
+                    seat = MapSeatFacility(facility, optionalServices, ExtractSeatRowNumber(facility), includeMarkup, ancillaryMarkupSettings)
                 })
                 .Where(x => !string.IsNullOrWhiteSpace(x.rowNumber))
                 .GroupBy(x => x.rowNumber, StringComparer.OrdinalIgnoreCase)
@@ -1514,7 +1517,8 @@ public class FlightsController : ControllerBase
         XElement facility,
         IReadOnlyDictionary<string, XElement> optionalServices,
         string rowNumberHint,
-        bool includeMarkup)
+        bool includeMarkup,
+        TourValve.Domain.MarkupSettings ancillaryMarkupSettings)
     {
         var seatCode = ResolveSeatCode(facility, rowNumberHint);
         var optionalServiceRef = facility.Attribute("OptionalServiceRef")?.Value?.Trim()
@@ -1557,7 +1561,7 @@ public class FlightsController : ControllerBase
 
         if (includeMarkup && seatPrice.HasValue && seatPrice.Value > 0m)
         {
-            seatPrice = _ancillaryMarkup.CalculateTotalAmount("SEAT", seatPrice.Value);
+            seatPrice = AncillaryMarkupService.CalculateTotalAmount(ancillaryMarkupSettings, "SEAT", seatPrice.Value);
         }
 
         return new SeatMapSeatDto(
@@ -1963,13 +1967,14 @@ public class FlightsController : ControllerBase
         return string.Equals(email.Trim(), ReservedAdminEmail, StringComparison.OrdinalIgnoreCase);
     }
 
-    private void ApplyAgentAncillaryMarkup(BookingAncillaryOfferCatalog catalog)
+    private async Task ApplyAgentAncillaryMarkup(BookingAncillaryOfferCatalog catalog)
     {
+        var settings = await _ancillaryMarkup.GetSettingsAsync();
         foreach (var category in catalog.Categories.Values)
         {
             foreach (var offer in category)
             {
-                offer.BaseAmount = _ancillaryMarkup.CalculateTotalAmount(offer.Type, offer.BaseAmount);
+                offer.BaseAmount = AncillaryMarkupService.CalculateTotalAmount(settings, offer.Type, offer.BaseAmount);
             }
         }
     }

@@ -106,16 +106,17 @@ public sealed class AtlasFlightsController : ControllerBase
         }
 
         var includeMarkup = !IsReservedAdminUser();
+        var ancillaryMarkupSettings = await _ancillaryMarkup.GetSettingsAsync();
         var luggageItems = luggage?.Data?.AncillaryProductElements ?? new List<AtlasAncillaryProductElement>();
         if (includeMarkup)
         {
             foreach (var item in luggageItems)
             {
                 if (item.Price > 0m)
-                    item.Price = _ancillaryMarkup.CalculateTotalAmount("BAGGAGE", item.Price);
+                    item.Price = AncillaryMarkupService.CalculateTotalAmount(ancillaryMarkupSettings, "BAGGAGE", item.Price);
 
                 if (item.DisplayPrice.HasValue && item.DisplayPrice.Value > 0m)
-                    item.DisplayPrice = _ancillaryMarkup.CalculateTotalAmount("BAGGAGE", item.DisplayPrice.Value);
+                    item.DisplayPrice = AncillaryMarkupService.CalculateTotalAmount(ancillaryMarkupSettings, "BAGGAGE", item.DisplayPrice.Value);
 
                 // Hide supplier/vendor pricing from agents.
                 item.VendorPrice = null;
@@ -125,7 +126,7 @@ public sealed class AtlasFlightsController : ControllerBase
 
         var seatMaps = seatAvailability is null
             ? null
-            : MapSeatAvailabilityToSeatMaps(seatAvailability, routing, includeMarkup);
+            : MapSeatAvailabilityToSeatMaps(seatAvailability, routing, includeMarkup, ancillaryMarkupSettings);
 
         return Ok(new
         {
@@ -200,11 +201,11 @@ public sealed class AtlasFlightsController : ControllerBase
 
         var routings = searchResponse.Routings ?? new List<AtlasRouting>();
         var includeMarkup = !IsReservedAdminUser();
-        var flights = routings
+        var mappedFlights = routings
             .Where(routing => routing.FromSegments.Count > 0)
             .Select(routing => MapRoutingToFlightDto(routing, req.Adults, req.Child, req.Infant))
-            .Select(flight => _markup.ApplyForRole(flight, includeMarkup))
             .ToList();
+        var flights = await Task.WhenAll(mappedFlights.Select(flight => _markup.ApplyForRole(flight, includeMarkup)));
 
         return Ok(new
         {
@@ -237,7 +238,7 @@ public sealed class AtlasFlightsController : ControllerBase
         };
     }
 
-    private object MapSeatAvailabilityToSeatMaps(AtlasSeatAvailabilityResponse response, AtlasRouting routing, bool includeMarkup)
+    private object MapSeatAvailabilityToSeatMaps(AtlasSeatAvailabilityResponse response, AtlasRouting routing, bool includeMarkup, TourValve.Domain.MarkupSettings ancillaryMarkupSettings)
     {
         var segments = new List<AtlasSegment>();
         segments.AddRange(routing.FromSegments);
@@ -265,7 +266,7 @@ public sealed class AtlasFlightsController : ControllerBase
                                 var amount = seat.Price ?? 0m;
                                 if (includeMarkup && amount > 0m)
                                 {
-                                    amount = _ancillaryMarkup.CalculateTotalAmount("SEAT", amount);
+                                    amount = AncillaryMarkupService.CalculateTotalAmount(ancillaryMarkupSettings, "SEAT", amount);
                                 }
                                 return new
                                 {

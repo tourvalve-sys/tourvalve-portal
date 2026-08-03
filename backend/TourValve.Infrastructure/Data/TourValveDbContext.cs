@@ -22,6 +22,7 @@ public class TourValveDbContext : DbContext, IApplicationDbContext
     public DbSet<AdminWithdrawalRequest> AdminWithdrawalRequests => Set<AdminWithdrawalRequest>();
     public DbSet<BookingAncillaryOrder> BookingAncillaryOrders => Set<BookingAncillaryOrder>();
     public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<MarkupSettings> MarkupSettings => Set<MarkupSettings>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => base.SaveChangesAsync(cancellationToken);
@@ -40,6 +41,7 @@ public class TourValveDbContext : DbContext, IApplicationDbContext
         modelBuilder.Entity<PasswordResetApprovalRequest>().HasKey(x => x.Id);
         modelBuilder.Entity<AuditTrailEvent>().HasKey(x => x.Id);
         modelBuilder.Entity<NotificationItem>().HasKey(x => x.Id);
+        modelBuilder.Entity<MarkupSettings>().HasKey(x => x.Id);
 
         modelBuilder.Entity<Agent>()
             .HasIndex(x => x.Email)
@@ -201,5 +203,41 @@ public class TourValveDbContext : DbContext, IApplicationDbContext
 
         modelBuilder.Entity<WalletLimitAuditLog>()
             .HasIndex(x => new { x.RequesterAgentId, x.CreatedAt });
+
+        modelBuilder.Entity<MarkupSettings>()
+            .Property(x => x.TicketBaseFarePercent)
+            .HasColumnType("numeric(5,4)");
+
+        modelBuilder.Entity<MarkupSettings>()
+            .Property(x => x.AncillaryDefaultPercent)
+            .HasColumnType("numeric(5,4)");
+
+        modelBuilder.Entity<MarkupSettings>()
+            .Property(x => x.AncillaryBaggagePercent)
+            .HasColumnType("numeric(5,4)");
+
+        modelBuilder.Entity<MarkupSettings>()
+            .Property(x => x.AncillaryMealPercent)
+            .HasColumnType("numeric(5,4)");
+
+        modelBuilder.Entity<MarkupSettings>()
+            .Property(x => x.AncillarySeatPercent)
+            .HasColumnType("numeric(5,4)");
+
+        modelBuilder.Entity<MarkupSettings>()
+            .Property(x => x.TicketDefaultAmount)
+            .HasColumnType("numeric(12,2)");
+
+        modelBuilder.Entity<MarkupSettings>()
+            .Property(x => x.TicketEconomyAmount)
+            .HasColumnType("numeric(12,2)");
+
+        modelBuilder.Entity<MarkupSettings>()
+            .Property(x => x.TicketBusinessAmount)
+            .HasColumnType("numeric(12,2)");
+
+        modelBuilder.Entity<MarkupSettings>()
+            .Property(x => x.TicketFirstAmount)
+            .HasColumnType("numeric(12,2)");
     }
 }

@@ -582,7 +582,7 @@ public sealed class AirBookingController : ControllerBase
             var sellAmount = decimal.Round(Math.Max(request.Price, 0m), 2, MidpointRounding.AwayFromZero);
             var (baseAmount, markupAmount, _) = IsReservedAdminUser()
                 ? (sellAmount, 0m, sellAmount)
-                : _ticketMarkup.SplitSellAmount(sellAmount);
+                : await _ticketMarkup.SplitSellAmount(sellAmount);
 
             var createResult = await _mediator.Send(
                 new CreateBookingCommand

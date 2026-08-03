@@ -1,26 +1,28 @@
-using Microsoft.Extensions.Options;
 using TourValve.Application.Flights.DTO;
+using TourValve.Domain;
 
 namespace TourValve.Infrastructure.Services;
 
 public class TicketMarkupService
 {
-    private readonly TicketMarkupOptions _options;
+    private readonly IMarkupSettingsProvider _settingsProvider;
 
-    public TicketMarkupService(IOptions<TicketMarkupOptions> options)
+    public TicketMarkupService(IMarkupSettingsProvider settingsProvider)
     {
-        _options = options.Value;
+        _settingsProvider = settingsProvider;
     }
 
-    public FlightDto Apply(FlightDto flight)
+    public Task<FlightDto> Apply(FlightDto flight)
         => ApplyForRole(flight, includeMarkup: true);
 
-    public FlightDto ApplyForRole(FlightDto flight, bool includeMarkup)
+    public async Task<FlightDto> ApplyForRole(FlightDto flight, bool includeMarkup)
     {
+        var settings = await _settingsProvider.GetAsync();
+
         var basePrice = flight.BasePrice <= 0m ? flight.Price : flight.BasePrice;
         basePrice = decimal.Round(Math.Max(basePrice, 0m), 2, MidpointRounding.AwayFromZero);
 
-        if (!_options.Enabled || !includeMarkup)
+        if (!settings.TicketMarkupEnabled || !includeMarkup)
         {
             flight.MarkupAmount = 0m;
             flight.BasePrice = basePrice;
@@ -28,7 +30,7 @@ public class TicketMarkupService
             return flight;
         }
 
-        var markupAmount = CalculateMarkupAmount(basePrice, flight.CabinClass);
+        var markupAmount = CalculateMarkupAmount(settings, basePrice, flight.CabinClass);
         var sellPrice = decimal.Round(basePrice + markupAmount, 2, MidpointRounding.AwayFromZero);
 
         flight.Price = sellPrice;
@@ -39,38 +41,39 @@ public class TicketMarkupService
         return flight;
     }
 
-    private decimal CalculateMarkupAmount(decimal basePrice, string cabinClass)
+    private static decimal CalculateMarkupAmount(MarkupSettings settings, decimal basePrice, string cabinClass)
     {
-        if (!_options.Enabled)
+        if (!settings.TicketMarkupEnabled)
             return 0m;
 
-        if (_options.BaseFarePercent > 0m)
+        if (settings.TicketBaseFarePercent > 0m)
         {
             var safeBase = decimal.Round(Math.Max(basePrice, 0m), 2, MidpointRounding.AwayFromZero);
-            var percent = Math.Max(_options.BaseFarePercent, 0m);
+            var percent = Math.Max(settings.TicketBaseFarePercent, 0m);
             return decimal.Round(safeBase * percent, 2, MidpointRounding.AwayFromZero);
         }
 
         var normalized = (cabinClass ?? string.Empty).Trim().ToLowerInvariant();
         var legacyAmount = normalized switch
         {
-            "economy" => _options.EconomyAmount,
-            "business" => _options.BusinessAmount,
-            "first" => _options.FirstAmount,
-            _ => _options.DefaultAmount
+            "economy" => settings.TicketEconomyAmount,
+            "business" => settings.TicketBusinessAmount,
+            "first" => settings.TicketFirstAmount,
+            _ => settings.TicketDefaultAmount
         };
 
         return decimal.Round(Math.Max(legacyAmount, 0m), 2, MidpointRounding.AwayFromZero);
     }
 
-    public (decimal BaseAmount, decimal MarkupAmount, decimal TotalAmount) SplitSellAmount(decimal sellAmount)
+    public async Task<(decimal BaseAmount, decimal MarkupAmount, decimal TotalAmount)> SplitSellAmount(decimal sellAmount)
     {
+        var settings = await _settingsProvider.GetAsync();
         var safeSell = decimal.Round(Math.Max(sellAmount, 0m), 2, MidpointRounding.AwayFromZero);
 
-        if (!_options.Enabled || _options.BaseFarePercent <= 0m)
+        if (!settings.TicketMarkupEnabled || settings.TicketBaseFarePercent <= 0m)
             return (safeSell, 0m, safeSell);
 
-        var percent = Math.Max(_options.BaseFarePercent, 0m);
+        var percent = Math.Max(settings.TicketBaseFarePercent, 0m);
         var baseAmount = decimal.Round(safeSell / (1m + percent), 2, MidpointRounding.AwayFromZero);
         var markupAmount = decimal.Round(safeSell - baseAmount, 2, MidpointRounding.AwayFromZero);
         return (baseAmount, markupAmount, safeSell);

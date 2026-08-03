@@ -381,6 +381,56 @@ namespace TourValve.Infrastructure.Migrations
                     b.ToTable("BookingAncillaryOrders");
                 });
 
+            modelBuilder.Entity("TourValve.Domain.MarkupSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AncillaryBaggagePercent")
+                        .HasColumnType("numeric(5,4)");
+
+                    b.Property<decimal>("AncillaryDefaultPercent")
+                        .HasColumnType("numeric(5,4)");
+
+                    b.Property<bool>("AncillaryMarkupEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("AncillaryMealPercent")
+                        .HasColumnType("numeric(5,4)");
+
+                    b.Property<decimal>("AncillarySeatPercent")
+                        .HasColumnType("numeric(5,4)");
+
+                    b.Property<decimal>("TicketBaseFarePercent")
+                        .HasColumnType("numeric(5,4)");
+
+                    b.Property<decimal>("TicketBusinessAmount")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("TicketDefaultAmount")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("TicketEconomyAmount")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<decimal>("TicketFirstAmount")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<bool>("TicketMarkupEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByEmail")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MarkupSettings");
+                });
+
             modelBuilder.Entity("TourValve.Domain.NotificationItem", b =>
                 {
                     b.Property<Guid>("Id")

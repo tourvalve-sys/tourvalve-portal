@@ -321,7 +321,7 @@ public class BookingsController : ControllerBase
 
             if (includeMarkup)
             {
-                ApplyAgentAncillaryMarkup(catalog!);
+                await ApplyAgentAncillaryMarkup(catalog!);
             }
 
             return Ok(catalog);
@@ -356,13 +356,14 @@ public class BookingsController : ControllerBase
 
             if (!IsReservedAdminUser())
             {
+                var ancillaryMarkupSettings = await _ancillaryMarkup.GetSettingsAsync();
                 foreach (var row in result.Rows)
                 {
                     foreach (var seat in row.Seats)
                     {
                         if (seat.SeatPrice.HasValue && seat.SeatPrice.Value > 0m)
                         {
-                            seat.SeatPrice = _ancillaryMarkup.CalculateTotalAmount("SEAT", seat.SeatPrice.Value);
+                            seat.SeatPrice = AncillaryMarkupService.CalculateTotalAmount(ancillaryMarkupSettings, "SEAT", seat.SeatPrice.Value);
                         }
                     }
                 }
@@ -401,7 +402,7 @@ public class BookingsController : ControllerBase
         var requestedTotal = decimal.Round(unitAmount * selectionCount, 2, MidpointRounding.AwayFromZero);
         var (baseAmount, markupAmount, totalAmount) = isAdmin
             ? (requestedTotal, 0m, requestedTotal)
-            : _ancillaryMarkup.SplitSellAmount(normalizedType, requestedTotal);
+            : await _ancillaryMarkup.SplitSellAmount(normalizedType, requestedTotal);
         var isLiveMealSsr = !string.IsNullOrWhiteSpace(mealSsrCode);
 
         return Ok(new
@@ -456,7 +457,7 @@ public class BookingsController : ControllerBase
         var requestedTotal = decimal.Round(unitAmount * selectionCount, 2, MidpointRounding.AwayFromZero);
         var (baseAmount, markupAmount, totalAmount) = isAdmin
             ? (requestedTotal, 0m, requestedTotal)
-            : _ancillaryMarkup.SplitSellAmount(normalizedType, requestedTotal);
+            : await _ancillaryMarkup.SplitSellAmount(normalizedType, requestedTotal);
         var isLiveMealSsr = !string.IsNullOrWhiteSpace(mealSsrCode);
         var order = new TourValve.Domain.BookingAncillaryOrder
         {
@@ -1297,13 +1298,14 @@ public class BookingsController : ControllerBase
             .Replace("Atlas", "Provider", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void ApplyAgentAncillaryMarkup(BookingAncillaryOfferCatalog catalog)
+    private async Task ApplyAgentAncillaryMarkup(BookingAncillaryOfferCatalog catalog)
     {
+        var settings = await _ancillaryMarkup.GetSettingsAsync();
         foreach (var category in catalog.Categories.Values)
         {
             foreach (var offer in category)
             {
-                offer.BaseAmount = _ancillaryMarkup.CalculateTotalAmount(offer.Type, offer.BaseAmount);
+                offer.BaseAmount = AncillaryMarkupService.CalculateTotalAmount(settings, offer.Type, offer.BaseAmount);
             }
         }
     }

@@ -1550,3 +1550,50 @@ export async function deleteAgent(agentId: string) {
 
     return readJson<{ message: string; agentId: string }>(res);
 }
+
+export type MarkupSettings = {
+    ticketMarkupEnabled: boolean;
+    ticketBaseFarePercent: number;
+    ticketDefaultAmount: number;
+    ticketEconomyAmount: number;
+    ticketBusinessAmount: number;
+    ticketFirstAmount: number;
+    ancillaryMarkupEnabled: boolean;
+    ancillaryDefaultPercent: number;
+    ancillaryBaggagePercent: number;
+    ancillaryMealPercent: number;
+    ancillarySeatPercent: number;
+    updatedAt: string;
+    updatedByEmail: string | null;
+};
+
+export type MarkupSettingsHistoryItem = {
+    createdAt: string;
+    actorEmail: string;
+    details: string;
+    severity: string;
+};
+
+export async function getMarkupSettings(): Promise<MarkupSettings> {
+    const res = await authFetch(`${API_BASE}/api/admin/markup-settings`);
+    return readJson<MarkupSettings>(res);
+}
+
+export async function updateMarkupSettings(
+    payload: Omit<MarkupSettings, "updatedAt" | "updatedByEmail">
+): Promise<MarkupSettings> {
+    const res = await authFetch(`${API_BASE}/api/admin/markup-settings`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+    });
+
+    return readJson<MarkupSettings>(res);
+}
+
+export async function getMarkupSettingsHistory(): Promise<MarkupSettingsHistoryItem[]> {
+    const res = await authFetch(`${API_BASE}/api/admin/markup-settings/history`);
+    return readJson<MarkupSettingsHistoryItem[]>(res);
+}
